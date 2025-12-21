@@ -154,6 +154,21 @@ export class AuthController {
     return this.authService.changePassword(userId, changePasswordDto);
   }
 
+  @Get('profile/:userId')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Get user profile by ID' })
+  @ApiResponse({
+    status: 200,
+    description: 'Profile retrieved successfully',
+  })
+  @ApiResponse({ status: 404, description: 'User not found' })
+  async getProfileById(
+    @Param('userId', ParseIntPipe) userId: number,
+    @CommonHeadersDecorator() headers: CommonHeaders,
+  ) {
+    return this.authService.getProfileById(userId, headers.organization_id, headers.pg_id);
+  }
+
   @Get('users')
   @HttpCode(HttpStatus.OK)
   @ApiOperation({ summary: 'Get all users for organization' })

@@ -14,6 +14,8 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { SignupDto } from './dto/signup.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { ResponseUtil } from '../../common/utils/response.util';
+import { S3DeletionService } from '../common/s3-deletion.service';
 
 @Injectable()
 export class AuthDbService {
@@ -26,6 +28,7 @@ export class AuthDbService {
     private jwtTokenService: JwtTokenService,
     private configService: ConfigService,
     private otpStrategyFactory: OtpStrategyFactory,
+    private s3DeletionService: S3DeletionService,
   ) {
     // Get configuration based on environment
     this.OTP_EXPIRY_MINUTES = this.configService.get<number>('app.auth.otpExpiryMinutes', 5);
@@ -122,14 +125,10 @@ export class AuthDbService {
       throw new BadRequestException('Failed to send OTP. Please try again.');
     }
 
-    return {
-      success: true,
-      message: 'OTP sent successfully',
-      data: {
-        phone,
-        expiresIn: `${this.OTP_EXPIRY_MINUTES} minutes`,
-      },
-    };
+    return ResponseUtil.success({
+      phone,
+      expiresIn: `${this.OTP_EXPIRY_MINUTES} minutes`,
+    }, 'OTP sent successfully');
   }
 
   /**
@@ -361,14 +360,10 @@ export class AuthDbService {
       throw new BadRequestException('Failed to send OTP. Please try again.');
     }
 
-    return {
-      success: true,
-      message: 'OTP sent successfully',
-      data: {
-        phone,
-        expiresIn: `${this.OTP_EXPIRY_MINUTES} minutes`,
-      },
-    };
+    return ResponseUtil.success({
+      phone,
+      expiresIn: `${this.OTP_EXPIRY_MINUTES} minutes`,
+    }, 'OTP sent successfully');
   }
 
   /**
@@ -448,14 +443,10 @@ export class AuthDbService {
       },
     });
 
-    return {
-      success: true,
-      message: 'Phone number verified successfully',
-      data: {
-        phone,
-        verified: true,
-      },
-    };
+    return ResponseUtil.success({
+      phone,
+      verified: true,
+    }, 'Phone number verified successfully');
   }
 
   /**
@@ -593,11 +584,7 @@ export class AuthDbService {
         };
       });
 
-      return {
-        success: true,
-        message: 'Account created successfully. Please wait for admin approval.',
-        data: result,
-      };
+      return ResponseUtil.success(result, 'Account created successfully. Please wait for admin approval.');
     } catch (error: any) {
       console.error('Signup error:', error);
       // Re-throw BadRequestException with original message if it's a validation error
@@ -693,7 +680,56 @@ export class AuthDbService {
       }
     }
 
+    // Handle S3 profile image deletion if profile_images are being updated
+    if (updateProfileDto.profile_images !== undefined) {
+      console.log('=== PROFILE IMAGE DELETION DEBUG ===');
+      console.log('Current user profile_images:', user.profile_images);
+      console.log('Incoming profile_images value:', updateProfileDto.profile_images);
+      console.log('Type of incoming value:', typeof updateProfileDto.profile_images);
+      
+      // Get old images (handle both string and array formats)
+      const oldImages = user.profile_images ? 
+        (Array.isArray(user.profile_images) ? user.profile_images : [user.profile_images]) as string[] : 
+        [];
+      
+      // Get new images (handle null, string, and array formats)
+      let newImages: string[] = [];
+      if (updateProfileDto.profile_images === null) {
+        // Image is being removed - empty array
+        newImages = [];
+        console.log('Image removal detected - setting newImages to empty array');
+      } else if (updateProfileDto.profile_images) {
+        // Image is being updated
+        newImages = Array.isArray(updateProfileDto.profile_images) ? 
+          updateProfileDto.profile_images : 
+          [updateProfileDto.profile_images];
+        console.log('Image update detected - newImages:', newImages);
+      }
+      
+      console.log('Final oldImages:', oldImages);
+      console.log('Final newImages:', newImages);
+      
+      // Delete removed files from S3
+      if (oldImages.length > 0) {
+        console.log('Calling S3 deletion service...');
+        await this.s3DeletionService.deleteRemovedFiles(
+          oldImages,
+          newImages,
+          'profile',
+          'images',
+        );
+        console.log('S3 deletion completed');
+      } else {
+        console.log('No old images to delete from S3');
+      }
+      console.log('=== END PROFILE IMAGE DELETION DEBUG ===');
+    } else {
+      console.log('profile_images field not provided in update request');
+    }
+
     // Update user profile
+    console.log('=== DATABASE UPDATE DEBUG ===');
+    console.log('Updating profile_images to:', updateProfileDto.profile_images);
     const updatedUser = await this.prisma.user.update({
       where: { s_no: userId },
       data: {
@@ -726,15 +762,14 @@ export class AuthDbService {
         },
       },
     });
+    console.log('Database updated successfully');
+    console.log('Updated profile_images in database:', updatedUser.profile_images);
+    console.log('=== END DATABASE UPDATE DEBUG ===');
 
-    return {
-      success: true,
-      message: 'Profile updated successfully',
-      data: {
+    return ResponseUtil.success({
         ...updatedUser,
         role_name: updatedUser.roles.role_name,
-      },
-    };
+      }, 'Profile updated successfully');
   }
 
   /**
@@ -769,10 +804,136 @@ export class AuthDbService {
       },
     });
 
-    return {
-      success: true,
-      message: 'Password changed successfully',
+    return ResponseUtil.success(null, 'Password changed successfully');
+  }
+
+  /**
+   * Get user profile by ID
+   */
+  async getProfileById(userId: number, organizationId?: number, pgId?: number) {
+    // Check if user exists
+    const user = await this.prisma.user.findUnique({
+      where: { 
+        s_no: userId,
+        is_deleted: false 
+      },
+      select: {
+        s_no: true,
+        name: true,
+        email: true,
+        phone: true,
+        role_id: true,
+        organization_id: true,
+        status: true,
+        address: true,
+        city_id: true,
+        state_id: true,
+        gender: true,
+        profile_images: true,
+        pg_id: true,
+        pincode: true,
+        country: true,
+        created_at: true,
+        updated_at: true,
+        roles: {
+          select: {
+            s_no: true,
+            role_name: true,
+            status: true,
+          },
+        },
+        city: {
+          select: {
+            s_no: true,
+            name: true,
+            country_code: true,
+            state_code: true,
+          },
+        },
+        state: {
+          select: {
+            s_no: true,
+            name: true,
+            iso_code: true,
+            country_code: true,
+          },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Validate organization access if organization_id is provided
+    if (organizationId && user.organization_id !== organizationId) {
+      throw new UnauthorizedException('Access denied: User does not belong to this organization');
+    }
+
+
+    // Fetch organization data if organization_id exists
+    let organization = null;
+    if (user.organization_id) {
+      organization = await this.prisma.organization.findUnique({
+        where: { s_no: user.organization_id },
+        select: {
+          s_no: true,
+          name: true,
+          description: true,
+          status: true,
+        },
+      });
+    }
+
+    // Fetch PG location data if pg_id exists
+    let pgLocation = null;
+    if (user.pg_id) {
+      pgLocation = await this.prisma.pg_locations.findUnique({
+        where: { s_no: user.pg_id },
+        select: {
+          s_no: true,
+          location_name: true,
+          address: true,
+          pincode: true,
+          status: true,
+          pg_type: true,
+          rent_cycle_type: true,
+          rent_cycle_start: true,
+          rent_cycle_end: true,
+          city_id: true,
+          state_id: true,
+        },
+      });
+    }
+
+    // Build profile response object
+    const profileResponse = {
+      s_no: user.s_no,
+      name: user.name,
+      email: user.email,
+      phone: user.phone,
+      role_id: user.role_id,
+      role_name: user.roles?.role_name || null,
+      organization_id: user.organization_id,
+      organization_name: organization?.name || null,
+      organization_description: organization?.description || null,
+      status: user.status,
+      address: user.address,
+      city_id: user.city_id,
+      city_name: user.city?.name || null,
+      state_id: user.state_id,
+      state_name: user.state?.name || null,
+      gender: user.gender,
+      profile_images: user.profile_images,
+      pg_id: user.pg_id,
+      pincode: user.pincode,
+      country: user.country,
+      created_at: user.created_at,
+      updated_at: user.updated_at,
+      pg_location: pgLocation,
     };
+
+    return ResponseUtil.success(profileResponse, 'Profile retrieved successfully');
   }
 
   /**
@@ -797,10 +958,7 @@ export class AuthDbService {
       },
     });
 
-    return {
-      success: true,
-      data: users,
-    };
+    return ResponseUtil.success(users, 'Users retrieved successfully');
   }
 
   /**
@@ -829,9 +987,6 @@ export class AuthDbService {
 
     console.log('✅ Found roles:', roles.length, roles);
 
-    return {
-      success: true,
-      data: roles,
-    };
+    return ResponseUtil.success(roles, 'Roles retrieved successfully');
   }
 }

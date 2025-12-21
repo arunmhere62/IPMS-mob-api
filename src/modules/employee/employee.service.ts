@@ -16,6 +16,18 @@ export class EmployeeService {
    * Create a new employee
    */
   async create(organizationId: number, createDto: CreateEmployeeDto) {
+    if (!createDto.phone) {
+      throw new BadRequestException('Phone number is required');
+    }
+
+    if (!/^\d{10}$/.test(createDto.phone)) {
+      throw new BadRequestException('Phone number must be 10 digits');
+    }
+
+    if (!createDto.gender) {
+      throw new BadRequestException('Gender is required');
+    }
+
     // Check if email already exists
     const existingUser = await this.prisma.user.findUnique({
       where: { email: createDto.email },

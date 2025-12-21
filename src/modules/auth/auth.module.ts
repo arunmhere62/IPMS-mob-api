@@ -8,9 +8,12 @@ import { JwtTokenService } from './jwt.service';
 import { OtpStrategyFactory } from './strategies/otp-strategy.factory';
 import { ProductionOtpStrategy } from './strategies/production-otp.strategy';
 import { DevelopmentOtpStrategy } from './strategies/development-otp.strategy';
+import { S3DeletionService } from '../common/s3-deletion.service';
+import { S3Module } from '../../s3/s3.module';
 
 @Module({
   imports: [
+    S3Module,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({
@@ -30,6 +33,7 @@ import { DevelopmentOtpStrategy } from './strategies/development-otp.strategy';
     OtpStrategyFactory,
     ProductionOtpStrategy,
     DevelopmentOtpStrategy,
+    S3DeletionService,
   ],
   exports: [AuthDbService, SmsService, JwtTokenService, OtpStrategyFactory],
 })

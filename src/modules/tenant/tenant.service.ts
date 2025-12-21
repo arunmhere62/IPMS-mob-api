@@ -785,6 +785,19 @@ export class TenantService {
       throw new NotFoundException(`Tenant with ID ${id} not found`);
     }
 
+    // Check if checkout date is in the future or today (not completed)
+    if (tenant.check_out_date) {
+      const now = new Date();
+      const checkoutDate = new Date(tenant.check_out_date);
+      
+      // Set checkout date to end of day (23:59:59)
+      checkoutDate.setHours(23, 59, 59, 999);
+      
+      if (checkoutDate > now) {
+        throw new BadRequestException('Cannot delete tenant. The bed will become available only after the checkout day is completely finished.');
+      }
+    }
+
     // Soft delete tenant
     await this.prisma.tenants.update({
       where: { s_no: id },

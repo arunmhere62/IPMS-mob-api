@@ -37,8 +37,8 @@ export class UpdateProfileDto {
   @IsInt()
   city_id?: number;
 
-  @ApiProperty({ required: false })
+  @ApiProperty({ required: false, nullable: true })
   @IsOptional()
   @IsString()
-  profile_images?: string;
+  profile_images?: string | null;
 }

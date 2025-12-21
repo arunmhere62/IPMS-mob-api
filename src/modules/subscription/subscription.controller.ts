@@ -16,9 +16,7 @@ export class SubscriptionController {
   @ApiOperation({ summary: 'Get all active subscription plans' })
   async getPlans() {
     console.log('📋 Fetching subscription plans...');
-    const plans = await this.subscriptionService.getActivePlans();
-    console.log(`✅ Found ${plans.length} active plans`);
-    return ResponseUtil.success(plans, 'Subscription plans fetched successfully');
+    return await this.subscriptionService.getActivePlans();
   }
 
   /**

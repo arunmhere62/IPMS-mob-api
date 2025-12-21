@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsOptional, IsInt, IsEnum, IsNotEmpty, IsPhoneNumber, IsArray } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsInt, IsEnum, IsNotEmpty, Matches, IsArray } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { users_gender } from '@prisma/client';
 
@@ -18,10 +18,11 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   password: string;
 
-  @ApiPropertyOptional({ example: '9876543210', description: 'Phone number' })
-  @IsOptional()
+  @ApiProperty({ example: '9876543210', description: 'Phone number (10 digits)' })
   @IsString()
-  phone?: string;
+  @IsNotEmpty()
+  @Matches(/^\d{10}$/, { message: 'Phone number must be 10 digits' })
+  phone: string;
 
   @ApiProperty({ example: 2, description: 'Role ID' })
   @IsInt()
@@ -33,10 +34,10 @@ export class CreateEmployeeDto {
   @IsInt()
   pg_id?: number;
 
-  @ApiPropertyOptional({ example: 'MALE', enum: users_gender, description: 'Gender' })
-  @IsOptional()
+  @ApiProperty({ example: 'MALE', enum: users_gender, description: 'Gender' })
   @IsEnum(users_gender)
-  gender?: users_gender;
+  @IsNotEmpty()
+  gender: users_gender;
 
   @ApiPropertyOptional({ example: '123 Main St', description: 'Address' })
   @IsOptional()

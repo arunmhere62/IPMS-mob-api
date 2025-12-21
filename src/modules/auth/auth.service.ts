@@ -8,6 +8,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { SmsService } from './sms.service';
 import { SendOtpDto } from './dto/send-otp.dto';
 import { VerifyOtpDto } from './dto/verify-otp.dto';
+import { normalizePhoneNumber } from '../../common/utils/phone.utils';
 
 interface OtpStore {
   otp: string;
@@ -39,11 +40,14 @@ export class AuthService {
    */
   async sendOtp(sendOtpDto: SendOtpDto) {
     const { phone } = sendOtpDto;
+    
+    // Normalize phone number (remove spaces)
+    const normalizedPhone = normalizePhoneNumber(phone);
 
     // Check if user exists with this phone number
     const user = await this.prisma.user.findFirst({
       where: {
-        phone: phone,
+        phone: normalizedPhone,
         is_deleted: false,
         status: 'ACTIVE',
       },
@@ -60,7 +64,7 @@ export class AuthService {
       throw new NotFoundException('User not found with this phone number');
     }
 
-    return this.generateAndSendOtp(phone);
+    return this.generateAndSendOtp(normalizedPhone);
   }
 
   /**
@@ -68,7 +72,8 @@ export class AuthService {
    */
   async sendSignupOtp(sendOtpDto: SendOtpDto) {
     const { phone } = sendOtpDto;
-    return this.generateAndSendOtp(phone);
+    const normalizedPhone = normalizePhoneNumber(phone);
+    return this.generateAndSendOtp(normalizedPhone);
   }
 
   /**
@@ -109,20 +114,23 @@ export class AuthService {
    */
   async verifyOtp(verifyOtpDto: VerifyOtpDto) {
     const { phone, otp } = verifyOtpDto;
+    
+    // Normalize phone number (remove spaces)
+    const normalizedPhone = normalizePhoneNumber(phone);
 
     // Verify OTP validity
-    const isValidOtp = this.validateOtp(phone, otp);
+    const isValidOtp = this.validateOtp(normalizedPhone, otp);
     if (!isValidOtp) {
       return isValidOtp; // Returns error response
     }
 
     // OTP is valid, remove from store
-    this.otpStore.delete(phone);
+    this.otpStore.delete(normalizedPhone);
 
     // Get user details
     const user = await this.prisma.user.findFirst({
       where: {
-        phone: phone,
+        phone: normalizedPhone,
         is_deleted: false,
         status: 'ACTIVE',
       },

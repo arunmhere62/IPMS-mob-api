@@ -16,6 +16,7 @@ import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { S3DeletionService } from '../common/s3-deletion.service';
+import { normalizePhoneNumber } from '../../common/utils/phone.utils';
 
 @Injectable()
 export class AuthDbService {
@@ -47,11 +48,14 @@ export class AuthDbService {
    */
   async sendOtp(sendOtpDto: SendOtpDto, ipAddress?: string, userAgent?: string) {
     const { phone } = sendOtpDto;
+    
+    // Normalize phone number (remove spaces)
+    const normalizedPhone = normalizePhoneNumber(phone);
 
     // Check if user exists with this phone number
     const user = await this.prisma.user.findFirst({
       where: {
-        phone: phone,
+        phone: normalizedPhone,
         is_deleted: false,
         status: 'ACTIVE',
       },
@@ -76,7 +80,7 @@ export class AuthDbService {
     // Check if phone already has an unverified OTP record (search by phone, not user_id)
     const existingOtp = await this.prisma.otp_verifications.findFirst({
       where: {
-        phone: phone,
+        phone: normalizedPhone,
         is_verified: false,
       },
       orderBy: {
@@ -99,6 +103,7 @@ export class AuthDbService {
           ip_address: ipAddress,
           user_agent: userAgent,
           user_id: user.s_no, // Ensure user_id is set
+          phone: normalizedPhone, // Store normalized phone number
         },
       });
     } else {
@@ -106,7 +111,7 @@ export class AuthDbService {
       await this.prisma.otp_verifications.create({
         data: {
           user_id: user.s_no,
-          phone,
+          phone: normalizedPhone, // Store normalized phone number
           otp,
           expires_at: expiresAt,
           is_verified: false,
@@ -119,7 +124,7 @@ export class AuthDbService {
 
     // Send OTP via SMS using strategy pattern
     const otpStrategy = this.otpStrategyFactory.getStrategy();
-    const smsSent = await otpStrategy.sendOtp(phone, otp);
+    const smsSent = await otpStrategy.sendOtp(normalizedPhone, otp);
 
     if (!smsSent) {
       throw new BadRequestException('Failed to send OTP. Please try again.');
@@ -136,11 +141,14 @@ export class AuthDbService {
    */
   async verifyOtp(verifyOtpDto: VerifyOtpDto, ipAddress?: string) {
     const { phone, otp } = verifyOtpDto;
+    
+    // Normalize phone number (remove spaces)
+    const normalizedPhone = normalizePhoneNumber(phone);
 
     // Find the latest unverified OTP for this phone
     const otpRecord = await this.prisma.otp_verifications.findFirst({
       where: {
-        phone: phone,
+        phone: normalizedPhone,
         is_verified: false,
       },
       orderBy: {
@@ -174,7 +182,7 @@ export class AuthDbService {
 
     // Verify OTP using strategy pattern
     const otpStrategy = this.otpStrategyFactory.getStrategy();
-    const isValid = otpStrategy.verifyOtp(phone, otp, otpRecord.otp);
+    const isValid = otpStrategy.verifyOtp(normalizedPhone, otp, otpRecord.otp);
 
     if (!isValid) {
       await this.prisma.otp_verifications.update({
@@ -198,7 +206,7 @@ export class AuthDbService {
     // Get user details
     const user = await this.prisma.user.findFirst({
       where: {
-        phone: phone,
+        phone: normalizedPhone,
         is_deleted: false,
         status: 'ACTIVE',
       },
@@ -304,6 +312,9 @@ export class AuthDbService {
    */
   async sendSignupOtp(sendOtpDto: SendOtpDto, ipAddress?: string, userAgent?: string) {
     const { phone } = sendOtpDto;
+    
+    // Normalize phone number (remove spaces)
+    const normalizedPhone = normalizePhoneNumber(phone);
 
     // Generate OTP
     const otp = this.generateOtp();
@@ -313,7 +324,7 @@ export class AuthDbService {
     // Check if phone already has an unverified OTP record
     const existingOtp = await this.prisma.otp_verifications.findFirst({
       where: {
-        phone: phone,
+        phone: normalizedPhone,
         is_verified: false,
       },
       orderBy: {
@@ -668,9 +679,10 @@ export class AuthDbService {
 
     // Check if phone is being changed and if it's already taken
     if (updateProfileDto.phone && updateProfileDto.phone !== user.phone) {
+      const normalizedPhone = normalizePhoneNumber(updateProfileDto.phone);
       const existingPhone = await this.prisma.user.findFirst({
         where: {
-          phone: updateProfileDto.phone,
+          phone: normalizedPhone,
           s_no: { not: userId },
         },
       });
@@ -735,7 +747,7 @@ export class AuthDbService {
       data: {
         name: updateProfileDto.name,
         email: updateProfileDto.email,
-        phone: updateProfileDto.phone,
+        phone: updateProfileDto.phone ? normalizePhoneNumber(updateProfileDto.phone) : updateProfileDto.phone,
         address: updateProfileDto.address,
         gender: updateProfileDto.gender,
         state_id: updateProfileDto.state_id,

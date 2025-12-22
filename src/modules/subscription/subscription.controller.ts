@@ -109,27 +109,12 @@ export class SubscriptionController {
     const pageNum = page ? parseInt(page) : 1;
     const limitNum = limit ? parseInt(limit) : 10;
 
-    const result = await this.subscriptionService.getUserSubscriptions(
+    return this.subscriptionService.getUserSubscriptions(
       userId,
       organizationId,
       pageNum,
       limitNum,
     );
-
-    // Normalize subscriptions: rename subscription_plans to plan
-    const normalizedSubscriptions = result.data.map((sub: any) => {
-      const { subscription_plans, ...rest } = sub;
-      return {
-        ...rest,
-        plan: subscription_plans || null,
-      };
-    });
-
-    return {
-      success: true,
-      subscriptions: normalizedSubscriptions,
-      pagination: result.pagination,
-    };
   }
 
   /**

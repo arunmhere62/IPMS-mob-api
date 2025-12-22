@@ -45,7 +45,7 @@ export class EmployeeSalaryController {
   @ApiQuery({ name: 'limit', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Salary records retrieved successfully' })
   @UseGuards(HeadersValidationGuard)
-  @RequireHeaders({ pg_id: true })
+  @RequireHeaders({ pg_id: true, organization_id: true })
   findAll(
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Query('page') page?: string,
@@ -53,7 +53,7 @@ export class EmployeeSalaryController {
   ) {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
-    return this.employeeSalaryService.findAll(headers.pg_id!, pageNum, limitNum);
+    return this.employeeSalaryService.findAll(headers.pg_id!, headers.organization_id!, pageNum, limitNum);
   }
 
   @Get('employee/:userId')
@@ -77,13 +77,13 @@ export class EmployeeSalaryController {
   @ApiQuery({ name: 'endMonth', required: false, type: String })
   @ApiResponse({ status: 200, description: 'Statistics retrieved successfully' })
   @UseGuards(HeadersValidationGuard)
-  @RequireHeaders({ pg_id: true })
+  @RequireHeaders({ pg_id: true, organization_id: true })
   getStats(
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Query('startMonth') startMonth?: string,
     @Query('endMonth') endMonth?: string,
   ) {
-    return this.employeeSalaryService.getStats(headers.pg_id!, startMonth, endMonth);
+    return this.employeeSalaryService.getStats(headers.pg_id!, headers.organization_id!, startMonth, endMonth);
   }
 
   @Get(':id')

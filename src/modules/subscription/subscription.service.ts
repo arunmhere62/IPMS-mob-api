@@ -159,9 +159,26 @@ export class SubscriptionService {
       }),
     ]);
 
-    const totalPages = Math.ceil(total / limit);
+    const normalizedSubscriptions = (subscriptions || []).map((sub: any) => {
+      const { subscription_plans, ...rest } = sub;
+      return {
+        ...rest,
+        plan: subscription_plans || null,
+      };
+    });
 
-    return ResponseUtil.paginated(subscriptions, total, page, limit, 'User subscriptions fetched successfully');
+    return ResponseUtil.success(
+      {
+        data: normalizedSubscriptions,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
+      },
+      'User subscriptions fetched successfully',
+    );
   }
 
   /**

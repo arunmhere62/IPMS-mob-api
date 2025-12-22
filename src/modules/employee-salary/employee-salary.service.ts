@@ -60,9 +60,13 @@ export class EmployeeSalaryService {
   /**
    * Get all salary records for a PG location with pagination
    */
-  async findAll(pgId: number, page: number = 1, limit: number = 10) {
+  async findAll(pgId: number, organizationId: number, page: number = 1, limit: number = 10) {
     if (!pgId) {
       throw new BadRequestException('PG Location ID is required');
+    }
+
+    if (!organizationId) {
+      throw new BadRequestException('Organization ID is required');
     }
 
     const skip = (page - 1) * limit;
@@ -74,6 +78,7 @@ export class EmployeeSalaryService {
           is_deleted: false,
           pg_locations: {
             is_deleted: false,
+            organization_id: organizationId,
           },
           users: {
             is_deleted: false,
@@ -110,6 +115,7 @@ export class EmployeeSalaryService {
           is_deleted: false,
           pg_locations: {
             is_deleted: false,
+            organization_id: organizationId,
           },
           users: {
             is_deleted: false,
@@ -274,10 +280,22 @@ export class EmployeeSalaryService {
   /**
    * Get salary statistics for a PG location
    */
-  async getStats(pgId: number, startMonth?: string, endMonth?: string) {
+  async getStats(pgId: number, organizationId: number, startMonth?: string, endMonth?: string) {
+    if (!pgId) {
+      throw new BadRequestException('PG Location ID is required');
+    }
+
+    if (!organizationId) {
+      throw new BadRequestException('Organization ID is required');
+    }
+
     const whereClause: any = {
       pg_id: pgId,
       is_deleted: false,
+      pg_locations: {
+        is_deleted: false,
+        organization_id: organizationId,
+      },
     };
 
     if (startMonth && endMonth) {

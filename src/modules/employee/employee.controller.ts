@@ -48,7 +48,7 @@ export class EmployeeController {
   @ApiQuery({ name: 'role_id', required: false, type: Number })
   @ApiQuery({ name: 'search', required: false, type: String })
   @ApiResponse({ status: 200, description: 'Employees retrieved successfully' })
-  @RequireHeaders({ organization_id: true, user_id: true })
+  @RequireHeaders({ organization_id: true, user_id: true, pg_id: true })
   findAll(
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Query('page') page?: string,
@@ -59,7 +59,7 @@ export class EmployeeController {
   ) {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
-    const pgIdNum = pg_id ? parseInt(pg_id, 10) : undefined;
+    const pgIdNum = pg_id ? parseInt(pg_id, 10) : headers.pg_id;
     const roleIdNum = role_id ? parseInt(role_id, 10) : undefined;
 
     return this.employeeService.findAll(
@@ -67,7 +67,7 @@ export class EmployeeController {
       headers.user_id!,
       pageNum,
       limitNum,
-      pgIdNum,
+      pgIdNum!,
       roleIdNum,
       search,
     );

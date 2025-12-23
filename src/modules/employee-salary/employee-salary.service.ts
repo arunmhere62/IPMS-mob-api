@@ -60,7 +60,14 @@ export class EmployeeSalaryService {
   /**
    * Get all salary records for a PG location with pagination
    */
-  async findAll(pgId: number, organizationId: number, page: number = 1, limit: number = 10) {
+  async findAll(
+    pgId: number,
+    organizationId: number,
+    page: number = 1,
+    limit: number = 10,
+    month?: number,
+    year?: number,
+  ) {
     if (!pgId) {
       throw new BadRequestException('PG Location ID is required');
     }
@@ -71,19 +78,36 @@ export class EmployeeSalaryService {
 
     const skip = (page - 1) * limit;
 
+    const whereClause: any = {
+      pg_id: pgId,
+      is_deleted: false,
+      pg_locations: {
+        is_deleted: false,
+        organization_id: organizationId,
+      },
+      users: {
+        is_deleted: false,
+      },
+    };
+
+    if (month) {
+      if (month < 1 || month > 12) {
+        throw new BadRequestException('Month must be between 1 and 12');
+      }
+
+      const yearToUse = year || new Date().getFullYear();
+      const startDate = new Date(yearToUse, month - 1, 1);
+      const endDate = new Date(yearToUse, month, 1);
+
+      whereClause.month = {
+        gte: startDate,
+        lt: endDate,
+      };
+    }
+
     const [salaries, total] = await Promise.all([
       this.prisma.employee_salary.findMany({
-        where: {
-          pg_id: pgId,
-          is_deleted: false,
-          pg_locations: {
-            is_deleted: false,
-            organization_id: organizationId,
-          },
-          users: {
-            is_deleted: false,
-          },
-        },
+        where: whereClause,
         orderBy: [
           { month: 'desc' },
           { paid_date: 'desc' },
@@ -110,17 +134,7 @@ export class EmployeeSalaryService {
         },
       }),
       this.prisma.employee_salary.count({
-        where: {
-          pg_id: pgId,
-          is_deleted: false,
-          pg_locations: {
-            is_deleted: false,
-            organization_id: organizationId,
-          },
-          users: {
-            is_deleted: false,
-          },
-        },
+        where: whereClause,
       }),
     ]);
 

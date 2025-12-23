@@ -43,6 +43,8 @@ export class EmployeeSalaryController {
   @ApiOperation({ summary: 'Get all salary records for a PG location' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'month', required: false, type: Number })
+  @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Salary records retrieved successfully' })
   @UseGuards(HeadersValidationGuard)
   @RequireHeaders({ pg_id: true, organization_id: true })
@@ -50,10 +52,22 @@ export class EmployeeSalaryController {
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
   ) {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
-    return this.employeeSalaryService.findAll(headers.pg_id!, headers.organization_id!, pageNum, limitNum);
+    const monthNum = month ? parseInt(month, 10) : undefined;
+    const yearNum = year ? parseInt(year, 10) : undefined;
+
+    return this.employeeSalaryService.findAll(
+      headers.pg_id!,
+      headers.organization_id!,
+      pageNum,
+      limitNum,
+      monthNum,
+      yearNum,
+    );
   }
 
   @Get('employee/:userId')

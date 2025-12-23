@@ -38,15 +38,22 @@ export class ExpenseController {
   @ApiOperation({ summary: 'Get all expenses for a PG location' })
   @ApiQuery({ name: 'page', required: false, type: Number })
   @ApiQuery({ name: 'limit', required: false, type: Number })
+  @ApiQuery({ name: 'month', required: false, type: Number })
+  @ApiQuery({ name: 'year', required: false, type: Number })
   @ApiResponse({ status: 200, description: 'Expenses retrieved successfully' })
   findAll(
     @CommonHeadersDecorator() headers: CommonHeaders,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
+    @Query('month') month?: string,
+    @Query('year') year?: string,
   ) {
     const pageNum = page ? parseInt(page, 10) : 1;
     const limitNum = limit ? parseInt(limit, 10) : 10;
-    return this.expenseService.findAll(headers.pg_id, pageNum, limitNum);
+    const monthNum = month ? parseInt(month, 10) : undefined;
+    const yearNum = year ? parseInt(year, 10) : undefined;
+
+    return this.expenseService.findAll(headers.pg_id, pageNum, limitNum, monthNum, yearNum);
   }
 
   @Get('stats')

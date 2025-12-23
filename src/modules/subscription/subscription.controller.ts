@@ -100,21 +100,11 @@ export class SubscriptionController {
   @ApiOperation({ summary: 'Get user subscription history' })
   async getHistory(
     @Req() req: any,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
   ) {
     const userId = parseInt(req.headers['x-user-id']);
     const organizationId = parseInt(req.headers['x-organization-id']);
 
-    const pageNum = page ? parseInt(page) : 1;
-    const limitNum = limit ? parseInt(limit) : 10;
-
-    return this.subscriptionService.getUserSubscriptions(
-      userId,
-      organizationId,
-      pageNum,
-      limitNum,
-    );
+    return this.subscriptionService.getUserSubscriptionsAll(userId, organizationId);
   }
 
   /**

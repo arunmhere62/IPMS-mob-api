@@ -31,22 +31,46 @@ export class ExpenseService {
   /**
    * Get all expenses for a PG location with pagination
    */
-  async findAll(pgId: number, page: number = 1, limit: number = 10) {
+
+  async findAll(
+    pgId: number,
+    page: number = 1,
+    limit: number = 10,
+    month?: number,
+    year?: number,
+  ) {
     if (!pgId) {
       throw new BadRequestException('PG Location ID is required');
     }
 
     const skip = (page - 1) * limit;
 
+    const whereClause: any = {
+      pg_id: pgId,
+      is_deleted: false,
+      pg_locations: {
+        is_deleted: false,
+      },
+    };
+
+    if (month) {
+      if (month < 1 || month > 12) {
+        throw new BadRequestException('Month must be between 1 and 12');
+      }
+
+      const yearToUse = year || new Date().getFullYear();
+      const startDate = new Date(yearToUse, month - 1, 1);
+      const endDate = new Date(yearToUse, month, 1);
+
+      whereClause.paid_date = {
+        gte: startDate,
+        lt: endDate,
+      };
+    }
+
     const [expenses, total] = await Promise.all([
       this.prisma.expenses.findMany({
-        where: {
-          pg_id: pgId,
-          is_deleted: false,
-          pg_locations: {
-            is_deleted: false,
-          },
-        },
+        where: whereClause,
         orderBy: {
           paid_date: 'desc',
         },
@@ -62,13 +86,7 @@ export class ExpenseService {
         },
       }),
       this.prisma.expenses.count({
-        where: {
-          pg_id: pgId,
-          is_deleted: false,
-          pg_locations: {
-            is_deleted: false,
-          },
-        },
+        where: whereClause,
       }),
     ]);
 

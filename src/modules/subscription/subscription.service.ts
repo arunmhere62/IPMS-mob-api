@@ -125,39 +125,23 @@ export class SubscriptionService {
     return ResponseUtil.success(subscription, 'Subscription fetched successfully');
   }
 
-  /**
-   * Get all subscriptions for a user with pagination
-   */
-  async getUserSubscriptions(
-    userId: number, 
-    organizationId: number,
-    page: number = 1,
-    limit: number = 10,
-  ) {
-    const skip = (page - 1) * limit;
 
-    const [subscriptions, total] = await Promise.all([
-      this.prisma.user_subscriptions.findMany({
-        where: {
-          user_id: userId,
-          organization_id: organizationId,
-        },
-        include: {
-          subscription_plans: true,
-        },
-        orderBy: {
-          created_at: 'desc',
-        },
-        skip,
-        take: limit,
-      }),
-      this.prisma.user_subscriptions.count({
-        where: {
-          user_id: userId,
-          organization_id: organizationId,
-        },
-      }),
-    ]);
+  /**
+   * Get all subscriptions for a user (no pagination)
+   */
+  async getUserSubscriptionsAll(userId: number, organizationId: number) {
+    const subscriptions = await this.prisma.user_subscriptions.findMany({
+      where: {
+        user_id: userId,
+        organization_id: organizationId,
+      },
+      include: {
+        subscription_plans: true,
+      },
+      orderBy: {
+        created_at: 'desc',
+      },
+    });
 
     const normalizedSubscriptions = (subscriptions || []).map((sub: any) => {
       const { subscription_plans, ...rest } = sub;
@@ -168,15 +152,7 @@ export class SubscriptionService {
     });
 
     return ResponseUtil.success(
-      {
-        data: normalizedSubscriptions,
-        pagination: {
-          total,
-          page,
-          limit,
-          totalPages: Math.ceil(total / limit),
-        },
-      },
+      normalizedSubscriptions,
       'User subscriptions fetched successfully',
     );
   }

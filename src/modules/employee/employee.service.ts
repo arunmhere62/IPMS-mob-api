@@ -141,13 +141,8 @@ export class EmployeeService {
           pg_id: true,
           organization_id: true,
           gender: true,
-          address: true,
           city_id: true,
           state_id: true,
-          pincode: true,
-          country: true,
-          proof_documents: true,
-          profile_images: true,
           created_at: true,
           updated_at: true,
           roles: {

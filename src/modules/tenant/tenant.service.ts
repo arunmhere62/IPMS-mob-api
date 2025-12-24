@@ -682,6 +682,42 @@ export class TenantService {
       throw new NotFoundException(`Tenant with ID ${id} not found`);
     }
 
+    if (updateTenantDto.check_in_date) {
+      const d = new Date(updateTenantDto.check_in_date);
+      if (Number.isNaN(d.getTime())) {
+        throw new BadRequestException('Invalid check-in date');
+      }
+    }
+
+    if (updateTenantDto.check_out_date) {
+      const d = new Date(updateTenantDto.check_out_date);
+      if (Number.isNaN(d.getTime())) {
+        throw new BadRequestException('Invalid check-out date');
+      }
+    }
+
+    const effectiveCheckInDate = updateTenantDto.check_in_date
+      ? new Date(updateTenantDto.check_in_date)
+      : existingTenant.check_in_date
+        ? new Date(existingTenant.check_in_date)
+        : null;
+
+    const effectiveCheckOutDate = updateTenantDto.check_out_date
+      ? new Date(updateTenantDto.check_out_date)
+      : existingTenant.check_out_date
+        ? new Date(existingTenant.check_out_date)
+        : null;
+
+    // If tenant has checkout date (existing or updating), do not allow check-in date to be after it
+    // Allowed: same day (check_in_date <= check_out_date)
+    if (effectiveCheckInDate && effectiveCheckOutDate && effectiveCheckInDate > effectiveCheckOutDate) {
+      throw new BadRequestException(
+        `Check-in date must be the same as or before check-out date. Check-in date: ${effectiveCheckInDate
+          .toISOString()
+          .split('T')[0]}, Check-out date: ${effectiveCheckOutDate.toISOString().split('T')[0]}`
+      );
+    }
+
     // If changing bed, verify new bed
     if (updateTenantDto.bed_id && updateTenantDto.bed_id !== existingTenant.bed_id) {
 

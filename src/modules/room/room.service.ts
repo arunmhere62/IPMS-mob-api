@@ -140,6 +140,15 @@ export class RoomService {
               s_no: true,
               bed_no: true,
               bed_price: true,
+              tenants: {
+                where: {
+                  status: 'ACTIVE',
+                  OR: [{ is_deleted: false }, { is_deleted: null }],
+                },
+                select: {
+                  s_no: true,
+                },
+              },
             },
           },
         },
@@ -148,10 +157,23 @@ export class RoomService {
     ]);
 
     // Add bed count for each room
-    const roomsWithBedCount = rooms.map((room) => ({
-      ...room,
-      total_beds: room.beds.length,
-    }));
+    const roomsWithBedCount = rooms.map((room) => {
+      const total_beds = room.beds.length;
+      const occupied_beds = room.beds.filter((b) => (b as any)?.tenants?.length > 0).length;
+      const available_beds = Math.max(total_beds - occupied_beds, 0);
+
+      return {
+        ...room,
+        beds: room.beds.map((b) => {
+          // Strip tenants from list response to keep payload small
+          const { tenants, ...rest } = b as any;
+          return rest;
+        }),
+        total_beds,
+        occupied_beds,
+        available_beds,
+      };
+    });
 
     return ResponseUtil.paginated(roomsWithBedCount, total, page, limit, 'Rooms fetched successfully');
   }

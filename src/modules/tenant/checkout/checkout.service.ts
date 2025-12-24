@@ -135,10 +135,10 @@ export class CheckoutService {
     const checkoutDate = new Date(checkoutDto.check_out_date);
     const checkInDate = new Date(tenant.check_in_date);
 
-    // Validate that checkout date is greater than check-in date
-    if (checkoutDate <= checkInDate) {
+    // Validate that checkout date is not before check-in date (same-day checkout allowed)
+    if (checkoutDate < checkInDate) {
       throw new BadRequestException(
-        `Checkout date must be greater than check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`
+        `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`
       );
     }
 
@@ -227,10 +227,10 @@ export class CheckoutService {
       const checkoutDate = new Date(updateCheckoutDateDto.check_out_date);
       const checkInDate = new Date(tenant.check_in_date);
 
-      // Validate that checkout date is greater than check-in date
-      if (checkoutDate <= checkInDate) {
+      // Validate that checkout date is not before check-in date (same-day checkout allowed)
+      if (checkoutDate < checkInDate) {
         throw new BadRequestException(
-          `Checkout date must be greater than check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`
+          `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`
         );
       }
 

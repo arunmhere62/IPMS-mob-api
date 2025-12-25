@@ -56,42 +56,47 @@ model tokens {
 }
 
 model User {
-  s_no                                           Int                     @id @default(autoincrement())
-  name                                           String                  @db.VarChar(100)
-  email                                          String                  @unique(map: "email") @db.VarChar(100)
-  password                                       String                  @db.VarChar(255)
-  phone                                          String?                 @db.VarChar(15)
-  status                                         users_status?           @default(ACTIVE)
-  created_at                                     DateTime?               @default(now()) @db.Timestamp(0)
-  updated_at                                     DateTime?               @default(now()) @db.Timestamp(0)
-  role_id                                        Int
-  pg_id                                          Int?
-  is_deleted                                     Boolean?                @default(false)
-  organization_id                                Int?
-  address                                        String?                 @db.VarChar(255)
-  city_id                                        Int?
-  state_id                                       Int?
-  pincode                                        String?                 @db.VarChar(20)
-  country                                        String?                 @db.VarChar(100)
-  gender                                         users_gender?
-  proof_documents                                Json?
-  profile_images                                 Json?
-  resetToken                                     String?                 @db.VarChar(255)
-  resetTokenExpiry                               DateTime?               @db.DateTime(0)
-  access_permission_id                           Int?
-  employee_salary                                employee_salary[]
-  issue_ticket_comments                          issue_ticket_comments[]
-  issue_tickets_issue_tickets_assigned_toTousers issue_tickets[]         @relation("issue_tickets_assigned_toTousers")
-  issue_tickets_issue_tickets_reported_byTousers issue_tickets[]         @relation("issue_tickets_reported_byTousers")
-  notification_settings                          notification_settings?
-  notifications                                  notifications[]
-  otp_verifications                              otp_verifications[]
-  tokens                                         tokens[]
-  user_fcm_tokens                                user_fcm_tokens[]
-  access_permissions                             access_permissions?     @relation(fields: [access_permission_id], references: [s_no], onUpdate: Restrict, map: "fk_user_access_permission")
-  city                                           city?                   @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_city")
-  roles                                          roles                   @relation(fields: [role_id], references: [s_no], onUpdate: Restrict, map: "fk_users_role")
-  state                                          state?                  @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_state")
+  s_no                                                          Int                     @id @default(autoincrement())
+  name                                                          String                  @db.VarChar(100)
+  email                                                         String                  @unique(map: "email") @db.VarChar(100)
+  password                                                      String                  @db.VarChar(255)
+  phone                                                         String?                 @db.VarChar(15)
+  status                                                        users_status?           @default(ACTIVE)
+  created_at                                                    DateTime?               @default(now()) @db.Timestamp(0)
+  updated_at                                                    DateTime?               @default(now()) @db.Timestamp(0)
+  role_id                                                       Int
+  pg_id                                                         Int?
+  is_deleted                                                    Boolean?                @default(false)
+  organization_id                                               Int?
+  address                                                       String?                 @db.VarChar(255)
+  city_id                                                       Int?
+  state_id                                                      Int?
+  pincode                                                       String?                 @db.VarChar(20)
+  country                                                       String?                 @db.VarChar(100)
+  gender                                                        users_gender?
+  proof_documents                                               Json?
+  profile_images                                                Json?
+  resetToken                                                    String?                 @db.VarChar(255)
+  resetTokenExpiry                                              DateTime?               @db.DateTime(0)
+  access_permission_id                                          Int?
+  employee_salary                                               employee_salary[]
+  issue_ticket_comments                                         issue_ticket_comments[]
+  issue_tickets_issue_tickets_assigned_toTousers                issue_tickets[]         @relation("issue_tickets_assigned_toTousers")
+  issue_tickets_issue_tickets_reported_byTousers                issue_tickets[]         @relation("issue_tickets_reported_byTousers")
+  legal_documents_legal_documents_created_byTousers             legal_documents[]       @relation("legal_documents_created_byTousers")
+  legal_documents_legal_documents_updated_byTousers             legal_documents[]       @relation("legal_documents_updated_byTousers")
+  notification_settings                                         notification_settings?
+  notifications                                                 notifications[]
+  otp_verifications                                             otp_verifications[]
+  tokens                                                        tokens[]
+  user_fcm_tokens                                               user_fcm_tokens[]
+  user_legal_acceptance_user_legal_acceptance_user_idTousers    user_legal_acceptance[] @relation("user_legal_acceptance_user_idTousers")
+  user_legal_acceptance_user_legal_acceptance_created_byTousers user_legal_acceptance[] @relation("user_legal_acceptance_created_byTousers")
+  user_legal_acceptance_user_legal_acceptance_updated_byTousers user_legal_acceptance[] @relation("user_legal_acceptance_updated_byTousers")
+  access_permissions                                            access_permissions?     @relation(fields: [access_permission_id], references: [s_no], onUpdate: Restrict, map: "fk_user_access_permission")
+  city                                                          city?                   @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_city")
+  roles                                                         roles                   @relation(fields: [role_id], references: [s_no], onUpdate: Restrict, map: "fk_users_role")
+  state                                                         state?                  @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_state")
 
   @@index([access_permission_id], map: "fk_user_access_permission")
   @@index([city_id], map: "fk_users_city")
@@ -284,18 +289,19 @@ model expenses {
 }
 
 model organization {
-  s_no         Int                 @id @default(autoincrement())
-  name         String              @db.VarChar(100)
-  description  String?             @db.Text
-  created_at   DateTime?           @default(now()) @db.DateTime(0)
-  updated_at   DateTime?           @default(now()) @db.DateTime(0)
-  deleted_at   DateTime?           @db.DateTime(0)
-  created_by   Int?
-  updated_by   Int?
-  deleted_by   Int?
-  is_deleted   Boolean?            @default(false)
-  status       organization_status @default(ACTIVE)
-  pg_locations pg_locations[]
+  s_no            Int                 @id @default(autoincrement())
+  name            String              @db.VarChar(100)
+  description     String?             @db.Text
+  created_at      DateTime?           @default(now()) @db.DateTime(0)
+  updated_at      DateTime?           @default(now()) @db.DateTime(0)
+  deleted_at      DateTime?           @db.DateTime(0)
+  created_by      Int?
+  updated_by      Int?
+  deleted_by      Int?
+  is_deleted      Boolean?            @default(false)
+  status          organization_status @default(ACTIVE)
+  legal_documents legal_documents[]
+  pg_locations    pg_locations[]
 }
 
 model pg_locations {
@@ -681,6 +687,63 @@ model permissions_master {
   updated_at  DateTime                  @default(now()) @db.Timestamp(0)
 
   @@unique([screen_name, action], map: "unique_screen_action")
+}
+
+model legal_documents {
+  s_no                                    Int                     @id @default(autoincrement())
+  type                                    String                  @db.VarChar(50)
+  title                                   String                  @db.VarChar(255)
+  version                                 String                  @db.VarChar(20)
+  url                                     String                  @db.VarChar(255)
+  is_active                               Boolean                 @default(true)
+  is_required                             Boolean                 @default(true)
+  effective_date                          DateTime                @default(now()) @db.Timestamp(0)
+  expiry_date                             DateTime?               @db.Timestamp(0)
+  organization_id                         Int?
+  created_by                              Int?
+  updated_by                              Int?
+  created_at                              DateTime                @default(now()) @db.Timestamp(0)
+  updated_at                              DateTime                @default(now()) @db.Timestamp(0)
+  users_legal_documents_created_byTousers User?                   @relation("legal_documents_created_byTousers", fields: [created_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "legal_documents_ibfk_1")
+  users_legal_documents_updated_byTousers User?                   @relation("legal_documents_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "legal_documents_ibfk_2")
+  organization                            organization?           @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "legal_documents_ibfk_3")
+  user_legal_acceptance                   user_legal_acceptance[]
+
+  @@unique([type, version], map: "type")
+  @@index([created_by], map: "created_by")
+  @@index([is_active], map: "idx_legal_active")
+  @@index([effective_date], map: "idx_legal_effective")
+  @@index([organization_id], map: "idx_legal_org")
+  @@index([type], map: "idx_legal_type")
+  @@index([updated_by], map: "updated_by")
+}
+
+model user_legal_acceptance {
+  s_no                                          Int             @id @default(autoincrement())
+  user_id                                       Int
+  legal_document_id                             Int
+  accepted_at                                   DateTime        @default(now()) @db.Timestamp(0)
+  acceptance_context                            String?         @default("SIGNUP") @db.VarChar(50)
+  ip_address                                    String?         @db.VarChar(45)
+  user_agent                                    String?         @db.VarChar(255)
+  is_active                                     Boolean         @default(true)
+  revoked_at                                    DateTime?       @db.Timestamp(0)
+  revoked_reason                                String?         @db.Text
+  created_by                                    Int?
+  updated_by                                    Int?
+  created_at                                    DateTime        @default(now()) @db.Timestamp(0)
+  updated_at                                    DateTime        @default(now()) @db.Timestamp(0)
+  users_user_legal_acceptance_user_idTousers    User            @relation("user_legal_acceptance_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_1")
+  legal_documents                               legal_documents @relation(fields: [legal_document_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_2")
+  users_user_legal_acceptance_created_byTousers User?           @relation("user_legal_acceptance_created_byTousers", fields: [created_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_3")
+  users_user_legal_acceptance_updated_byTousers User?           @relation("user_legal_acceptance_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_4")
+
+  @@unique([user_id, legal_document_id], map: "user_id")
+  @@index([created_by], map: "created_by")
+  @@index([accepted_at], map: "idx_accept_date")
+  @@index([legal_document_id], map: "idx_accept_doc")
+  @@index([user_id], map: "idx_accept_user")
+  @@index([updated_by], map: "updated_by")
 }
 
 enum roles_status {

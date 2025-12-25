@@ -76,9 +76,6 @@ model User {
   gender                                                        users_gender?
   proof_documents                                               Json?
   profile_images                                                Json?
-  resetToken                                                    String?                 @db.VarChar(255)
-  resetTokenExpiry                                              DateTime?               @db.DateTime(0)
-  access_permission_id                                          Int?
   employee_salary                                               employee_salary[]
   issue_ticket_comments                                         issue_ticket_comments[]
   issue_tickets_issue_tickets_assigned_toTousers                issue_tickets[]         @relation("issue_tickets_assigned_toTousers")
@@ -93,12 +90,10 @@ model User {
   user_legal_acceptance_user_legal_acceptance_user_idTousers    user_legal_acceptance[] @relation("user_legal_acceptance_user_idTousers")
   user_legal_acceptance_user_legal_acceptance_created_byTousers user_legal_acceptance[] @relation("user_legal_acceptance_created_byTousers")
   user_legal_acceptance_user_legal_acceptance_updated_byTousers user_legal_acceptance[] @relation("user_legal_acceptance_updated_byTousers")
-  access_permissions                                            access_permissions?     @relation(fields: [access_permission_id], references: [s_no], onUpdate: Restrict, map: "fk_user_access_permission")
   city                                                          city?                   @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_city")
   roles                                                         roles                   @relation(fields: [role_id], references: [s_no], onUpdate: Restrict, map: "fk_users_role")
   state                                                         state?                  @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_state")
 
-  @@index([access_permission_id], map: "fk_user_access_permission")
   @@index([city_id], map: "fk_users_city")
   @@index([organization_id], map: "fk_users_organization")
   @@index([role_id], map: "fk_users_role")
@@ -158,7 +153,6 @@ model access_permissions {
   recentlyVacatedView   Boolean? @default(true)
   created_at            DateTime @default(now()) @db.Timestamp(0)
   updated_at            DateTime @default(now()) @db.Timestamp(0)
-  users                 User[]
 }
 
 model advance_payments {
@@ -606,20 +600,27 @@ model user_fcm_tokens {
 }
 
 model subscription_plans {
-  s_no                  Int                     @id @default(autoincrement())
-  name                  String                  @db.VarChar(100)
-  description           String?                 @db.Text
-  duration              Int
-  price                 Decimal                 @db.Decimal(10, 2)
-  currency              String                  @default("INR") @db.VarChar(10)
-  features              Json?
-  max_pg_locations      Int?
-  max_tenants           Int?
-  is_active             Boolean                 @default(true)
-  created_at            DateTime                @default(now()) @db.Timestamp(0)
-  updated_at            DateTime                @default(now()) @db.Timestamp(0)
-  subscription_payments subscription_payments[]
-  user_subscriptions    user_subscriptions[]
+  s_no                   Int                     @id @default(autoincrement())
+  name                   String                  @db.VarChar(100)
+  description            String?                 @db.Text
+  duration               Int
+  price                  Decimal                 @db.Decimal(10, 2)
+  currency               String                  @default("INR") @db.VarChar(10)
+  features               Json?
+  max_pg_locations       Int?
+  max_tenants            Int?
+  is_active              Boolean                 @default(true)
+  created_at             DateTime                @default(now()) @db.Timestamp(0)
+  updated_at             DateTime                @default(now()) @db.Timestamp(0)
+  max_rooms              Int?
+  max_beds               Int?
+  max_employees          Int?
+  max_users              Int?
+  max_invoices_per_month Int?
+  max_sms_per_month      Int?
+  max_whatsapp_per_month Int?
+  subscription_payments  subscription_payments[]
+  user_subscriptions     user_subscriptions[]
 
   @@index([is_active], map: "idx_is_active")
 }

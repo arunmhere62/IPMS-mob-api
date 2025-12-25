@@ -11,8 +11,8 @@ export class SubscriptionService {
   private readonly CCAVENUE_MERCHANT_ID = process.env.CCAVENUE_MERCHANT_ID;
   private readonly CCAVENUE_ACCESS_CODE = process.env.CCAVENUE_ACCESS_CODE;
   private readonly CCAVENUE_WORKING_KEY = process.env.CCAVENUE_WORKING_KEY;
-  private readonly CCAVENUE_REDIRECT_URL = process.env.CCAVENUE_REDIRECT_URL || 'http://localhost:3000/api/subscription/payment/callback';
-  private readonly CCAVENUE_CANCEL_URL = process.env.CCAVENUE_CANCEL_URL || 'http://localhost:3000/api/subscription/payment/cancel';
+  private readonly CCAVENUE_REDIRECT_URL = process.env.CCAVENUE_REDIRECT_URL || 'http://localhost:3000/api/v1/subscription/payment/callback';
+  private readonly CCAVENUE_CANCEL_URL = process.env.CCAVENUE_CANCEL_URL || 'http://localhost:3000/api/v1/subscription/payment/cancel';
   private readonly CCAVENUE_PAYMENT_URL = process.env.CCAVENUE_PAYMENT_URL || 'https://test.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
 
   /**
@@ -64,9 +64,13 @@ export class SubscriptionService {
         price: true,
         currency: true,
         features: true,
-        max_pg_locations: true,
         max_tenants: true,
+        max_pg_locations: true,
+        max_beds: true,
+        max_employees: true,
+        max_rooms : true,
         is_active: true,
+
       },
     });
 

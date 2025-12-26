@@ -49,47 +49,20 @@ export class SubscriptionController {
 
     if (!userId || !organizationId) {
       console.log('⚠️ Missing user info - userId:', userId, 'orgId:', organizationId);
-      return {
-        success: true,
-        has_active_subscription: false,
-        subscription: null,
-        days_remaining: 0,
-      };
+      return ResponseUtil.success(
+        {
+          has_active_subscription: false,
+          subscription: null,
+          days_remaining: 0,
+          is_trial: false,
+        },
+        'Subscription status checked successfully',
+      );
     }
 
     console.log('✅ Checking subscription for user:', userId, 'org:', organizationId);
 
-    const result = await this.subscriptionService.checkSubscriptionStatus(
-      userId,
-      organizationId,
-    );
-
-    // Normalize the response: rename subscription_plans to plan
-    let normalizedSubscription = null;
-    if (result.subscription) {
-      const { subscription_plans, ...rest } = result.subscription as any;
-      normalizedSubscription = {
-        ...rest,
-        plan: subscription_plans || null,
-      };
-    }
-
-    // Calculate days remaining
-    let daysRemaining = 0;
-    if (result.subscription && result.subscription.end_date) {
-      const endDate = new Date(result.subscription.end_date);
-      const now = new Date();
-      const diffTime = endDate.getTime() - now.getTime();
-      daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
-    }
-
-    return {
-      success: true,
-      has_active_subscription: result.isActive,
-      subscription: normalizedSubscription,
-      days_remaining: daysRemaining,
-      is_trial: false, // Add trial logic if needed
-    };
+    return this.subscriptionService.checkSubscriptionStatus(userId, organizationId);
   }
 
   /**

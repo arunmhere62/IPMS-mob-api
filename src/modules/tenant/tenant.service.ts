@@ -7,6 +7,7 @@ import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { TenantStatusService } from './tenant-status/tenant-status.service';
+import { SubscriptionRestrictionService } from '../subscription/subscription-restriction.service';
 
 @Injectable()
 export class TenantService {
@@ -16,6 +17,7 @@ export class TenantService {
     private pendingRentCalculatorService: PendingRentCalculatorService,
     private rentCycleCalculatorService: RentCycleCalculatorService,
     private s3DeletionService: S3DeletionService,
+    private subscriptionRestrictionService: SubscriptionRestrictionService,
   ) {}
 
   /**
@@ -33,6 +35,8 @@ export class TenantService {
     if (!pgLocation) {
       throw new NotFoundException(`PG Location with ID ${createTenantDto.pg_id} not found`);
     }
+
+    await this.subscriptionRestrictionService.assertCanCreateTenantForOrganization(pgLocation.organization_id);
 
     // Verify room exists if provided
     if (createTenantDto.room_id) {

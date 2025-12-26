@@ -80,8 +80,8 @@ export class SubscriptionService {
   /**
    * Get current active subscription for a user
    */
-  async getCurrentSubscription(userId: number, organizationId: number) {
-    const subscription = await this.prisma.user_subscriptions.findFirst({
+  private async findCurrentActiveSubscription(userId: number, organizationId: number) {
+    return this.prisma.user_subscriptions.findFirst({
       where: {
         user_id: userId,
         organization_id: organizationId,
@@ -95,7 +95,10 @@ export class SubscriptionService {
         end_date: 'desc',
       },
     });
+  }
 
+  async getCurrentSubscription(userId: number, organizationId: number) {
+    const subscription = await this.findCurrentActiveSubscription(userId, organizationId);
     return ResponseUtil.success(subscription, 'Current subscription fetched successfully');
   }
 
@@ -103,12 +106,34 @@ export class SubscriptionService {
    * Check if user has active subscription
    */
   async checkSubscriptionStatus(userId: number, organizationId: number) {
-    const subscription = await this.getCurrentSubscription(userId, organizationId);
-    
-    return ResponseUtil.success({
-      isActive: !!subscription,
-      subscription: subscription || null,
-    }, 'Subscription status checked successfully');
+    const subscription = await this.findCurrentActiveSubscription(userId, organizationId);
+
+    let normalizedSubscription: any = null;
+    if (subscription) {
+      const { subscription_plans, ...rest } = subscription as any;
+      normalizedSubscription = {
+        ...rest,
+        plan: subscription_plans || null,
+      };
+    }
+
+    let daysRemaining = 0;
+    if (subscription?.end_date) {
+      const endDate = new Date(subscription.end_date);
+      const now = new Date();
+      const diffTime = endDate.getTime() - now.getTime();
+      daysRemaining = Math.max(0, Math.ceil(diffTime / (1000 * 60 * 60 * 24)));
+    }
+
+    return ResponseUtil.success(
+      {
+        has_active_subscription: !!subscription,
+        subscription: normalizedSubscription,
+        days_remaining: daysRemaining,
+        is_trial: false,
+      },
+      'Subscription status checked successfully',
+    );
   }
 
   /**

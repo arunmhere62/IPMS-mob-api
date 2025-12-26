@@ -4,18 +4,22 @@ import { S3DeletionService } from '../common/s3-deletion.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
+import { SubscriptionRestrictionService } from '../subscription/subscription-restriction.service';
 
 @Injectable()
 export class EmployeeService {
   constructor(
     private prisma: PrismaService,
     private s3DeletionService: S3DeletionService,
+    private subscriptionRestrictionService: SubscriptionRestrictionService,
   ) {}
 
   /**
    * Create a new employee
    */
   async create(organizationId: number, createDto: CreateEmployeeDto) {
+    await this.subscriptionRestrictionService.assertCanCreateEmployeeForOrganization(organizationId);
+
     if (!createDto.phone) {
       throw new BadRequestException('Phone number is required');
     }

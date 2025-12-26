@@ -4,18 +4,22 @@ import { UpdateBedDto } from './dto/update-bed.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3DeletionService } from '../common/s3-deletion.service';
 import { ResponseUtil } from '../../common/utils/response.util';
+import { SubscriptionRestrictionService } from '../subscription/subscription-restriction.service';
 
 @Injectable()
 export class BedService {
   constructor(
     private prisma: PrismaService,
     private s3DeletionService: S3DeletionService,
+    private subscriptionRestrictionService: SubscriptionRestrictionService,
   ) {}
 
   /**
    * Create a new bed or restore soft-deleted bed
    */
   async create(createBedDto: CreateBedDto) {
+    await this.subscriptionRestrictionService.assertCanCreateBedForRoom(createBedDto.room_id);
+
     // Verify room exists
     const room = await this.prisma.rooms.findFirst({
       where: {

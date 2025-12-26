@@ -56,103 +56,51 @@ model tokens {
 }
 
 model User {
-  s_no                                                          Int                     @id @default(autoincrement())
-  name                                                          String                  @db.VarChar(100)
-  email                                                         String                  @unique(map: "email") @db.VarChar(100)
-  password                                                      String                  @db.VarChar(255)
-  phone                                                         String?                 @db.VarChar(15)
-  status                                                        users_status?           @default(ACTIVE)
-  created_at                                                    DateTime?               @default(now()) @db.Timestamp(0)
-  updated_at                                                    DateTime?               @default(now()) @db.Timestamp(0)
-  role_id                                                       Int
-  pg_id                                                         Int?
-  is_deleted                                                    Boolean?                @default(false)
-  organization_id                                               Int?
-  address                                                       String?                 @db.VarChar(255)
-  city_id                                                       Int?
-  state_id                                                      Int?
-  pincode                                                       String?                 @db.VarChar(20)
-  country                                                       String?                 @db.VarChar(100)
-  gender                                                        users_gender?
-  proof_documents                                               Json?
-  profile_images                                                Json?
-  employee_salary                                               employee_salary[]
-  issue_ticket_comments                                         issue_ticket_comments[]
-  issue_tickets_issue_tickets_assigned_toTousers                issue_tickets[]         @relation("issue_tickets_assigned_toTousers")
-  issue_tickets_issue_tickets_reported_byTousers                issue_tickets[]         @relation("issue_tickets_reported_byTousers")
-  legal_documents_legal_documents_created_byTousers             legal_documents[]       @relation("legal_documents_created_byTousers")
-  legal_documents_legal_documents_updated_byTousers             legal_documents[]       @relation("legal_documents_updated_byTousers")
-  notification_settings                                         notification_settings?
-  notifications                                                 notifications[]
-  otp_verifications                                             otp_verifications[]
-  tokens                                                        tokens[]
-  user_fcm_tokens                                               user_fcm_tokens[]
-  user_legal_acceptance_user_legal_acceptance_user_idTousers    user_legal_acceptance[] @relation("user_legal_acceptance_user_idTousers")
-  user_legal_acceptance_user_legal_acceptance_created_byTousers user_legal_acceptance[] @relation("user_legal_acceptance_created_byTousers")
-  user_legal_acceptance_user_legal_acceptance_updated_byTousers user_legal_acceptance[] @relation("user_legal_acceptance_updated_byTousers")
-  city                                                          city?                   @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_city")
-  roles                                                         roles                   @relation(fields: [role_id], references: [s_no], onUpdate: Restrict, map: "fk_users_role")
-  state                                                         state?                  @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_state")
+  s_no                                                                  Int                         @id @default(autoincrement())
+  name                                                                  String                      @db.VarChar(100)
+  email                                                                 String                      @unique(map: "email") @db.VarChar(100)
+  password                                                              String                      @db.VarChar(255)
+  phone                                                                 String?                     @db.VarChar(15)
+  status                                                                users_status?               @default(ACTIVE)
+  created_at                                                            DateTime?                   @default(now()) @db.Timestamp(0)
+  updated_at                                                            DateTime?                   @default(now()) @db.Timestamp(0)
+  role_id                                                               Int
+  pg_id                                                                 Int?
+  is_deleted                                                            Boolean?                    @default(false)
+  organization_id                                                       Int?
+  address                                                               String?                     @db.VarChar(255)
+  city_id                                                               Int?
+  state_id                                                              Int?
+  pincode                                                               String?                     @db.VarChar(20)
+  country                                                               String?                     @db.VarChar(100)
+  gender                                                                users_gender?
+  proof_documents                                                       Json?
+  profile_images                                                        Json?
+  employee_salary                                                       employee_salary[]
+  issue_ticket_comments                                                 issue_ticket_comments[]
+  issue_tickets_issue_tickets_assigned_toTousers                        issue_tickets[]             @relation("issue_tickets_assigned_toTousers")
+  issue_tickets_issue_tickets_reported_byTousers                        issue_tickets[]             @relation("issue_tickets_reported_byTousers")
+  legal_documents_legal_documents_created_byTousers                     legal_documents[]           @relation("legal_documents_created_byTousers")
+  legal_documents_legal_documents_updated_byTousers                     legal_documents[]           @relation("legal_documents_updated_byTousers")
+  notification_settings                                                 notification_settings?
+  notifications                                                         notifications[]
+  otp_verifications                                                     otp_verifications[]
+  tokens                                                                tokens[]
+  user_fcm_tokens                                                       user_fcm_tokens[]
+  user_legal_acceptance_user_legal_acceptance_user_idTousers            user_legal_acceptance[]     @relation("user_legal_acceptance_user_idTousers")
+  user_legal_acceptance_user_legal_acceptance_created_byTousers         user_legal_acceptance[]     @relation("user_legal_acceptance_created_byTousers")
+  user_legal_acceptance_user_legal_acceptance_updated_byTousers         user_legal_acceptance[]     @relation("user_legal_acceptance_updated_byTousers")
+  user_permission_overrides_user_permission_overrides_created_byTousers user_permission_overrides[] @relation("user_permission_overrides_created_byTousers")
+  user_permission_overrides_user_permission_overrides_user_idTousers    user_permission_overrides[] @relation("user_permission_overrides_user_idTousers")
+  city                                                                  city?                       @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_city")
+  roles                                                                 roles                       @relation(fields: [role_id], references: [s_no], onUpdate: Restrict, map: "fk_users_role")
+  state                                                                 state?                      @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_state")
 
   @@index([city_id], map: "fk_users_city")
   @@index([organization_id], map: "fk_users_organization")
   @@index([role_id], map: "fk_users_role")
   @@index([state_id], map: "fk_users_state")
   @@map("users")
-}
-
-model access_permissions {
-  s_no                  Int      @id @default(autoincrement())
-  pgLocationCreate      Boolean? @default(true)
-  pgLocationEdit        Boolean? @default(true)
-  pgLocationDelete      Boolean? @default(true)
-  pgLocationView        Boolean? @default(true)
-  roomCreate            Boolean? @default(true)
-  roomEdit              Boolean? @default(true)
-  roomDelete            Boolean? @default(true)
-  roomView              Boolean? @default(true)
-  bedCreate             Boolean? @default(true)
-  bedEdit               Boolean? @default(true)
-  bedDelete             Boolean? @default(true)
-  bedView               Boolean? @default(true)
-  tenantCreate          Boolean? @default(true)
-  tenantEdit            Boolean? @default(true)
-  tenantDelete          Boolean? @default(true)
-  tenantView            Boolean? @default(true)
-  visitorCreate         Boolean? @default(true)
-  visitorEdit           Boolean? @default(true)
-  visitorDelete         Boolean? @default(true)
-  visitorView           Boolean? @default(true)
-  rentCreate            Boolean? @default(true)
-  rentEdit              Boolean? @default(true)
-  rentDelete            Boolean? @default(true)
-  rentView              Boolean? @default(true)
-  advanceCreate         Boolean? @default(true)
-  advanceEdit           Boolean? @default(true)
-  advanceDelete         Boolean? @default(true)
-  advanceView           Boolean? @default(true)
-  refundCreate          Boolean? @default(true)
-  refundEdit            Boolean? @default(true)
-  refundDelete          Boolean? @default(true)
-  refundView            Boolean? @default(true)
-  expenseCreate         Boolean? @default(true)
-  expenseEdit           Boolean? @default(true)
-  expenseDelete         Boolean? @default(true)
-  expenseView           Boolean? @default(true)
-  employeeCreate        Boolean? @default(true)
-  employeeEdit          Boolean? @default(true)
-  employeeDelete        Boolean? @default(true)
-  employeeView          Boolean? @default(true)
-  employeeSalaryCreate  Boolean? @default(true)
-  employeeSalaryEdit    Boolean? @default(true)
-  employeeSalaryDelete  Boolean? @default(true)
-  employeeSalaryView    Boolean? @default(true)
-  recentlyVacatedCreate Boolean? @default(true)
-  recentlyVacatedEdit   Boolean? @default(true)
-  recentlyVacatedDelete Boolean? @default(true)
-  recentlyVacatedView   Boolean? @default(true)
-  created_at            DateTime @default(now()) @db.Timestamp(0)
-  updated_at            DateTime @default(now()) @db.Timestamp(0)
 }
 
 model advance_payments {
@@ -364,14 +312,15 @@ model refund_payments {
 }
 
 model roles {
-  s_no        Int           @id @default(autoincrement())
-  role_name   String        @unique(map: "role_name") @db.VarChar(50)
-  permissions Json?
-  status      roles_status? @default(ACTIVE)
-  created_at  DateTime?     @default(now()) @db.Timestamp(0)
-  updated_at  DateTime?     @default(now()) @db.Timestamp(0)
-  is_deleted  Boolean?      @default(false)
-  users       User[]
+  s_no             Int                @id @default(autoincrement())
+  role_name        String             @unique(map: "role_name") @db.VarChar(50)
+  permissions      Json?
+  status           roles_status?      @default(ACTIVE)
+  created_at       DateTime?          @default(now()) @db.Timestamp(0)
+  updated_at       DateTime?          @default(now()) @db.Timestamp(0)
+  is_deleted       Boolean?           @default(false)
+  role_permissions role_permissions[]
+  users            User[]
 }
 
 model rooms {
@@ -680,12 +629,14 @@ model subscription_payments {
 }
 
 model permissions_master {
-  s_no        Int                       @id @default(autoincrement())
-  screen_name String                    @db.VarChar(100)
-  action      permissions_master_action
-  description String?                   @db.VarChar(255)
-  created_at  DateTime                  @default(now()) @db.Timestamp(0)
-  updated_at  DateTime                  @default(now()) @db.Timestamp(0)
+  s_no                      Int                         @id @default(autoincrement())
+  screen_name               String                      @db.VarChar(100)
+  action                    permissions_master_action
+  description               String?                     @db.VarChar(255)
+  created_at                DateTime                    @default(now()) @db.Timestamp(0)
+  updated_at                DateTime                    @default(now()) @db.Timestamp(0)
+  role_permissions          role_permissions[]
+  user_permission_overrides user_permission_overrides[]
 
   @@unique([screen_name, action], map: "unique_screen_action")
 }
@@ -745,6 +696,39 @@ model user_legal_acceptance {
   @@index([legal_document_id], map: "idx_accept_doc")
   @@index([user_id], map: "idx_accept_user")
   @@index([updated_by], map: "updated_by")
+}
+
+model role_permissions {
+  s_no               Int                @id @default(autoincrement())
+  role_id            Int
+  permission_id      Int
+  created_at         DateTime           @default(now()) @db.Timestamp(0)
+  updated_at         DateTime           @default(now()) @db.Timestamp(0)
+  permissions_master permissions_master @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_role_permissions_permission")
+  roles              roles              @relation(fields: [role_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_role_permissions_role")
+
+  @@unique([role_id, permission_id], map: "unique_role_permission")
+  @@index([permission_id], map: "idx_role_permissions_permission")
+  @@index([role_id], map: "idx_role_permissions_role")
+}
+
+model user_permission_overrides {
+  s_no                                              Int                              @id @default(autoincrement())
+  user_id                                           Int
+  permission_id                                     Int
+  effect                                            user_permission_overrides_effect
+  created_by                                        Int?
+  expires_at                                        DateTime?                        @db.DateTime(0)
+  created_at                                        DateTime                         @default(now()) @db.Timestamp(0)
+  updated_at                                        DateTime                         @default(now()) @db.Timestamp(0)
+  users_user_permission_overrides_created_byTousers User?                            @relation("user_permission_overrides_created_byTousers", fields: [created_by], references: [s_no], onUpdate: Restrict, map: "fk_user_permission_overrides_created_by")
+  permissions_master                                permissions_master               @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_permission_overrides_permission")
+  users_user_permission_overrides_user_idTousers    User                             @relation("user_permission_overrides_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_permission_overrides_user")
+
+  @@unique([user_id, permission_id], map: "unique_user_permission_override")
+  @@index([created_by], map: "idx_user_permission_override_created_by")
+  @@index([permission_id], map: "idx_user_permission_override_permission")
+  @@index([user_id], map: "idx_user_permission_override_user")
 }
 
 enum roles_status {
@@ -871,4 +855,9 @@ enum pg_locations_rent_cycle_type {
 enum organization_status {
   ACTIVE
   INACTIVE
+}
+
+enum user_permission_overrides_effect {
+  ALLOW
+  DENY
 }

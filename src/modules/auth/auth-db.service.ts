@@ -517,7 +517,7 @@ export class AuthDbService {
         // 2. Find existing ADMIN role (global role, not organization-specific)
         const role = await prisma.roles.findFirst({
           where: {
-            role_name: 'ADMIN',
+            role_name: 'SUPER_ADMIN',
             is_deleted: false,
           },
         });

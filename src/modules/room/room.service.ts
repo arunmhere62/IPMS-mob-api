@@ -19,7 +19,7 @@ export class RoomService {
    * Create a new room or restore soft-deleted room
    */
   async create(createRoomDto: CreateRoomDto) {
-    await this.subscriptionRestrictionService.assertCanCreateRoomForPg(createRoomDto.pg_id);
+    await this.subscriptionRestrictionService.assertCanCreateRoomInPg(createRoomDto.pg_id);
 
     // Check if a soft-deleted room exists with the same pg_id and room_no
     const existingDeletedRoom = await this.prisma.rooms.findFirst({

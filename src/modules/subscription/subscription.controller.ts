@@ -20,11 +20,11 @@ export class SubscriptionController {
   }
 
   /**
-   * Get current user's active subscription
+   * Get current organization's active subscription
    */
   @Get('current')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get current user active subscription' })
+  @ApiOperation({ summary: 'Get current organization active subscription' })
   async getCurrentSubscription(@Req() req: any) {
     const userId = parseInt(req.headers['x-user-id']);
     const organizationId = parseInt(req.headers['x-organization-id']);
@@ -34,7 +34,7 @@ export class SubscriptionController {
       organizationId,
     );
 
-    return ResponseUtil.success(subscription, 'Current subscription fetched successfully');
+    return ResponseUtil.success(subscription, 'Current organization subscription fetched successfully');
   }
 
   /**
@@ -42,7 +42,7 @@ export class SubscriptionController {
    */
   @Get('status')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Check if user has active subscription' })
+  @ApiOperation({ summary: 'Check if organization has active subscription' })
   async checkStatus(@Req() req: any) {
     const userId = parseInt(req.headers['x-user-id']) || req.user?.userId;
     const organizationId = parseInt(req.headers['x-organization-id']) || req.user?.organizationId;
@@ -60,17 +60,17 @@ export class SubscriptionController {
       );
     }
 
-    console.log('✅ Checking subscription for user:', userId, 'org:', organizationId);
+    console.log('✅ Checking subscription for org:', organizationId, 'requestedByUser:', userId);
 
     return this.subscriptionService.checkSubscriptionStatus(userId, organizationId);
   }
 
   /**
-   * Get all user subscriptions (history)
+   * Get all organization subscriptions (history)
    */
   @Get('history')
   @ApiBearerAuth()
-  @ApiOperation({ summary: 'Get user subscription history' })
+  @ApiOperation({ summary: 'Get organization subscription history' })
   async getHistory(
     @Req() req: any,
   ) {

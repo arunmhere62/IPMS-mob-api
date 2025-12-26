@@ -48,7 +48,29 @@ export class SubscriptionRestrictionService {
     }
   }
 
-  async assertCanCreateRoomForPg(pgId: number) {
+  async assertCanCreateRoomForOrganization(organizationId: number) {
+    const plan = await this.getActivePlanForOrganization(organizationId);
+    const max = plan.max_rooms;
+    if (max == null) return;
+
+    const current = await this.prisma.rooms.count({
+      where: {
+        is_deleted: false,
+        pg_locations: {
+          organization_id: organizationId,
+          is_deleted: false,
+        },
+      },
+    });
+
+    if (current >= max) {
+      throw new BadRequestException(
+        `Room limit reached. Your current plan allows up to ${max} rooms per organization. Please upgrade your plan to add more.`,
+      );
+    }
+  }
+
+  async assertCanCreateRoomInPg(pgId: number) {
     const pgLocation = await this.prisma.pg_locations.findFirst({
       where: {
         s_no: pgId,
@@ -63,25 +85,54 @@ export class SubscriptionRestrictionService {
       throw new BadRequestException(`PG location with ID ${pgId} not found`);
     }
 
-    const plan = await this.getActivePlanForOrganization(pgLocation.organization_id);
-    const max = plan.max_rooms;
+    return this.assertCanCreateRoomForOrganization(pgLocation.organization_id);
+  }
+
+  async assertCanCreateRoomForPg(pgId: number) {
+    return this.assertCanCreateRoomInPg(pgId);
+  }
+
+  async assertCanCreateBedForOrganization(organizationId: number) {
+    const plan = await this.getActivePlanForOrganization(organizationId);
+    const max = plan.max_beds;
     if (max == null) return;
 
-    const current = await this.prisma.rooms.count({
+    const current = await this.prisma.beds.count({
       where: {
         is_deleted: false,
-        pg_locations: {
-          s_no: pgId,
+        rooms: {
           is_deleted: false,
+          pg_locations: {
+            organization_id: organizationId,
+            is_deleted: false,
+          },
         },
       },
     });
 
     if (current >= max) {
       throw new BadRequestException(
-        `Room limit reached. Your current plan allows up to ${max} rooms per PG. Please upgrade your plan to add more.`,
+        `Bed limit reached. Your current plan allows up to ${max} beds per organization. Please upgrade your plan to add more.`,
       );
     }
+  }
+
+  async assertCanCreateBedInPg(pgId: number) {
+    const pgLocation = await this.prisma.pg_locations.findFirst({
+      where: {
+        s_no: pgId,
+        is_deleted: false,
+      },
+      select: {
+        organization_id: true,
+      },
+    });
+
+    if (!pgLocation) {
+      throw new BadRequestException(`PG location with ID ${pgId} not found`);
+    }
+
+    return this.assertCanCreateBedForOrganization(pgLocation.organization_id);
   }
 
   async assertCanCreateBedForRoom(roomId: number) {
@@ -109,25 +160,7 @@ export class SubscriptionRestrictionService {
       throw new BadRequestException(`Room with ID ${roomId} not found`);
     }
 
-    const plan = await this.getActivePlanForOrganization(orgId);
-    const max = plan.max_beds;
-    if (max == null) return;
-
-    const current = await this.prisma.beds.count({
-      where: {
-        is_deleted: false,
-        rooms: {
-          s_no: roomId,
-          is_deleted: false,
-        },
-      },
-    });
-
-    if (current >= max) {
-      throw new BadRequestException(
-        `Bed limit reached. Your current plan allows up to ${max} beds per room. Please upgrade your plan to add more.`,
-      );
-    }
+    return this.assertCanCreateBedForOrganization(orgId);
   }
 
   async assertCanCreateEmployeeForOrganization(organizationId: number) {

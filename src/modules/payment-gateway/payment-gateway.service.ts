@@ -156,12 +156,12 @@ export class PaymentGatewayService {
   }
 
   /**
-   * Get active subscription for a user
+   * Get active subscription for an organization
    */
-  async getActiveSubscription(userId: number) {
+  async getActiveSubscriptionForOrganization(organizationId: number) {
     const subscription = await this.prisma.user_subscriptions.findFirst({
       where: {
-        user_id: userId,
+        organization_id: organizationId,
         status: 'ACTIVE',
         end_date: {
           gte: new Date(),
@@ -179,11 +179,42 @@ export class PaymentGatewayService {
   }
 
   /**
-   * Check if user has active subscription
+   * Backward compatible: Get active subscription for a user
+   * NOTE: Subscriptions are organization-scoped; this resolves organization_id from the user.
+   */
+  async getActiveSubscription(userId: number) {
+    const user = await this.prisma.user.findUnique({
+      where: { s_no: userId },
+      select: { organization_id: true },
+    });
+
+    if (!user?.organization_id) {
+      return ResponseUtil.success(null, 'Active subscription fetched successfully');
+    }
+
+    return this.getActiveSubscriptionForOrganization(user.organization_id);
+  }
+
+  /**
+   * Check if organization has active subscription
+   */
+  async hasActiveSubscriptionForOrganization(organizationId: number): Promise<boolean> {
+    const result = await this.getActiveSubscriptionForOrganization(organizationId);
+    return !!(result as any)?.data;
+  }
+
+  /**
+   * Backward compatible: Check if user has active subscription
+   * NOTE: Subscriptions are organization-scoped; this resolves organization_id from the user.
    */
   async hasActiveSubscription(userId: number): Promise<boolean> {
-    const subscription = await this.getActiveSubscription(userId);
-    return !!subscription;
+    const user = await this.prisma.user.findUnique({
+      where: { s_no: userId },
+      select: { organization_id: true },
+    });
+
+    if (!user?.organization_id) return false;
+    return this.hasActiveSubscriptionForOrganization(user.organization_id);
   }
 
   /**

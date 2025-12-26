@@ -78,12 +78,11 @@ export class SubscriptionService {
   }
 
   /**
-   * Get current active subscription for a user
+   * Get current active subscription for an organization
    */
   private async findCurrentActiveSubscription(userId: number, organizationId: number) {
     return this.prisma.user_subscriptions.findFirst({
       where: {
-        user_id: userId,
         organization_id: organizationId,
         status: 'ACTIVE',
         end_date: { gte: new Date() },
@@ -99,11 +98,11 @@ export class SubscriptionService {
 
   async getCurrentSubscription(userId: number, organizationId: number) {
     const subscription = await this.findCurrentActiveSubscription(userId, organizationId);
-    return ResponseUtil.success(subscription, 'Current subscription fetched successfully');
+    return ResponseUtil.success(subscription, 'Current organization subscription fetched successfully');
   }
 
   /**
-   * Check if user has active subscription
+   * Check if organization has active subscription
    */
   async checkSubscriptionStatus(userId: number, organizationId: number) {
     const subscription = await this.findCurrentActiveSubscription(userId, organizationId);
@@ -161,7 +160,6 @@ export class SubscriptionService {
   async getUserSubscriptionsAll(userId: number, organizationId: number) {
     const subscriptions = await this.prisma.user_subscriptions.findMany({
       where: {
-        user_id: userId,
         organization_id: organizationId,
       },
       include: {
@@ -182,7 +180,7 @@ export class SubscriptionService {
 
     return ResponseUtil.success(
       normalizedSubscriptions,
-      'User subscriptions fetched successfully',
+      'Organization subscriptions fetched successfully',
     );
   }
 

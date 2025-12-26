@@ -18,7 +18,7 @@ export class BedService {
    * Create a new bed or restore soft-deleted bed
    */
   async create(createBedDto: CreateBedDto) {
-    await this.subscriptionRestrictionService.assertCanCreateBedForRoom(createBedDto.room_id);
+    await this.subscriptionRestrictionService.assertCanCreateBedInPg(createBedDto.pg_id);
 
     // Verify room exists
     const room = await this.prisma.rooms.findFirst({

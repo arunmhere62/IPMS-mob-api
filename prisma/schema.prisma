@@ -461,18 +461,24 @@ model visitors {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model issue_ticket_comments {
-  s_no          Int           @id @default(autoincrement())
-  ticket_id     Int
-  user_id       Int
-  comment       String        @db.Text
-  attachments   Json?
-  created_at    String        @db.VarChar(50)
-  is_deleted    Boolean       @default(false)
-  issue_tickets issue_tickets @relation(fields: [ticket_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_comment_ticket")
-  users         User          @relation(fields: [user_id], references: [s_no], onUpdate: Restrict, map: "fk_comment_user")
+  s_no                  Int                                 @id @default(autoincrement())
+  ticket_id             Int
+  user_id               Int?
+  author_source         issue_ticket_comments_author_source @default(CONSUMER)
+  management_user_id    Int?
+  management_user_name  String?                             @db.VarChar(150)
+  management_user_email String?                             @db.VarChar(150)
+  comment               String                              @db.Text
+  attachments           Json?
+  created_at            String                              @db.VarChar(50)
+  is_deleted            Boolean                             @default(false)
+  issue_tickets         issue_tickets                       @relation(fields: [ticket_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_comment_ticket")
+  users                 User?                               @relation(fields: [user_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_comment_user")
 
   @@index([ticket_id], map: "idx_ticket_id")
   @@index([user_id], map: "idx_user_id")
+  @@index([author_source], map: "idx_itc_author_source")
+  @@index([management_user_id], map: "idx_itc_management_user_id")
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
@@ -869,4 +875,9 @@ enum organization_status {
 enum user_permission_overrides_effect {
   ALLOW
   DENY
+}
+
+enum issue_ticket_comments_author_source {
+  CONSUMER
+  MANAGEMENT
 }

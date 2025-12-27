@@ -23,7 +23,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('tickets')
 @Controller('tickets')
-@UseGuards(HeadersValidationGuard, JwtAuthGuard)
+@UseGuards(HeadersValidationGuard)
 export class TicketController {
   constructor(private readonly ticketService: TicketService) {}
 

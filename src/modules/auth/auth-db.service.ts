@@ -17,6 +17,7 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { S3DeletionService } from '../common/s3-deletion.service';
 import { normalizePhoneNumber } from '../../common/utils/phone.utils';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AuthDbService {
@@ -467,54 +468,50 @@ export class AuthDbService {
     const {
       organizationName,
       name,
-      email,
-      password,
       phone,
       pgName,
-      pgAddress,
-      stateId,
-      cityId,
-      pgPincode,
       rentCycleType,
       rentCycleStart,
       rentCycleEnd,
-      pgType,
     } = signupDto;
 
-    // Check if email already exists
-    const existingUser = await this.prisma.user.findUnique({
-      where: { email },
+    const normalizedPhone = normalizePhoneNumber(phone);
+    
+    // Check if phone already exists (if provided)
+    const existingPhone = await this.prisma.user.findFirst({
+      where: { phone: normalizedPhone },
     });
 
-    if (existingUser) {
-      throw new BadRequestException('Email already registered');
-    }
-
-    // Check if phone already exists (if provided)
-    if (phone) {
-      const existingPhone = await this.prisma.user.findFirst({
-        where: { phone },
-      });
-
-      if (existingPhone) {
-        throw new BadRequestException('Phone number already registered');
-      }
+    if (existingPhone) {
+      throw new BadRequestException('Phone number already registered');
     }
 
     try {
-      // Use transaction to ensure all operations succeed or fail together
       const result = await this.prisma.$transaction(async (prisma) => {
-        // 1. Create organization first (status INACTIVE until admin approval)
+        const freePlan = await prisma.subscription_plans.findFirst({
+          where: {
+            is_active: true,
+            price: { equals: new Prisma.Decimal('0.00') },
+          },
+          orderBy: {
+            created_at: 'desc',
+          },
+        });
+
+        if (!freePlan) {
+          throw new BadRequestException(
+            'Free subscription plan not found. Please create an active subscription plan with price 0.00.',
+          );
+        }
+
         const organization = await prisma.organization.create({
           data: {
             name: organizationName,
             description: `Organization for ${organizationName}`,
             is_deleted: false,
-            status: 'INACTIVE' as any, // Organization needs admin approval
+            status: 'ACTIVE' as any, // 
           },
         });
-
-        // 2. Find existing ADMIN role (global role, not organization-specific)
         const role = await prisma.roles.findFirst({
           where: {
             role_name: 'SUPER_ADMIN',
@@ -530,13 +527,13 @@ export class AuthDbService {
         const user = await prisma.user.create({
           data: {
             name,
-            email,
-            password, // Note: In production, hash the password using bcrypt
-            phone,
+            phone: normalizedPhone,
             status: 'ACTIVE', // User needs admin approval
-            role_id: role.s_no,
             organization_id: organization.s_no,
             is_deleted: false,
+            roles: {
+              connect: { s_no: role.s_no },
+            },
           },
         });
 
@@ -550,12 +547,6 @@ export class AuthDbService {
         });
 
         // 5. Create PG Location
-        // Validate pg_type enum value
-        const validPgTypes = ['COLIVING', 'MENS', 'WOMENS'];
-        const pgTypeValue = pgType && validPgTypes.includes(pgType.toUpperCase()) 
-          ? (pgType.toUpperCase() as any)
-          : 'COLIVING';
-
         // Validate rent_cycle_type enum value
         const validRentCycleTypes = ['CALENDAR', 'MIDMONTH'];
         const rentCycleTypeValue = rentCycleType && validRentCycleTypes.includes(rentCycleType.toUpperCase())
@@ -566,17 +557,13 @@ export class AuthDbService {
           data: {
             user_id: user.s_no,
             location_name: pgName,
-            address: pgAddress,
-            pincode: pgPincode,
+            address: '',
             status: 'ACTIVE',
             organization_id: organization.s_no,
-            city_id: cityId,
-            state_id: stateId,
             is_deleted: false,
             rent_cycle_type: rentCycleTypeValue,
             rent_cycle_start: rentCycleStart,
             rent_cycle_end: rentCycleEnd,
-            pg_type: pgTypeValue,
           },
         });
 
@@ -584,6 +571,19 @@ export class AuthDbService {
         await prisma.user.update({
           where: { s_no: user.s_no },
           data: { pg_id: pgLocation.s_no },
+        });
+
+        const endDate = new Date(Date.now() + freePlan.duration * 24 * 60 * 60 * 1000);
+        await prisma.user_subscriptions.create({
+          data: {
+            user_id: user.s_no,
+            organization_id: organization.s_no,
+            plan_id: freePlan.s_no,
+            status: 'ACTIVE',
+            start_date: new Date(),
+            end_date: endDate,
+            auto_renew: false,
+          },
         });
 
         return {
@@ -595,7 +595,7 @@ export class AuthDbService {
         };
       });
 
-      return ResponseUtil.success(result, 'Account created successfully. Please wait for admin approval.');
+      return ResponseUtil.success(result, 'Account created successfully. Please login.');
     } catch (error: any) {
       console.error('Signup error:', error);
       // Re-throw BadRequestException with original message if it's a validation error

@@ -9,7 +9,7 @@ export class PendingPaymentController {
   /**
    * Get pending payment details for a specific tenant
    * GET /api/v1/tenants/pending-payments/:id
-   * Headers: X-PG-Location-Id, X-Organization-Id, X-User-Id
+   * Headers: x-pg-location-id, x-organization-id, x-user-id
    */
   @Get(':id')
   async getTenantPendingPayment(@Param('id') id: string) {
@@ -20,7 +20,7 @@ export class PendingPaymentController {
   /**
    * Get all tenants with pending payments
    * GET /api/v1/tenants/pending-payments
-   * Headers: X-PG-Location-Id, X-Organization-Id, X-User-Id
+   * Headers: x-pg-location-id, x-organization-id, x-user-id
    * Query: pg_id (optional)
    */
   @Get()
@@ -57,7 +57,7 @@ export class PendingPaymentController {
   /**
    * Get tenants with payment due tomorrow
    * GET /api/v1/tenants/pending-payments/due-tomorrow
-   * Headers: X-PG-Location-Id, X-Organization-Id, X-User-Id
+   * Headers: x-pg-location-id, x-organization-id, x-user-id
    */
   @Get('due-tomorrow/list')
   async getPaymentsDueTomorrow(

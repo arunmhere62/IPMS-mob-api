@@ -165,13 +165,13 @@ All responses use `ResponseUtil`.
 Headers:
 
 - Most endpoints use the existing header pattern.
-- **Required header** for RBAC endpoints: `X-User-Id`
+- **Required header** for RBAC endpoints: `x-user-id`
 
 Implemented APIs:
 
 - `GET /auth/me/permissions`
   - Purpose: fetch effective permissions for the logged-in user
-  - Required headers: `X-User-Id`
+  - Required headers: `x-user-id`
   - Response includes:
     - `permissions_map`: `{ "tenants_view": true, ... }`
     - `permissions`: `["tenants_view", ...]`
@@ -184,15 +184,15 @@ Implemented APIs:
 
 - `GET /user-permission-overrides?user_id=...`
   - Purpose: list overrides for a target user/employee
-  - Required headers: `X-User-Id`
+  - Required headers: `x-user-id`
 
 - `POST /user-permission-overrides`
   - Purpose: create/replace one override (upsert)
-  - Required headers: `X-User-Id`
+  - Required headers: `x-user-id`
 
 - `DELETE /user-permission-overrides`
   - Purpose: remove one override
-  - Required headers: `X-User-Id`
+  - Required headers: `x-user-id`
 
 ### 4.1 Mobile UI screens: how to decide what to show
 

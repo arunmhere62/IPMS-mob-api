@@ -32,8 +32,8 @@ Base route: `GET/POST/PATCH /api/v1/legal-documents`
 
 - **Create legal document (backoffice/admin)**
   - `POST /legal-documents`
-  - Requires header: `X-User-Id`
-  - Optional header/body: `X-Organization-Id` / `organization_id`
+  - Requires header: `x-user-id`
+  - Optional header/body: `x-organization-id` / `organization_id`
 
 - **List documents**
   - `GET /legal-documents`
@@ -44,27 +44,27 @@ Base route: `GET/POST/PATCH /api/v1/legal-documents`
 
 - **Update**
   - `PATCH /legal-documents/:id`
-  - Requires header: `X-User-Id`
+  - Requires header: `x-user-id`
 
 - **Activate/Deactivate**
   - `PATCH /legal-documents/:id/active?value=true|false`
-  - Requires header: `X-User-Id`
+  - Requires header: `x-user-id`
 
 - **Accept a document (consumer)**
   - `POST /legal-documents/:id/accept`
-  - Requires header: `X-User-Id`
-  - Optional header: `X-Organization-Id`
+  - Requires header: `x-user-id`
+  - Optional header: `x-organization-id`
   - Body: `{ acceptance_context, ip_address?, user_agent? }`
 
 - **Revoke acceptance (consumer)**
   - `POST /legal-documents/:id/revoke`
-  - Requires header: `X-User-Id`
+  - Requires header: `x-user-id`
   - Body: `{ reason? }`
 
 - **Check acceptance status for required docs (consumer)**
   - `GET /legal-documents/required/status?context=SIGNUP|LOGIN|...`
-  - Requires header: `X-User-Id`
-  - Optional header: `X-Organization-Id`
+  - Requires header: `x-user-id`
+  - Optional header: `x-organization-id`
   - Returns: `{ required, accepted, pending, is_all_accepted }`
 
 ### Recommended Client Enforcement Flow

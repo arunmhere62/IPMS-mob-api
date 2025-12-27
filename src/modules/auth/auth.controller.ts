@@ -111,14 +111,9 @@ export class AuthController {
       email: signupDto.email,
       phone: signupDto.phone,
       pgName: signupDto.pgName,
-      pgAddress: signupDto.pgAddress,
-      stateId: signupDto.stateId,
-      cityId: signupDto.cityId,
-      pgPincode: signupDto.pgPincode,
       rentCycleType: signupDto.rentCycleType,
       rentCycleStart: signupDto.rentCycleStart,
       rentCycleEnd: signupDto.rentCycleEnd,
-      pgType: signupDto.pgType,
     });
     return this.authService.signup(signupDto);
   }

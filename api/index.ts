@@ -26,7 +26,7 @@ async function createNestServer(expressInstance: express.Express) {
     origin: true,
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-User-Id', 'X-Organization-Id', 'X-PG-Location-Id'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'x-user-id', 'x-organization-id', 'x-pg-location-id'],
     exposedHeaders: ['Authorization'],
   });
 

@@ -10,6 +10,7 @@ import { CreateLegalDocumentDto } from './dto/create-legal-document.dto';
 import { LegalDocumentQueryDto } from './dto/legal-document-query.dto';
 import { UpdateLegalDocumentDto } from './dto/update-legal-document.dto';
 import { AcceptLegalDocumentDto } from './dto/accept-legal-document.dto';
+import { SIGNUP_REQUIRED_LEGAL_DOCUMENT_TYPES } from './legal-documents.constants';
 
 @Injectable()
 export class LegalDocumentsService {
@@ -158,7 +159,7 @@ export class LegalDocumentsService {
     legalDocumentId: number,
     dto: AcceptLegalDocumentDto,
   ) {
-    if (!headers.user_id) throw new BadRequestException('Missing X-User-Id header');
+    if (!headers.user_id) throw new BadRequestException('Missing x-user-id header');
 
     const doc = await this.prisma.legal_documents.findUnique({
       where: { s_no: legalDocumentId },
@@ -207,7 +208,7 @@ export class LegalDocumentsService {
   }
 
   async revoke(headers: { user_id?: number }, legalDocumentId: number, reason?: string) {
-    if (!headers.user_id) throw new BadRequestException('Missing X-User-Id header');
+    if (!headers.user_id) throw new BadRequestException('Missing x-user-id header');
 
     const existing = await this.prisma.user_legal_acceptance.findUnique({
       where: {
@@ -242,7 +243,12 @@ export class LegalDocumentsService {
   }
 
   async requiredStatus(headers: { user_id?: number; organization_id?: number }, context?: string) {
-    if (!headers.user_id) throw new BadRequestException('Missing X-User-Id header');
+    const normalizedContext = (context ?? '').toUpperCase();
+    const isSignupContext = normalizedContext === 'SIGNUP';
+
+    if (!headers.user_id && !isSignupContext) {
+      throw new BadRequestException('Missing x-user-id header');
+    }
 
     const now = new Date();
 
@@ -255,6 +261,7 @@ export class LegalDocumentsService {
           { expiry_date: null },
           { expiry_date: { gt: now } },
         ],
+        ...(isSignupContext ? { type: { in: SIGNUP_REQUIRED_LEGAL_DOCUMENT_TYPES } } : {}),
         // If you pass organization_id, return org-specific docs + global docs
         ...(headers.organization_id
           ? {
@@ -269,6 +276,19 @@ export class LegalDocumentsService {
         effective_date: 'desc',
       },
     });
+
+    if (!headers.user_id && isSignupContext) {
+      return ResponseUtil.success(
+        {
+          context: context ?? null,
+          required: requiredDocs,
+          accepted: [],
+          pending: requiredDocs,
+          is_all_accepted: false,
+        },
+        'Legal acceptance status fetched successfully',
+      );
+    }
 
     const acceptances = await this.prisma.user_legal_acceptance.findMany({
       where: {

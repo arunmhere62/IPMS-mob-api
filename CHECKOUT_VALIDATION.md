@@ -143,9 +143,9 @@ A tenant can only be checked out if **ALL** of the following conditions are met:
 **POST** `/api/v1/tenants/:id/checkout`
 
 **Required Headers:**
-- `X-PG-Id` (pg_id)
-- `X-Organization-Id` (organization_id)
-- `X-User-Id` (user_id)
+- `x-pg-id` (pg_id)
+- `x-organization-id` (organization_id)
+- `x-user-id` (user_id)
 
 **Request Body:**
 ```json

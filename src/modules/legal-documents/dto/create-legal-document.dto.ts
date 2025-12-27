@@ -46,7 +46,7 @@ export class CreateLegalDocumentDto {
   @IsString()
   expiry_date?: string | null;
 
-  @ApiPropertyOptional({ description: 'Organization ID (optional). If omitted, will use X-Organization-Id if present', example: 1 })
+  @ApiPropertyOptional({ description: 'Organization ID (optional). If omitted, will use x-organization-id if present', example: 1 })
   @IsOptional()
   organization_id?: number;
 }

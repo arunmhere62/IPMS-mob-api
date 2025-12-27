@@ -29,6 +29,21 @@ export class HeadersValidationGuard implements CanActivate {
     const request = context.switchToHttp().getRequest();
     const headers = request.headers;
 
+    const readHeader = (key: string): string | undefined => {
+      const value = headers[key];
+      if (Array.isArray(value)) {
+        return value[0];
+      }
+      return typeof value === 'string' ? value : undefined;
+    };
+
+    const parseHeaderInt = (key: string): number | undefined => {
+      const raw = readHeader(key);
+      if (!raw) return undefined;
+      const parsed = parseInt(raw, 10);
+      return Number.isFinite(parsed) ? parsed : undefined;
+    };
+
     // Get required headers from decorator metadata
     const requiredHeaders = this.reflector.getAllAndOverride<RequiredHeadersOptions>(
       REQUIRED_HEADERS_KEY,
@@ -37,15 +52,9 @@ export class HeadersValidationGuard implements CanActivate {
 
     // Extract and parse headers
     const headerData = {
-      pg_id: headers['x-pg-location-id']
-        ? parseInt(headers['x-pg-location-id'], 10)
-        : undefined,
-      organization_id: headers['x-organization-id']
-        ? parseInt(headers['x-organization-id'], 10)
-        : undefined,
-      user_id: headers['x-user-id']
-        ? parseInt(headers['x-user-id'], 10)
-        : undefined,
+      pg_id: parseHeaderInt('x-pg-location-id'),
+      organization_id: parseHeaderInt('x-organization-id'),
+      user_id: parseHeaderInt('x-user-id'),
     };
 
     // Transform to DTO and validate
@@ -64,13 +73,13 @@ export class HeadersValidationGuard implements CanActivate {
       const missingHeaders: string[] = [];
 
       if (requiredHeaders.pg_id && !headerData.pg_id) {
-        missingHeaders.push('X-PG-Location-Id');
+        missingHeaders.push('x-pg-location-id');
       }
       if (requiredHeaders.organization_id && !headerData.organization_id) {
-        missingHeaders.push('X-Organization-Id');
+        missingHeaders.push('x-organization-id');
       }
       if (requiredHeaders.user_id && !headerData.user_id) {
-        missingHeaders.push('X-User-Id');
+        missingHeaders.push('x-user-id');
       }
 
       if (missingHeaders.length > 0) {

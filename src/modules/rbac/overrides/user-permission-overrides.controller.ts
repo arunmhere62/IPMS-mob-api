@@ -7,10 +7,12 @@ import { UserPermissionOverridesService } from './user-permission-overrides.serv
 import { UpsertUserPermissionOverrideDto } from './dto/upsert-user-permission-override.dto';
 import { RemoveUserPermissionOverrideDto } from './dto/remove-user-permission-override.dto';
 import { ListUserPermissionOverridesQueryDto } from './dto/list-user-permission-overrides.query.dto';
+import { BulkUpsertUserPermissionOverridesDto } from './dto/bulk-upsert-user-permission-overrides.dto';
+import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
 
 @ApiTags('rbac')
 @Controller('user-permission-overrides')
-@UseGuards(HeadersValidationGuard)
+@UseGuards(HeadersValidationGuard, JwtAuthGuard)
 export class UserPermissionOverridesController {
   constructor(private readonly overridesService: UserPermissionOverridesService) {}
 
@@ -41,6 +43,18 @@ export class UserPermissionOverridesController {
     @Body() body: UpsertUserPermissionOverrideDto,
   ) {
     return this.overridesService.upsert(body, headers.user_id);
+  }
+
+  @Post('bulk')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Bulk create or replace user permission overrides' })
+  @ApiResponse({ status: 200, description: 'Overrides saved successfully' })
+  @RequireHeaders({ user_id: true })
+  async bulkUpsert(
+    @ValidatedHeaders() headers: ValidatedHeaders,
+    @Body() body: BulkUpsertUserPermissionOverridesDto,
+  ) {
+    return this.overridesService.bulkUpsert(body, headers.user_id);
   }
 
   @Delete()

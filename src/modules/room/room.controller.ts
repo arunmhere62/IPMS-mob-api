@@ -15,9 +15,10 @@ import { UpdateRoomDto } from './dto/update-room.dto';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @Controller('rooms')
-@UseGuards(HeadersValidationGuard)
+@UseGuards(HeadersValidationGuard, JwtAuthGuard)
 export class RoomController {
   constructor(private readonly roomService: RoomService) {}
 

@@ -10,15 +10,19 @@ import {
   ParseIntPipe,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { VisitorService } from './visitor.service';
 import { CreateVisitorDto } from './dto/create-visitor.dto';
 import { UpdateVisitorDto } from './dto/update-visitor.dto';
 import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/common-headers.decorator';
+import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('visitors')
 @Controller('visitors')
+@UseGuards(HeadersValidationGuard, JwtAuthGuard)
 export class VisitorController {
   constructor(private readonly visitorService: VisitorService) {}
 

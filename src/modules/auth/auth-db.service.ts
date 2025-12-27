@@ -14,6 +14,7 @@ import { VerifyOtpDto } from './dto/verify-otp.dto';
 import { SignupDto } from './dto/signup.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { S3DeletionService } from '../common/s3-deletion.service';
 import { normalizePhoneNumber } from '../../common/utils/phone.utils';
@@ -297,7 +298,69 @@ export class AuthDbService {
       role_name: userResponse.role_name,
     });
 
-    return response;
+    return ResponseUtil.success(
+      {
+        user: userResponse,
+        ...tokens,
+      },
+      'Login successful',
+    );
+  }
+
+  async refreshTokens(refreshTokenDto: RefreshTokenDto) {
+    const refreshToken = refreshTokenDto?.refreshToken;
+    if (!refreshToken) {
+      throw new UnauthorizedException('Refresh token is required');
+    }
+
+    const payload = await this.jwtTokenService.verifyRefreshToken(refreshToken);
+    if (!payload?.sub) {
+      throw new UnauthorizedException('Invalid or expired refresh token');
+    }
+
+    const tokenRecord = await this.prisma.tokens.findFirst({
+      where: {
+        user_id: payload.sub,
+        refresh_token: refreshToken,
+        is_revoked: false,
+      },
+    });
+
+    if (!tokenRecord) {
+      throw new UnauthorizedException('Invalid or revoked refresh token');
+    }
+
+    if (tokenRecord.refresh_expires_at && new Date() > tokenRecord.refresh_expires_at) {
+      throw new UnauthorizedException('Refresh token has expired');
+    }
+
+    const user = await this.prisma.user.findUnique({
+      where: { s_no: payload.sub },
+      select: {
+        s_no: true,
+        phone: true,
+        email: true,
+        role_id: true,
+        organization_id: true,
+      },
+    });
+
+    if (!user) {
+      throw new UnauthorizedException('User not found');
+    }
+
+    const tokens = await this.jwtTokenService.generateTokens(user);
+    return ResponseUtil.success(tokens, 'Token refreshed successfully');
+  }
+
+  async logout(user: any) {
+    const userId = user?.sub;
+    if (!userId) {
+      throw new UnauthorizedException('Invalid user context');
+    }
+
+    await this.jwtTokenService.revokeToken(userId);
+    return ResponseUtil.success(null, 'Logged out successfully');
   }
 
   /**

@@ -137,6 +137,22 @@ export class JwtTokenService {
   }
 
   /**
+   * Verify refresh token signature and expiry.
+   * Note: DB checks (revocation/matching token record) should be done by caller.
+   */
+  async verifyRefreshToken(token: string) {
+    try {
+      const payload = this.jwtService.verify(token, {
+        secret: this.configService.get<string>('jwt.refreshSecret'),
+      });
+
+      return payload;
+    } catch (error) {
+      return null;
+    }
+  }
+
+  /**
    * Revoke token (logout)
    */
   async revokeToken(userId: number) {

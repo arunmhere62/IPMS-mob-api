@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Patch, Param, ParseIntPipe, Get } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Patch, Param, ParseIntPipe, Get, UseGuards, Req } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthDbService } from './auth-db.service';
 import { SendOtpDto } from './dto/send-otp.dto';
@@ -8,6 +8,8 @@ import { AuthResponseDto, LoginResponseDto } from './dto/auth-response.dto';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { ChangePasswordDto } from './dto/change-password.dto';
 import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/common-headers.decorator';
+import { RefreshTokenDto } from './dto/refresh-token.dto';
+import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 @ApiTags('auth')
 @Controller('auth')
@@ -53,6 +55,21 @@ export class AuthController {
   @ApiResponse({ status: 404, description: 'User not found' })
   async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto) {
     return this.authService.verifyOtp(verifyOtpDto);
+  }
+
+  @Post('refresh')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Refresh access token using refresh token' })
+  async refresh(@Body() refreshTokenDto: RefreshTokenDto) {
+    return this.authService.refreshTokens(refreshTokenDto);
+  }
+
+  @Post('logout')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Logout user and revoke tokens' })
+  async logout(@Req() req: any) {
+    return this.authService.logout(req.user);
   }
 
   @Post('verify-signup-otp')

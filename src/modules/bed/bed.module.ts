@@ -4,9 +4,10 @@ import { BedController } from './bed.controller';
 import { PrismaModule } from '../../prisma/prisma.module';
 import { CommonModule } from '../common/common.module';
 import { SubscriptionModule } from '../subscription/subscription.module';
+import { AuthModule } from '../auth/auth.module';
 
 @Module({
-  imports: [PrismaModule, CommonModule, SubscriptionModule],
+  imports: [PrismaModule, CommonModule, SubscriptionModule, AuthModule],
   controllers: [BedController],
   providers: [BedService],
   exports: [BedService],

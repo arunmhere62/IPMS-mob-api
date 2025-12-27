@@ -19,10 +19,11 @@ import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/common-headers.decorator';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('tickets')
 @Controller('tickets')
-@UseGuards(HeadersValidationGuard)
+@UseGuards(HeadersValidationGuard, JwtAuthGuard)
 export class TicketController {
   constructor(private readonly ticketService: TicketService) {}
 

@@ -4,6 +4,7 @@ import { ResponseUtil } from '../../../common/utils/response.util';
 import { UpsertUserPermissionOverrideDto } from './dto/upsert-user-permission-override.dto';
 import { RemoveUserPermissionOverrideDto } from './dto/remove-user-permission-override.dto';
 import { ListUserPermissionOverridesQueryDto } from './dto/list-user-permission-overrides.query.dto';
+import { BulkUpsertUserPermissionOverridesDto } from './dto/bulk-upsert-user-permission-overrides.dto';
 
 @Injectable()
 export class UserPermissionOverridesService {
@@ -73,6 +74,55 @@ export class UserPermissionOverridesService {
     });
 
     return ResponseUtil.success(override, 'User permission override saved successfully');
+  }
+
+  async bulkUpsert(dto: BulkUpsertUserPermissionOverridesDto, createdBy?: number) {
+    const overrides = dto.overrides ?? [];
+    if (!Array.isArray(overrides) || overrides.length === 0) {
+      throw new BadRequestException('overrides must be a non-empty array');
+    }
+
+    const saved = await this.prisma.$transaction(
+      overrides.map((o) => {
+        const expiresAt = o.expires_at ? new Date(o.expires_at) : null;
+        if (o.expires_at && isNaN(expiresAt!.getTime())) {
+          throw new BadRequestException('Invalid expires_at (must be ISO date string)');
+        }
+
+        return this.prisma.user_permission_overrides.upsert({
+          where: {
+            user_id_permission_id: {
+              user_id: o.user_id,
+              permission_id: o.permission_id,
+            },
+          },
+          create: {
+            user_id: o.user_id,
+            permission_id: o.permission_id,
+            effect: o.effect as any,
+            created_by: createdBy,
+            expires_at: expiresAt,
+          },
+          update: {
+            effect: o.effect as any,
+            expires_at: expiresAt,
+            updated_at: new Date(),
+          },
+          include: {
+            permissions_master: {
+              select: {
+                s_no: true,
+                screen_name: true,
+                action: true,
+                description: true,
+              },
+            },
+          },
+        });
+      }),
+    );
+
+    return ResponseUtil.success(saved, 'User permission overrides saved successfully');
   }
 
   async remove(dto: RemoveUserPermissionOverrideDto) {

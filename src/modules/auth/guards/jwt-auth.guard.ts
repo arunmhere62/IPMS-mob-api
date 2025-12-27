@@ -1,8 +1,11 @@
 import { Injectable, CanActivate, ExecutionContext, UnauthorizedException } from '@nestjs/common';
+import { JwtTokenService } from '../jwt.service';
 
 @Injectable()
 export class JwtAuthGuard implements CanActivate {
-  canActivate(context: ExecutionContext): boolean {
+  constructor(private readonly jwtTokenService: JwtTokenService) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const request = context.switchToHttp().getRequest();
     const authHeader = request.headers.authorization;
 
@@ -10,12 +13,17 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('No authorization token provided');
     }
 
-    // For now, just check if token exists
-    // TODO: Implement proper JWT verification
     const token = authHeader.substring(7);
     if (!token) {
       throw new UnauthorizedException('Invalid authorization token');
     }
+
+    const payload = await this.jwtTokenService.verifyAccessToken(token);
+    if (!payload) {
+      throw new UnauthorizedException('Invalid or expired authorization token');
+    }
+
+    request.user = payload;
 
     return true;
   }

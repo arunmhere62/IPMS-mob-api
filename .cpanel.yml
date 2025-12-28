@@ -1,7 +1,7 @@
 ---
 deployment:
   tasks:
-    - export DEPLOYPATH=/home/YOUR_ACTUAL_USERNAME/public_html/api
+    - export DEPLOYPATH=/path/to/deploy
     - /bin/cp -R * $DEPLOYPATH
     - cd $DEPLOYPATH
     - npm install --production

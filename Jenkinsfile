@@ -6,11 +6,11 @@ pipeline {
     }
     
     environment {
-        // Hostinger SSH Configuration
-        SSH_HOST = 'ssh.hostinger.com' // Or your server IP
-        SSH_PORT = '65002' // Your SSH port
-        SSH_USER = 'your-username' // Your Hostinger username
-        DEPLOY_PATH = '/home/your-username/public_html/api' // Your deployment path
+        // SSH Configuration
+        SSH_HOST = 'your-server-host' // Server IP/DNS
+        SSH_PORT = '22' // SSH port
+        SSH_USER = 'your-ssh-user'
+        DEPLOY_PATH = '/var/www/pg-api' // Deployment path on server
         
         // Application Configuration
         APP_NAME = 'pg-api'
@@ -69,12 +69,12 @@ pipeline {
             }
         }
         
-        stage('Deploy to Hostinger') {
+        stage('Deploy to Server') {
             steps {
-                echo '🚀 Deploying to Hostinger...'
+                echo '🚀 Deploying to server...'
                 script {
                     // Using SSH credentials stored in Jenkins
-                    sshagent(credentials: ['hostinger-ssh-credentials']) {
+                    sshagent(credentials: ['ssh-credentials']) {
                         sh """
                             ssh -o StrictHostKeyChecking=no -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} '
                                 echo "📂 Navigating to deployment directory..."
@@ -113,7 +113,7 @@ pipeline {
             steps {
                 echo '🏥 Performing health check...'
                 script {
-                    sshagent(credentials: ['hostinger-ssh-credentials']) {
+                    sshagent(credentials: ['ssh-credentials']) {
                         sh """
                             ssh -o StrictHostKeyChecking=no -p ${SSH_PORT} ${SSH_USER}@${SSH_HOST} '
                                 pm2 status ${APP_NAME}

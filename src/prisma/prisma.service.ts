@@ -1,11 +1,21 @@
 import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
+import { addDbTiming } from '../common/utils/performance-context';
 
 @Injectable()
 export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
   constructor() {
     super({
       log: ['query', 'info', 'warn', 'error'],
+    });
+
+    this.$use(async (params, next) => {
+      const start = process.hrtime.bigint();
+      const result = await next(params);
+      const end = process.hrtime.bigint();
+      const ms = Number(end - start) / 1_000_000;
+      addDbTiming(ms);
+      return result;
     });
   }
 

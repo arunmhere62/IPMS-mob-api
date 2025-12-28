@@ -15,8 +15,23 @@
 
 import { ApiResponseDto } from '../dto/response.dto';
 import { HttpStatus } from '@nestjs/common';
+import { getApiMs, getPerfStore, shouldIncludePerf } from './performance-context';
 
 export class ResponseUtil {
+  private static getPerfMeta(): { apiMs: number; dbMs: number; dbQueries: number } | undefined {
+    if (!shouldIncludePerf()) return undefined;
+
+    const store = getPerfStore();
+    const apiMs = getApiMs();
+    if (!store || typeof apiMs !== 'number') return undefined;
+
+    return {
+      apiMs: Number(apiMs.toFixed(2)),
+      dbMs: Number(store.dbMs.toFixed(2)),
+      dbQueries: store.dbQueries,
+    };
+  }
+
   /**
    * Create a success response
    * The data parameter will be wrapped in the response.data field
@@ -26,7 +41,7 @@ export class ResponseUtil {
     message: string = 'Success',
     statusCode: number = HttpStatus.OK,
   ): ApiResponseDto<T> {
-    return new ApiResponseDto(statusCode, message, data);
+    return new ApiResponseDto(statusCode, message, data, undefined, undefined, this.getPerfMeta());
   }
 
   /**
@@ -36,7 +51,7 @@ export class ResponseUtil {
     data: T,
     message: string = 'Resource created successfully',
   ): ApiResponseDto<T> {
-    return new ApiResponseDto(HttpStatus.CREATED, message, data);
+    return new ApiResponseDto(HttpStatus.CREATED, message, data, undefined, undefined, this.getPerfMeta());
   }
 
   /**
@@ -58,14 +73,14 @@ export class ResponseUtil {
         limit,
         totalPages: Math.ceil(total / limit),
       },
-    });
+      }, undefined, undefined, this.getPerfMeta());
   }
 
   /**
    * Create a no content response (204)
    */
   static noContent(message: string = 'No content'): ApiResponseDto<null> {
-    return new ApiResponseDto(HttpStatus.NO_CONTENT, message, null);
+    return new ApiResponseDto(HttpStatus.NO_CONTENT, message, null, undefined, undefined, this.getPerfMeta());
   }
 
   /**
@@ -75,6 +90,6 @@ export class ResponseUtil {
     data: T,
     message: string = 'Request accepted',
   ): ApiResponseDto<T> {
-    return new ApiResponseDto(HttpStatus.ACCEPTED, message, data);
+    return new ApiResponseDto(HttpStatus.ACCEPTED, message, data, undefined, undefined, this.getPerfMeta());
   }
 }

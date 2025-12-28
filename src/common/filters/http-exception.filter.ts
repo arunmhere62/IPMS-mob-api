@@ -9,6 +9,7 @@ import {
 import { Request, Response } from 'express';
 import { ApiResponseDto } from '../dto/response.dto';
 import { ErrorCode, ErrorMessages, ErrorHttpStatus } from '../constants/error-codes';
+import { getApiMs, getPerfStore, shouldIncludePerf } from '../utils/performance-context';
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
@@ -74,6 +75,18 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       }
     }
 
+    const includePerf = shouldIncludePerf();
+    const store = includePerf ? getPerfStore() : undefined;
+    const apiMs = includePerf ? getApiMs() : undefined;
+    const meta =
+      includePerf && store && typeof apiMs === 'number'
+        ? {
+            apiMs: Number(apiMs.toFixed(2)),
+            dbMs: Number(store.dbMs.toFixed(2)),
+            dbQueries: store.dbQueries,
+          }
+        : undefined;
+
     const apiResponse = new ApiResponseDto(
       statusCode,
       message,
@@ -83,6 +96,7 @@ export class GlobalExceptionFilter implements ExceptionFilter {
         details,
       },
       request.url,
+      meta,
     );
 
     response.status(statusCode).json(apiResponse);

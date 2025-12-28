@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Hostinger Initial Setup Script
-# Run this script on your Hostinger server via SSH
+# Server Initial Setup Script
+# Run this script on your server via SSH
 
-echo "🚀 Setting up NestJS API on Hostinger..."
+echo "🚀 Setting up NestJS API on server..."
 
 # Colors for output
 GREEN='\033[0;32m'

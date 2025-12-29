@@ -19,15 +19,9 @@ export class DevelopmentOtpStrategy implements OtpStrategy {
     this.logger.warn(`[DEVELOPMENT] Sending OTP to ${phoneNumber}`);
     this.logger.warn(`[DEVELOPMENT] Generated OTP: ${otp}`);
     this.logger.warn(`[DEVELOPMENT] Bypass OTP: ${this.BYPASS_OTP}`);
+    this.logger.warn(`[DEVELOPMENT] SMS API skipped - Development mode`);
     
-    // Try to send real SMS, but don't fail if it doesn't work
-    try {
-      await this.smsService.sendOtp(phoneNumber, otp);
-    } catch (error) {
-      this.logger.warn(`[DEVELOPMENT] SMS sending failed, but continuing (bypass available)`);
-    }
-    
-    // Always return true in development (bypass available)
+    // Skip SMS API call entirely in development to prevent timeouts
     return true;
   }
 

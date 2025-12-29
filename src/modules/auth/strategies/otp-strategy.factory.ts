@@ -23,11 +23,14 @@ export class OtpStrategyFactory {
   }
 
   private initializeStrategy(): void {
-    const nodeEnv = this.configService.get<string>('NODE_ENV') || 'development';
-    
-    if (nodeEnv === 'production') {
+    const nodeEnvRaw = this.configService.get<string>('NODE_ENV') || 'development';
+    const nodeEnv = nodeEnvRaw.toLowerCase();
+
+    // Only skip SMS in explicit development environment.
+    // For preprod/staging/production (or any other env), use real SMS.
+    if (nodeEnv !== 'development') {
       this.strategy = new ProductionOtpStrategy(this.smsService);
-      this.logger.log('🔒 Using PRODUCTION OTP Strategy - Real SMS only');
+      this.logger.log(`🔒 Using PRODUCTION OTP Strategy - Real SMS only (NODE_ENV=${nodeEnvRaw})`);
     } else {
       this.strategy = new DevelopmentOtpStrategy(this.smsService);
       this.logger.warn('⚠️  Using DEVELOPMENT OTP Strategy - Bypass OTP: 1234');

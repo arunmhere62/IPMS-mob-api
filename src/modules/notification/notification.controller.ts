@@ -8,10 +8,11 @@ import {
   Param,
   Query,
   UseGuards,
-  Request,
 } from '@nestjs/common';
 import { NotificationService, RegisterTokenDto, SendNotificationDto } from './notification.service';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
+import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
+import { ValidatedHeaders, type ValidatedHeaders as ValidatedHeadersType } from '../../common/decorators/validated-headers.decorator';
 
 @Controller('notifications')
 @UseGuards(HeadersValidationGuard)
@@ -23,8 +24,12 @@ export class NotificationController {
    * POST /notifications/register-token
    */
   @Post('register-token')
-  async registerToken(@Request() req, @Body() body: RegisterTokenDto) {
-    const userId = req.user.userId || req.user.s_no;
+  @RequireHeaders({ user_id: true })
+  async registerToken(
+    @ValidatedHeaders() headers: ValidatedHeadersType,
+    @Body() body: RegisterTokenDto,
+  ) {
+    const userId = headers.user_id as number;
     return await this.notificationService.registerToken(userId, body);
   }
 
@@ -42,12 +47,13 @@ export class NotificationController {
    * GET /notifications/history?page=1&limit=20
    */
   @Get('history')
+  @RequireHeaders({ user_id: true })
   async getHistory(
-    @Request() req,
+    @ValidatedHeaders() headers: ValidatedHeadersType,
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    const userId = req.user.userId || req.user.s_no;
+    const userId = headers.user_id as number;
     const pageNum = page ? parseInt(page) : 1;
     const limitNum = limit ? parseInt(limit) : 20;
     
@@ -59,8 +65,9 @@ export class NotificationController {
    * GET /notifications/unread-count
    */
   @Get('unread-count')
-  async getUnreadCount(@Request() req) {
-    const userId = req.user.userId || req.user.s_no;
+  @RequireHeaders({ user_id: true })
+  async getUnreadCount(@ValidatedHeaders() headers: ValidatedHeadersType) {
+    const userId = headers.user_id as number;
     return await this.notificationService.getUnreadCount(userId);
   }
 
@@ -69,8 +76,12 @@ export class NotificationController {
    * PUT /notifications/:id/read
    */
   @Put(':id/read')
-  async markAsRead(@Request() req, @Param('id') id: string) {
-    const userId = req.user.userId || req.user.s_no;
+  @RequireHeaders({ user_id: true })
+  async markAsRead(
+    @ValidatedHeaders() headers: ValidatedHeadersType,
+    @Param('id') id: string,
+  ) {
+    const userId = headers.user_id as number;
     const notificationId = parseInt(id);
     return await this.notificationService.markAsRead(notificationId, userId);
   }
@@ -80,8 +91,9 @@ export class NotificationController {
    * PUT /notifications/read-all
    */
   @Put('read-all')
-  async markAllAsRead(@Request() req) {
-    const userId = req.user.userId || req.user.s_no;
+  @RequireHeaders({ user_id: true })
+  async markAllAsRead(@ValidatedHeaders() headers: ValidatedHeadersType) {
+    const userId = headers.user_id as number;
     return await this.notificationService.markAllAsRead(userId);
   }
 
@@ -90,8 +102,9 @@ export class NotificationController {
    * POST /notifications/test
    */
   @Post('test')
-  async sendTestNotification(@Request() req) {
-    const userId = req.user.userId || req.user.s_no;
+  @RequireHeaders({ user_id: true })
+  async sendTestNotification(@ValidatedHeaders() headers: ValidatedHeadersType) {
+    const userId = headers.user_id as number;
     
     return await this.notificationService.sendToUser(userId, {
       title: '🎉 Test Notification',
@@ -101,6 +114,25 @@ export class NotificationController {
         test: true,
         timestamp: new Date().toISOString(),
       },
+    });
+  }
+
+  @Post('test-token')
+  async sendTestToToken(
+    @Body()
+    body: {
+      to: string;
+      title: string;
+      message: string;
+      type?: string;
+      data?: any;
+    },
+  ) {
+    return await this.notificationService.sendToExpoToken(body.to, {
+      title: body.title,
+      body: body.message,
+      type: body.type || 'TEST',
+      data: body.data,
     });
   }
 

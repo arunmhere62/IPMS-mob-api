@@ -57,7 +57,25 @@ export class NotificationService {
 
   constructor(private prisma: PrismaService) {
     // Initialize Expo SDK
-    this.expo = new Expo();
+    this.expo = new Expo(
+      process.env.EXPO_ACCESS_TOKEN
+        ? {
+            accessToken: '7JjKhDZFGCyQ87HPb5TPfwbvv2zKL11F4ndEd7SV',
+          }
+        : { accessToken: '7JjKhDZFGCyQ87HPb5TPfwbvv2zKL11F4ndEd7SV' },
+    );
+  }
+
+  async sendToExpoToken(token: string, notification: SendNotificationDto) {
+    if (!Expo.isExpoPushToken(token)) {
+      return { success: false, message: 'Invalid Expo push token' };
+    }
+
+    const result = await this.sendViaExpo([token], notification);
+    return {
+      success: result.successCount > 0,
+      ...result,
+    };
   }
 
   /**

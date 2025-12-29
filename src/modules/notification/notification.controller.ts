@@ -118,6 +118,7 @@ export class NotificationController {
   }
 
   @Post('test-token')
+  @RequireHeaders({ user_id: true })
   async sendTestToToken(
     @Body()
     body: {

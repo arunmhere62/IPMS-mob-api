@@ -55,22 +55,31 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
   private expo: Expo;
 
+  private maskToken(token: string) {
+    if (!token) return '';
+    const t = String(token);
+    if (t.length <= 12) return `${t.slice(0, 4)}…${t.slice(-2)}`;
+    return `${t.slice(0, 8)}…${t.slice(-6)}`;
+  }
+
   constructor(private prisma: PrismaService) {
     // Initialize Expo SDK
-    this.expo = new Expo(
-      process.env.EXPO_ACCESS_TOKEN
-        ? {
-            accessToken: '7JjKhDZFGCyQ87HPb5TPfwbvv2zKL11F4ndEd7SV',
-          }
-        : { accessToken: '7JjKhDZFGCyQ87HPb5TPfwbvv2zKL11F4ndEd7SV' },
-    );
+    const accessToken = process.env.EXPO_ACCESS_TOKEN;
+    if (!accessToken) {
+      this.logger.warn('⚠️ EXPO_ACCESS_TOKEN is not set. Expo push may fail in some environments/rate limits.');
+    }
+    this.expo = new Expo(accessToken ? { accessToken } : undefined);
   }
 
   async sendToExpoToken(token: string, notification: SendNotificationDto) {
     if (!Expo.isExpoPushToken(token)) {
+      this.logger.warn(`❌ sendToExpoToken invalid token: ${this.maskToken(token)}`);
       return { success: false, message: 'Invalid Expo push token' };
     }
 
+    this.logger.log(
+      `📤 sendToExpoToken to=${this.maskToken(token)} title=${notification.title} type=${notification.type}`,
+    );
     const result = await this.sendViaExpo([token], notification);
     return {
       success: result.successCount > 0,
@@ -83,6 +92,10 @@ export class NotificationService {
    */
   async registerToken(userId: number, tokenData: RegisterTokenDto) {
     try {
+      this.logger.log(
+        `📌 registerToken user=${userId} token=${this.maskToken(tokenData.fcm_token)} device_type=${tokenData.device_type ?? 'unknown'} device_id=${tokenData.device_id ?? ''}`,
+      );
+
       // Check if token already exists
       const existing = await this.prisma.user_fcm_tokens.findUnique({
         where: { fcm_token: tokenData.fcm_token },
@@ -99,7 +112,7 @@ export class NotificationService {
           },
         });
         
-        this.logger.log(`✅ Updated FCM token for user ${userId}`);
+        this.logger.log(`✅ Updated token for user ${userId} token=${this.maskToken(tokenData.fcm_token)}`);
         return { success: true, message: 'Token updated' };
       }
 
@@ -115,10 +128,12 @@ export class NotificationService {
         },
       });
 
-      this.logger.log(`✅ Registered new FCM token for user ${userId}`);
+      this.logger.log(`✅ Registered token for user ${userId} token=${this.maskToken(tokenData.fcm_token)}`);
       return { success: true, message: 'Token registered' };
     } catch (error) {
-      this.logger.error(`❌ Failed to register token: ${error.message}`);
+      this.logger.error(
+        `❌ Failed to register token user=${userId} token=${this.maskToken(tokenData?.fcm_token)} err=${error.message}`,
+      );
       throw error;
     }
   }
@@ -149,6 +164,10 @@ export class NotificationService {
    */
   async sendToUser(userId: number, notification: SendNotificationDto) {
     try {
+      this.logger.log(
+        `📤 sendToUser user=${userId} title=${notification.title} type=${notification.type}`,
+      );
+
       // Get user's active tokens
       const tokens = await this.prisma.user_fcm_tokens.findMany({
         where: {
@@ -171,6 +190,10 @@ export class NotificationService {
       const expoTokens = allTokens.filter(token => Expo.isExpoPushToken(token));
       const firebaseTokens = allTokens.filter(token => !Expo.isExpoPushToken(token));
 
+      this.logger.log(
+        `🔎 user=${userId} tokens_total=${allTokens.length} expo=${expoTokens.length} firebase=${firebaseTokens.length}`,
+      );
+
       let successCount = 0;
       let failureCount = 0;
 
@@ -186,6 +209,10 @@ export class NotificationService {
         const firebaseResult = await this.sendViaFirebase(firebaseTokens, notification);
         successCount += firebaseResult.successCount;
         failureCount += firebaseResult.failureCount;
+      } else if (firebaseTokens.length > 0 && !firebaseApp) {
+        this.logger.warn(
+          `⚠️ Firebase tokens present for user=${userId} but Firebase Admin is not initialized (missing env vars).`,
+        );
       }
 
       this.logger.log(
@@ -211,6 +238,10 @@ export class NotificationService {
    */
   private async sendViaExpo(tokens: string[], notification: SendNotificationDto) {
     try {
+      this.logger.log(
+        `🚀 Expo send start tokens=${tokens.length} sample=${this.maskToken(tokens[0])} title=${notification.title} type=${notification.type}`,
+      );
+
       const messages: ExpoPushMessage[] = tokens.map(token => ({
         to: token,
         sound: 'default',
@@ -235,11 +266,14 @@ export class NotificationService {
               successCount++;
             } else {
               failureCount++;
-              this.logger.warn(`❌ Expo push failed: ${ticket.message}`);
+              const token = chunk[index]?.to ? String(chunk[index].to) : tokens[index];
+              this.logger.warn(
+                `❌ Expo push failed token=${this.maskToken(token)} message=${ticket.message} details=${JSON.stringify(ticket.details ?? {})}`,
+              );
               
               // Mark token as inactive if error is token-related
               if (ticket.details?.error === 'DeviceNotRegistered') {
-                this.markTokenInactive(tokens[index]);
+                this.markTokenInactive(token);
               }
             }
           });
@@ -249,6 +283,9 @@ export class NotificationService {
         }
       }
 
+      this.logger.log(
+        `✅ Expo send done success=${successCount} failed=${failureCount} total=${tokens.length}`,
+      );
       return { successCount, failureCount };
     } catch (error) {
       this.logger.error(`❌ Expo send failed: ${error.message}`);
@@ -261,6 +298,9 @@ export class NotificationService {
    */
   private async sendViaFirebase(tokens: string[], notification: SendNotificationDto) {
     try {
+      this.logger.log(
+        `🚀 Firebase send start tokens=${tokens.length} title=${notification.title} type=${notification.type}`,
+      );
       const message: admin.messaging.MulticastMessage = {
         notification: {
           title: notification.title,
@@ -274,6 +314,10 @@ export class NotificationService {
       };
 
       const response = await admin.messaging().sendMulticast(message);
+
+      this.logger.log(
+        `✅ Firebase send done success=${response.successCount} failed=${response.failureCount} total=${tokens.length}`,
+      );
 
       // Handle failed tokens
       if (response.failureCount > 0) {

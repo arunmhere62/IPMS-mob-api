@@ -26,14 +26,16 @@ export class OtpStrategyFactory {
     const nodeEnvRaw = this.configService.get<string>('NODE_ENV') || 'development';
     const nodeEnv = nodeEnvRaw.toLowerCase();
 
-    // Only skip SMS in explicit development environment.
-    // For preprod/staging/production (or any other env), use real SMS.
-    if (nodeEnv !== 'development') {
+    // Only call real SMS in explicit production-like environments.
+    // Everything else (dev/local/test) should skip SMS/internal API calls.
+    const productionLikeEnvs = new Set(['production', 'prod', 'preprod', 'staging']);
+
+    if (productionLikeEnvs.has(nodeEnv)) {
       this.strategy = new ProductionOtpStrategy(this.smsService);
       this.logger.log(`🔒 Using PRODUCTION OTP Strategy - Real SMS only (NODE_ENV=${nodeEnvRaw})`);
     } else {
       this.strategy = new DevelopmentOtpStrategy(this.smsService);
-      this.logger.warn('⚠️  Using DEVELOPMENT OTP Strategy - Bypass OTP: 1234');
+      this.logger.warn(`⚠️  Using DEVELOPMENT OTP Strategy - SMS skipped (NODE_ENV=${nodeEnvRaw})`);
     }
 
     this.logger.log(`OTP Strategy: ${this.strategy.getStrategyName()}`);

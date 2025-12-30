@@ -55,6 +55,54 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
   private expo: Expo;
 
+  private async fetchExpoReceipts(ticketIdToToken: Record<string, string>) {
+    const ticketIds = Object.keys(ticketIdToToken);
+    if (ticketIds.length === 0) {
+      return { receiptErrors: [] as any[], receiptOkCount: 0, receiptErrorCount: 0 };
+    }
+
+    try {
+      const receiptIdChunks = this.expo.chunkPushNotificationReceiptIds(ticketIds);
+      let receiptOkCount = 0;
+      let receiptErrorCount = 0;
+      const receiptErrors: Array<{ receiptId: string; token: string; message?: string; details?: any }> = [];
+
+      for (const receiptIdChunk of receiptIdChunks) {
+        const receipts = await this.expo.getPushNotificationReceiptsAsync(receiptIdChunk);
+        for (const receiptId of Object.keys(receipts)) {
+          const receipt: any = (receipts as any)[receiptId];
+          if (!receipt) continue;
+          if (receipt.status === 'ok') {
+            receiptOkCount++;
+            continue;
+          }
+
+          receiptErrorCount++;
+          const token = ticketIdToToken[receiptId];
+          receiptErrors.push({
+            receiptId,
+            token,
+            message: receipt.message,
+            details: receipt.details,
+          });
+
+          this.logger.warn(
+            `❌ Expo receipt error receiptId=${receiptId} token=${this.maskToken(token)} message=${receipt.message} details=${JSON.stringify(receipt.details ?? {})}`,
+          );
+
+          if (receipt.details?.error === 'DeviceNotRegistered') {
+            await this.markTokenInactive(token);
+          }
+        }
+      }
+
+      return { receiptErrors, receiptOkCount, receiptErrorCount };
+    } catch (error) {
+      this.logger.error(`❌ Expo receipt fetch failed: ${error.message}`);
+      return { receiptErrors: [{ message: error.message }], receiptOkCount: 0, receiptErrorCount: 1 };
+    }
+  }
+
   private getAndroidChannelId(type?: string): string {
     if (!type) return 'default';
     switch (type) {
@@ -276,6 +324,8 @@ export class NotificationService {
       const chunks = this.expo.chunkPushNotifications(messages);
       let successCount = 0;
       let failureCount = 0;
+      const ticketIds: string[] = [];
+      const ticketIdToToken: Record<string, string> = {};
 
       for (const chunk of chunks) {
         try {
@@ -284,6 +334,13 @@ export class NotificationService {
           ticketChunk.forEach((ticket, index) => {
             if (ticket.status === 'ok') {
               successCount++;
+
+              const ticketId = (ticket as any).id;
+              if (ticketId) {
+                ticketIds.push(ticketId);
+                const token = chunk[index]?.to ? String(chunk[index].to) : tokens[index];
+                ticketIdToToken[ticketId] = token;
+              }
             } else {
               failureCount++;
               const token = chunk[index]?.to ? String(chunk[index].to) : tokens[index];
@@ -303,13 +360,29 @@ export class NotificationService {
         }
       }
 
+      const receiptSummary = await this.fetchExpoReceipts(ticketIdToToken);
+
+      this.logger.log(
+        `📬 Expo receipts done ok=${receiptSummary.receiptOkCount} failed=${receiptSummary.receiptErrorCount} ticketIds=${ticketIds.length}`,
+      );
+
       this.logger.log(
         `✅ Expo send done success=${successCount} failed=${failureCount} total=${tokens.length}`,
       );
-      return { successCount, failureCount };
+      return {
+        successCount,
+        failureCount,
+        ticketIds,
+        receiptSummary,
+      };
     } catch (error) {
       this.logger.error(`❌ Expo send failed: ${error.message}`);
-      return { successCount: 0, failureCount: tokens.length };
+      return {
+        successCount: 0,
+        failureCount: tokens.length,
+        ticketIds: [],
+        receiptSummary: { receiptErrors: [{ message: error.message }], receiptOkCount: 0, receiptErrorCount: 1 },
+      };
     }
   }
 

@@ -15,7 +15,6 @@ import { RequireHeaders } from '../../common/decorators/require-headers.decorato
 import { ValidatedHeaders, type ValidatedHeaders as ValidatedHeadersType } from '../../common/decorators/validated-headers.decorator';
 
 @Controller('notifications')
-@UseGuards(HeadersValidationGuard)
 export class NotificationController {
   constructor(private readonly notificationService: NotificationService) {}
 
@@ -24,6 +23,7 @@ export class NotificationController {
    * POST /notifications/register-token
    */
   @Post('register-token')
+  @UseGuards(HeadersValidationGuard)
   @RequireHeaders({ user_id: true })
   async registerToken(
     @ValidatedHeaders() headers: ValidatedHeadersType,
@@ -47,11 +47,12 @@ export class NotificationController {
    * GET /notifications/history?page=1&limit=20
    */
   @Get('history')
+  @UseGuards(HeadersValidationGuard)
   @RequireHeaders({ user_id: true })
-  async getHistory(
+  async getNotificationHistory(
     @ValidatedHeaders() headers: ValidatedHeadersType,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
+    @Query('page') page: string = '1',
+    @Query('limit') limit: string = '20',
   ) {
     const userId = headers.user_id as number;
     const pageNum = page ? parseInt(page) : 1;
@@ -65,6 +66,7 @@ export class NotificationController {
    * GET /notifications/unread-count
    */
   @Get('unread-count')
+  @UseGuards(HeadersValidationGuard)
   @RequireHeaders({ user_id: true })
   async getUnreadCount(@ValidatedHeaders() headers: ValidatedHeadersType) {
     const userId = headers.user_id as number;
@@ -76,6 +78,7 @@ export class NotificationController {
    * PUT /notifications/:id/read
    */
   @Put(':id/read')
+  @UseGuards(HeadersValidationGuard)
   @RequireHeaders({ user_id: true })
   async markAsRead(
     @ValidatedHeaders() headers: ValidatedHeadersType,
@@ -91,6 +94,7 @@ export class NotificationController {
    * PUT /notifications/read-all
    */
   @Put('read-all')
+  @UseGuards(HeadersValidationGuard)
   @RequireHeaders({ user_id: true })
   async markAllAsRead(@ValidatedHeaders() headers: ValidatedHeadersType) {
     const userId = headers.user_id as number;
@@ -102,11 +106,14 @@ export class NotificationController {
    * POST /notifications/test
    */
   @Post('test')
+  @UseGuards(HeadersValidationGuard)
   @RequireHeaders({ user_id: true })
   async sendTestNotification(@ValidatedHeaders() headers: ValidatedHeadersType) {
     const userId = headers.user_id as number;
     
-    return await this.notificationService.sendToUser(userId, {
+    console.log(`[TEST] 🧪 /notifications/test endpoint called for user ${userId}`);
+    
+    const result = await this.notificationService.sendToUser(userId, {
       title: '🎉 Test Notification',
       body: 'This is a test notification from PG Management System',
       type: 'TEST',
@@ -115,9 +122,54 @@ export class NotificationController {
         timestamp: new Date().toISOString(),
       },
     });
+    
+    console.log(`[TEST] ✅ Test notification sent to user ${userId}:`, result);
+    
+    return result;
+  }
+
+  /**
+   * Send static test notification (no user required)
+   * POST /notifications/test-static
+   */
+  @Post('test-static')
+  async sendStaticTestNotification(@Body() body: { title: string; body: string; data?: any }) {
+    console.log(`[TEST-STATIC] 🧪 Static test notification endpoint called`);
+    console.log(`[TEST-STATIC] Payload:`, body);
+    
+    try {
+      // Send to a hardcoded test token or broadcast to all registered devices
+      const result = await this.notificationService.sendStaticTestNotification({
+        title: body.title || '🎉 Static Test Notification',
+        body: body.body || 'This is a static test notification from LoginScreen',
+        type: 'TEST_STATIC',
+        data: {
+          ...body.data,
+          test: true,
+          static: true,
+          timestamp: new Date().toISOString(),
+        },
+      });
+      
+      console.log(`[TEST-STATIC] ✅ Static test notification sent:`, result);
+      
+      return {
+        success: true,
+        message: 'Static test notification sent successfully',
+        result,
+      };
+    } catch (error) {
+      console.error(`[TEST-STATIC] ❌ Failed to send static test notification:`, error);
+      return {
+        success: false,
+        message: 'Failed to send static test notification',
+        error: error.message,
+      };
+    }
   }
 
   @Post('test-token')
+  @UseGuards(HeadersValidationGuard)
   @RequireHeaders({ user_id: true })
   async sendTestToToken(
     @Body()

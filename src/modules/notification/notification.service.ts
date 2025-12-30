@@ -55,6 +55,24 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
   private expo: Expo;
 
+  private getAndroidChannelId(type?: string): string {
+    if (!type) return 'default';
+    switch (type) {
+      case 'RENT_REMINDER':
+      case 'PAYMENT_DUE_SOON':
+        return 'rent-reminders';
+      case 'PAYMENT_CONFIRMATION':
+      case 'PARTIAL_PAYMENT':
+      case 'FULL_PAYMENT':
+        return 'payments';
+      case 'OVERDUE_ALERT':
+      case 'PAYMENT_OVERDUE':
+        return 'alerts';
+      default:
+        return 'default';
+    }
+  }
+
   private maskToken(token: string) {
     if (!token) return '';
     const t = String(token);
@@ -245,6 +263,8 @@ export class NotificationService {
       const messages: ExpoPushMessage[] = tokens.map(token => ({
         to: token,
         sound: 'default',
+        priority: 'high',
+        channelId: this.getAndroidChannelId(notification.type),
         title: notification.title,
         body: notification.body,
         data: {
@@ -868,6 +888,70 @@ export class NotificationService {
       return { total: overduePayments.length, sent };
     } catch (error) {
       this.logger.error(`❌ Failed to send overdue notifications: ${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Send static test notification to existing registered devices
+   * Used for testing Firebase setup without requiring user authentication
+   */
+  async sendStaticTestNotification(notification: SendNotificationDto) {
+    try {
+      this.logger.log(`[TEST-STATIC] 🧪 Sending static test notification: ${notification.title}`);
+      
+      // Get all active FCM tokens from database for user 34 (or any active tokens)
+      const activeTokens = await this.prisma.user_fcm_tokens.findMany({
+        where: {
+          is_active: true,
+          user_id: 34, // Target user 34 specifically
+        },
+        select: {
+          fcm_token: true,
+        },
+      });
+
+      // If no tokens for user 34, get any active tokens
+      let tokens: string[] = [];
+      if (activeTokens.length === 0) {
+        this.logger.log(`[TEST-STATIC] No tokens for user 34, checking all active tokens...`);
+        const allActiveTokens = await this.prisma.user_fcm_tokens.findMany({
+          where: {
+            is_active: true,
+          },
+          select: {
+            fcm_token: true,
+          },
+          take: 1, // Just take the first one for testing
+        });
+        
+        if (allActiveTokens.length === 0) {
+          // Fallback: Use a hardcoded token from the screenshot
+          const fallbackToken = 'ExponentPushToken[gJX0cDHdNQCPqEi9_HQpZA]'; // From your screenshot
+          tokens = [fallbackToken];
+          this.logger.log(`[TEST-STATIC] 🔄 Using fallback token for testing: ${this.maskToken(fallbackToken)}`);
+        } else {
+          tokens = allActiveTokens.map(t => t.fcm_token);
+        }
+      } else {
+        tokens = activeTokens.map(t => t.fcm_token);
+      }
+
+      this.logger.log(`[TEST-STATIC] 📱 Sending to ${tokens.length} token(s)`);
+
+      // Send via Expo Push Service
+      const result = await this.sendViaExpo(tokens, notification);
+      
+      this.logger.log(`[TEST-STATIC] ✅ Static test notification sent to ${tokens.length} device(s)`);
+      
+      return {
+        ...result,
+        totalTokens: tokens.length,
+        message: `Static test notification sent to ${result.successCount} device(s)`,
+        tokensUsed: tokens.map(t => this.maskToken(t)),
+      };
+    } catch (error) {
+      this.logger.error(`[TEST-STATIC] ❌ Failed to send static test notification: ${error.message}`);
       throw error;
     }
   }

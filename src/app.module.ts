@@ -10,8 +10,8 @@ import { TenantModule } from './modules/tenant/tenant.module';
 import { RoomModule } from './modules/room/room.module';
 import { BedModule } from './modules/bed/bed.module';
 import { ExpenseModule } from './modules/expense/expense.module';
-import { EmployeeSalaryModule } from './modules/employee-salary/employee-salary.module';
 import { EmployeeModule } from './modules/employee/employee.module';
+import { PayrollModule } from './modules/payroll/payroll.module';
 import { VisitorModule } from './modules/visitor/visitor.module';
 import { TicketModule } from './modules/ticket/ticket.module';
 import { NotificationModule } from './modules/notification/notification.module';
@@ -20,6 +20,7 @@ import { PaymentGatewayModule } from './modules/payment-gateway/payment-gateway.
 import { RolesModule } from './modules/roles/roles.module';
 import { LegalDocumentsModule } from './modules/legal-documents/legal-documents.module';
 import { RbacModule } from './modules/rbac/rbac.module';
+import { PgUsersModule } from './modules/pg-users/pg-users.module';
 import { S3Module } from './s3/s3.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -41,8 +42,8 @@ import configuration from './config';
     RoomModule,
     BedModule,
     ExpenseModule,
-    EmployeeSalaryModule,
     EmployeeModule,
+    PayrollModule,
     VisitorModule,
     TicketModule,
     NotificationModule,
@@ -51,6 +52,7 @@ import configuration from './config';
     RolesModule,
     LegalDocumentsModule,
     RbacModule,
+    PgUsersModule,
     S3Module,
   ],
   controllers: [AppController],

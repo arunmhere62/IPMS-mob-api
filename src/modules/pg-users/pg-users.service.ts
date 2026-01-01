@@ -5,6 +5,21 @@ import { PrismaService } from '../../prisma/prisma.service';
 export class PgUsersService {
   constructor(private prisma: PrismaService) {}
 
+  private async assertPgInOrganization(pgId: number, organizationId: number) {
+    const pg = await this.prisma.pg_locations.findFirst({
+      where: {
+        s_no: pgId,
+        is_deleted: false,
+        organization_id: organizationId,
+      },
+      select: { s_no: true },
+    });
+
+    if (!pg) {
+      throw new NotFoundException('PG location not found');
+    }
+  }
+
   /**
    * Assign a user to a PG location
    */
@@ -198,7 +213,9 @@ export class PgUsersService {
   /**
    * Get assignment details
    */
-  async getAssignment(userId: number, pgId: number) {
+  async getAssignment(userId: number, pgId: number, organizationId: number) {
+    await this.assertPgInOrganization(pgId, organizationId);
+
     const assignment = await this.prisma.pg_users.findUnique({
       where: {
         pg_id_user_id: {
@@ -237,6 +254,50 @@ export class PgUsersService {
     }
 
     return assignment;
+  }
+
+  /**
+   * Update monthly salary amount for a user in a PG
+   */
+  async updateMonthlySalaryAmount(userId: number, pgId: number, organizationId: number, monthlySalaryAmount: number) {
+    await this.assertPgInOrganization(pgId, organizationId);
+
+    const assignment = await this.prisma.pg_users.findUnique({
+      where: {
+        pg_id_user_id: {
+          pg_id: pgId,
+          user_id: userId,
+        },
+      },
+      select: { s_no: true },
+    });
+
+    if (!assignment) {
+      throw new NotFoundException('Assignment not found');
+    }
+
+    return this.prisma.pg_users.update({
+      where: { s_no: assignment.s_no },
+      data: {
+        monthly_salary_amount: monthlySalaryAmount,
+      },
+      include: {
+        users: {
+          select: {
+            s_no: true,
+            name: true,
+            email: true,
+            phone: true,
+          },
+        },
+        pg_locations: {
+          select: {
+            s_no: true,
+            location_name: true,
+          },
+        },
+      },
+    });
   }
 
   /**

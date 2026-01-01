@@ -410,12 +410,7 @@ export class TenantService {
     }
 
     if (search) {
-      where.OR = [
-        { name: { contains: search, mode: 'insensitive' } },
-        { tenant_id: { contains: search, mode: 'insensitive' } },
-        { phone_no: { contains: search, mode: 'insensitive' } },
-        { email: { contains: search, mode: 'insensitive' } },
-      ];
+      where.OR = [{ name: { contains: search } }];
     }
 
     // Get total count
@@ -1197,6 +1192,46 @@ export class TenantService {
 
     if (!existingTenant) {
       throw new NotFoundException(`Tenant with ID ${id} not found`);
+    }
+
+    const toDateOnly = (d: any): string => {
+      if (!d) return '';
+      try {
+        const dt = d instanceof Date ? d : new Date(d);
+        return Number.isNaN(dt.getTime()) ? '' : dt.toISOString().split('T')[0];
+      } catch {
+        return '';
+      }
+    };
+
+    const requestedCheckIn = updateTenantDto.check_in_date ? toDateOnly(updateTenantDto.check_in_date) : '';
+    const existingCheckIn = toDateOnly(existingTenant.check_in_date);
+    const isCheckInChanging = !!requestedCheckIn && requestedCheckIn !== existingCheckIn;
+    const isRoomChanging =
+      updateTenantDto.room_id !== undefined
+      && updateTenantDto.room_id !== null
+      && Number(updateTenantDto.room_id) !== Number(existingTenant.room_id);
+    const isBedChanging =
+      updateTenantDto.bed_id !== undefined
+      && updateTenantDto.bed_id !== null
+      && Number(updateTenantDto.bed_id) !== Number(existingTenant.bed_id);
+
+    if (isCheckInChanging || isRoomChanging || isBedChanging) {
+      const [hasRentPayments, hasAdvance, hasRefund, hasBills] = await Promise.all([
+        this.prisma.tenant_payments.count({ where: { tenant_id: id, is_deleted: false } }),
+        this.prisma.advance_payments.count({ where: { tenant_id: id, is_deleted: false } }),
+        this.prisma.refund_payments.count({ where: { tenant_id: id, is_deleted: false } }),
+        this.prisma.current_bills.count({ where: { tenant_id: id, is_deleted: false } }),
+      ]);
+
+      const lockTenancyFacts =
+        (hasRentPayments ?? 0) > 0 || (hasAdvance ?? 0) > 0 || (hasRefund ?? 0) > 0 || (hasBills ?? 0) > 0;
+
+      if (lockTenancyFacts) {
+        throw new BadRequestException(
+          'Once rent is generated or any payment exists, Check-in date, Room, and Bed cannot be changed. Please contact support if you need to make this change.',
+        );
+      }
     }
 
     if (updateTenantDto.check_in_date) {

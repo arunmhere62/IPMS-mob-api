@@ -57,21 +57,23 @@ export class EmployeeService {
       throw new BadRequestException('Gender is required');
     }
 
-    // Check if email already exists
-    const existingUser = await this.prisma.users.findUnique({
-      where: { email: createDto.email },
-    });
+    if (createDto.email) {
+      // Check if email already exists
+      const existingUser = await this.prisma.users.findUnique({
+        where: { email: createDto.email },
+      });
 
-    if (existingUser) {
-      throw new ConflictException('Email already exists');
+      if (existingUser) {
+        throw new ConflictException('Email already exists');
+      }
     }
 
     const employee = await this.prisma.$transaction(async (tx) => {
       const created = await tx.users.create({
         data: {
           name: createDto.name,
-          email: createDto.email,
-          password: createDto.password,
+          email: createDto.email ?? null,
+          password: createDto.password ?? null,
           phone: createDto.phone,
           role_id: createDto.role_id,
           organization_id: organizationId,
@@ -391,6 +393,7 @@ export class EmployeeService {
       where: { s_no: id },
       data: {
         name: updateDto.name,
+        password: updateDto.password ? updateDto.password : undefined,
         phone: updateDto.phone,
         role_id: updateDto.role_id,
         gender: updateDto.gender,
@@ -474,6 +477,23 @@ export class EmployeeService {
       throw new BadRequestException('You cannot delete your own account');
     }
 
+    const currentUser = await this.prisma.users.findFirst({
+      where: {
+        s_no: currentUserId,
+        organization_id: organizationId,
+        is_deleted: false,
+      },
+      include: {
+        roles: {
+          select: {
+            role_name: true,
+          },
+        },
+      },
+    });
+
+    const isRootSuperAdmin = currentUser?.roles?.role_name === 'SUPER_ADMIN';
+
     // Check if trying to delete last admin
     const adminRoleId = await this.prisma.roles.findFirst({
       where: {
@@ -482,7 +502,7 @@ export class EmployeeService {
       select: { s_no: true },
     });
 
-    if (adminRoleId && existing.role_id === adminRoleId.s_no) {
+    if (!isRootSuperAdmin && adminRoleId && existing.role_id === adminRoleId.s_no) {
       const adminCount = await this.prisma.users.count({
         where: {
           organization_id: organizationId,

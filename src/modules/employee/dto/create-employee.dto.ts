@@ -1,4 +1,4 @@
-import { IsString, IsEmail, IsOptional, IsInt, IsEnum, IsNotEmpty, Matches, IsArray } from 'class-validator';
+import { IsString, IsEmail, IsOptional, IsInt, IsEnum, IsNotEmpty, Matches, IsArray, MinLength } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { users_gender } from '@prisma/client';
 
@@ -8,15 +8,16 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   name: string;
 
-  @ApiProperty({ example: 'john@example.com', description: 'Employee email' })
+  @ApiPropertyOptional({ example: 'john@example.com', description: 'Employee email' })
   @IsEmail()
-  @IsNotEmpty()
-  email: string;
+  @IsOptional()
+  email?: string;
 
-  @ApiProperty({ example: 'password123', description: 'Employee password' })
+  @ApiPropertyOptional({ example: 'password123', description: 'Employee password' })
   @IsString()
-  @IsNotEmpty()
-  password: string;
+  @IsOptional()
+  @MinLength(6)
+  password?: string;
 
   @ApiProperty({ example: '+919876543210', description: 'Phone number with country code (E.164 format)' })
   @IsString()

@@ -72,7 +72,6 @@ async function bootstrap() {
     .addTag('notifications', 'Notification endpoints')
     .addTag('tickets', 'Support ticket endpoints')
     .addTag('employees', 'Employee endpoints')
-    .addTag('employee-salary', 'Employee salary endpoints')
     .addTag('expenses', 'Expense endpoints')
     .addTag('roles', 'Role management endpoints')
     .addTag('rbac', 'Role-based access control endpoints')

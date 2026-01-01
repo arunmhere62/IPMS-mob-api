@@ -66,6 +66,14 @@ export class ExpenseService {
         gte: startDate,
         lt: endDate,
       };
+    } else if (year) {
+      const startDate = new Date(year, 0, 1);
+      const endDate = new Date(year + 1, 0, 1);
+
+      whereClause.paid_date = {
+        gte: startDate,
+        lt: endDate,
+      };
     }
 
     const [expenses, total] = await Promise.all([

@@ -286,6 +286,66 @@ model otp_verifications {
   @@index([user_id], map: "idx_user_id")
 }
 
+model payroll_item_payments {
+  s_no              Int                                   @id @default(autoincrement())
+  item_id           Int
+  paid_amount       Decimal                               @db.Decimal(10, 2)
+  paid_date         DateTime                              @db.Date
+  payment_method    payroll_item_payments_payment_method?
+  remarks           String?                               @db.VarChar(255)
+  created_by        Int?
+  created_at        DateTime                              @default(now()) @db.Timestamp(0)
+  users             users?                                @relation(fields: [created_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_payroll_item_payments_created_by")
+  payroll_run_items payroll_run_items                     @relation(fields: [item_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_payroll_item_payments_item")
+
+  @@index([created_by], map: "fk_payroll_item_payments_created_by")
+  @@index([item_id], map: "idx_payroll_item_payments_item")
+  @@index([paid_date], map: "idx_payroll_item_payments_paid_date")
+}
+
+model payroll_run_items {
+  s_no                  Int                      @id @default(autoincrement())
+  run_id                Int
+  pg_id                 Int
+  user_id               Int
+  net_amount            Decimal                  @db.Decimal(10, 2)
+  status                payroll_run_items_status @default(GENERATED)
+  remarks               String?                  @db.VarChar(255)
+  created_at            DateTime                 @default(now()) @db.Timestamp(0)
+  updated_at            DateTime                 @default(now()) @db.Timestamp(0)
+  payroll_item_payments payroll_item_payments[]
+  pg_locations          pg_locations             @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_payroll_items_pg")
+  payroll_runs          payroll_runs             @relation(fields: [run_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_payroll_items_run")
+  users                 users                    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_payroll_items_user")
+
+  @@unique([run_id, user_id], map: "uq_payroll_items_run_user")
+  @@index([pg_id], map: "idx_payroll_items_pg")
+  @@index([run_id], map: "idx_payroll_items_run")
+  @@index([user_id], map: "idx_payroll_items_user")
+}
+
+model payroll_runs {
+  s_no              Int                 @id @default(autoincrement())
+  organization_id   Int
+  pg_id             Int
+  month             DateTime            @db.Date
+  status            payroll_runs_status @default(GENERATED)
+  generated_by      Int
+  generated_at      DateTime            @default(now()) @db.Timestamp(0)
+  notes             String?             @db.VarChar(255)
+  created_at        DateTime            @default(now()) @db.Timestamp(0)
+  updated_at        DateTime            @default(now()) @db.Timestamp(0)
+  payroll_run_items payroll_run_items[]
+  users             users               @relation(fields: [generated_by], references: [s_no], onUpdate: Restrict, map: "fk_payroll_runs_generated_by")
+  pg_locations      pg_locations        @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_payroll_runs_pg")
+
+  @@unique([pg_id, month], map: "uq_payroll_runs_pg_month")
+  @@index([generated_by], map: "fk_payroll_runs_generated_by")
+  @@index([month], map: "idx_payroll_runs_month")
+  @@index([organization_id], map: "idx_payroll_runs_org")
+  @@index([pg_id], map: "idx_payroll_runs_pg")
+}
+
 model permissions_master {
   s_no                      Int                         @id @default(autoincrement())
   screen_name               String                      @db.VarChar(100)
@@ -321,6 +381,8 @@ model pg_locations {
   current_bills      current_bills[]
   employee_salary    employee_salary[]
   expenses           expenses[]
+  payroll_run_items  payroll_run_items[]
+  payroll_runs       payroll_runs[]
   city               city?                        @relation(fields: [city_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_city")
   organization       organization                 @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_locations_organization")
   state              state?                       @relation(fields: [state_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_state")
@@ -348,14 +410,15 @@ model pg_types {
 }
 
 model pg_users {
-  s_no         Int          @id @default(autoincrement())
-  pg_id        Int
-  user_id      Int
-  is_active    Boolean?     @default(true)
-  created_at   DateTime     @default(now()) @db.Timestamp(0)
-  updated_at   DateTime     @default(now()) @db.Timestamp(0)
-  pg_locations pg_locations @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_users_pg")
-  users        users        @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_users_user")
+  s_no                  Int          @id @default(autoincrement())
+  pg_id                 Int
+  user_id               Int
+  is_active             Boolean?     @default(true)
+  created_at            DateTime     @default(now()) @db.Timestamp(0)
+  updated_at            DateTime     @default(now()) @db.Timestamp(0)
+  monthly_salary_amount Decimal?     @db.Decimal(10, 2)
+  pg_locations          pg_locations @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_users_pg")
+  users                 users        @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_users_user")
 
   @@unique([pg_id, user_id], map: "uq_pg_user")
   @@index([is_active], map: "idx_pg_users_active")
@@ -745,6 +808,9 @@ model users {
   notifications                                                         notifications[]
   organization_organization_superadmin_idTousers                        organization?               @relation("organization_superadmin_idTousers")
   otp_verifications                                                     otp_verifications[]
+  payroll_item_payments                                                 payroll_item_payments[]
+  payroll_run_items                                                     payroll_run_items[]
+  payroll_runs                                                          payroll_runs[]
   pg_users                                                              pg_users[]
   tokens                                                                tokens[]
   user_fcm_tokens                                                       user_fcm_tokens[]
@@ -822,11 +888,30 @@ enum employee_salary_payment_method {
   BANK_TRANSFER
 }
 
+enum payroll_item_payments_payment_method {
+  GPAY
+  PHONEPE
+  CASH
+  BANK_TRANSFER
+}
+
+enum payroll_runs_status {
+  GENERATED
+  LOCKED
+  CANCELLED
+}
+
 enum user_subscriptions_status {
   ACTIVE
   EXPIRED
   CANCELLED
   PENDING
+}
+
+enum payroll_run_items_status {
+  GENERATED
+  PARTIALLY_PAID
+  PAID
 }
 
 enum users_status {

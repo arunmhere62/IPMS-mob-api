@@ -6,7 +6,7 @@ import { ValidatedHeaders } from '../../common/decorators/validated-headers.deco
 import { RbacService } from './rbac.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
-@ApiTags('auth')
+@ApiTags('rbac')
 @Controller('auth')
 export class RbacController {
   constructor(private readonly rbacService: RbacService) {}

@@ -43,7 +43,7 @@ export class PendingPaymentService {
     tenantId: number,
   ): Promise<PendingPaymentDetails> {
     // Get tenant details with room and payments
-    const tenant = await this.prisma.tenants.findUnique({
+    const tenant: any = await (this.prisma as any).tenants.findUnique({
       where: { s_no: tenantId },
       include: {
         rooms: {
@@ -54,6 +54,16 @@ export class PendingPaymentService {
         beds: {
           select: {
             bed_price: true,
+          },
+        },
+        tenant_allocations: {
+          orderBy: {
+            effective_from: 'asc',
+          },
+          select: {
+            effective_from: true,
+            effective_to: true,
+            bed_price_snapshot: true,
           },
         },
         tenant_payments: {
@@ -93,9 +103,76 @@ export class PendingPaymentService {
       };
     }
 
-    const monthlyRent = tenant.beds?.bed_price
-      ? parseFloat(tenant.beds.bed_price.toString())
-      : 0;
+    const moneyRound2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+    const toDateOnlyUtc = (d: Date): Date => new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
+    const getInclusiveDays = (start: Date, end: Date): number => {
+      const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+      const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
+      return Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24)) + 1;
+    };
+
+    const computeProratedAmountForMonth = (monthlyPrice: number, start: Date, end: Date): number => {
+      if (monthlyPrice <= 0) return 0;
+      const s = toDateOnlyUtc(start);
+      const e = toDateOnlyUtc(end);
+      const year = s.getUTCFullYear();
+      const month = s.getUTCMonth();
+      const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+      const daysInPeriod = getInclusiveDays(s, e);
+      return (monthlyPrice / daysInMonth) * daysInPeriod;
+    };
+
+    const computeProratedDueFromAllocations = (periodStart: Date, periodEnd: Date): number => {
+      const allocations = (tenant as any).tenant_allocations || [];
+      if (!allocations || allocations.length === 0) return 0;
+
+      const start = toDateOnlyUtc(periodStart);
+      const end = toDateOnlyUtc(periodEnd);
+
+      const overlaps = allocations
+        .map((a: any) => ({
+          from: toDateOnlyUtc(new Date(a.effective_from)),
+          to: a.effective_to ? toDateOnlyUtc(new Date(a.effective_to)) : null,
+          price: a.bed_price_snapshot ? Number(a.bed_price_snapshot) : 0,
+        }))
+        .filter((a: any) => {
+          const aTo = a.to ?? end;
+          return a.from <= end && aTo >= start;
+        })
+        .sort((a: any, b: any) => a.from.getTime() - b.from.getTime());
+
+      if (overlaps.length === 0) return 0;
+
+      let total = 0;
+      overlaps.forEach((a: any) => {
+        const segStart = a.from > start ? a.from : start;
+        const segEnd = (a.to ?? end) < end ? (a.to ?? end) : end;
+        if (segStart > segEnd) return;
+
+        let cursor = new Date(segStart);
+        while (cursor <= segEnd) {
+          const y = cursor.getUTCFullYear();
+          const m = cursor.getUTCMonth();
+
+          const monthStart = new Date(Date.UTC(y, m, 1));
+          const monthEnd = new Date(Date.UTC(y, m + 1, 0));
+
+          const partStart = cursor > monthStart ? cursor : monthStart;
+          const partEnd = segEnd < monthEnd ? segEnd : monthEnd;
+
+          total += computeProratedAmountForMonth(a.price, partStart, partEnd);
+
+          const next = new Date(partEnd);
+          next.setUTCDate(next.getUTCDate() + 1);
+          cursor = next;
+        }
+      });
+
+      return moneyRound2(total);
+    };
+
+    const bedPriceNumber = tenant.beds?.bed_price ? parseFloat(tenant.beds.bed_price.toString()) : 0;
+    const monthlyRent = bedPriceNumber;
     
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -117,7 +194,11 @@ export class PendingPaymentService {
 
     // Case 1: No payments at all
     if (!lastPayment) {
-      totalPending = monthlyRent;
+      // For "no payments" case, show expected due for the current month/cycle using allocations if possible
+      const start = new Date(today.getFullYear(), today.getMonth(), 1);
+      const end = new Date(today.getFullYear(), today.getMonth() + 1, 0);
+      const dueFromAllocations = computeProratedDueFromAllocations(start, end);
+      totalPending = dueFromAllocations > 0 ? dueFromAllocations : monthlyRent;
       paymentStatus = 'PENDING';
       
       // Due date is end of current month
@@ -128,9 +209,9 @@ export class PendingPaymentService {
       pendingMonths.push({
         month: today.toLocaleString('default', { month: 'long' }),
         year: today.getFullYear(),
-        expected_amount: monthlyRent,
+        expected_amount: totalPending,
         paid_amount: 0,
-        balance: monthlyRent,
+        balance: totalPending,
         due_date: endOfMonth.toISOString(),
         is_overdue: false,
       });
@@ -145,12 +226,18 @@ export class PendingPaymentService {
         // Case 2a: Last payment end date has passed
         if (lastPaymentEndDate < today) {
           // Payment period has ended - show as PENDING (not OVERDUE)
-          totalPending = monthlyRent;
-          paymentStatus = 'PENDING';
-          
-          // Show next due date as one day after end date
+          // Next cycle expected due (allocation-aware)
           const nextDay = new Date(lastPaymentEndDate);
           nextDay.setDate(nextDay.getDate() + 1);
+
+          // Use the same period granularity as payments: we assume the next cycle is a full calendar month
+          // unless the tenant is on midmonth (this service doesn't currently model MIDMONTH cycles).
+          const start = new Date(nextDay.getFullYear(), nextDay.getMonth(), 1);
+          const end = new Date(nextDay.getFullYear(), nextDay.getMonth() + 1, 0);
+          const dueFromAllocations = computeProratedDueFromAllocations(start, end);
+          totalPending = dueFromAllocations > 0 ? dueFromAllocations : monthlyRent;
+          paymentStatus = 'PENDING';
+          
           nextDueDate = nextDay.toISOString();
 
           const endedMonth = lastPaymentEndDate.toLocaleString('default', { month: 'long' });
@@ -159,9 +246,9 @@ export class PendingPaymentService {
           pendingMonths.push({
             month: endedMonth,
             year: endedYear,
-            expected_amount: monthlyRent,
+            expected_amount: totalPending,
             paid_amount: 0,
-            balance: monthlyRent,
+            balance: totalPending,
             due_date: nextDay.toISOString(),
             is_overdue: false,
           });
@@ -169,9 +256,19 @@ export class PendingPaymentService {
         // Case 2b: Last payment is still valid (end date is today or future)
         else {
           // Check if partial payment
-          const actualRentAmount = lastPayment.actual_rent_amount 
-            ? parseFloat(lastPayment.actual_rent_amount.toString())
-            : monthlyRent;
+          const periodStart = new Date(lastPayment.start_date);
+          const periodEnd = new Date(lastPayment.end_date);
+
+          // Prefer allocation-aware expected due for the period. This allows detecting
+          // price differences after a mid-cycle transfer, even if actual_rent_amount
+          // was recorded before the transfer.
+          const dueFromAllocations = computeProratedDueFromAllocations(periodStart, periodEnd);
+
+          const actualRentAmount = dueFromAllocations > 0
+            ? dueFromAllocations
+            : lastPayment.actual_rent_amount
+              ? parseFloat(lastPayment.actual_rent_amount.toString())
+              : monthlyRent;
           const amountPaid = parseFloat(lastPayment.amount_paid.toString());
           
           if (amountPaid < actualRentAmount) {

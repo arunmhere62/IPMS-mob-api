@@ -10,14 +10,17 @@ import {
   ParseIntPipe,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiQuery } from '@nestjs/swagger';
 import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
+import { TransferTenantDto } from './dto/transfer-tenant.dto';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
+@ApiTags('tenants')
 @Controller('tenants')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
 export class TenantController {
@@ -31,6 +34,9 @@ export class TenantController {
   @Post()
   @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
   // @UseGuards(JwtAuthGuard) // TODO: Add authentication
+  @ApiOperation({ summary: 'Create a new tenant' })
+  @ApiResponse({ status: 201, description: 'Tenant created successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
   async create(
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Body() createTenantDto: CreateTenantDto,
@@ -47,6 +53,16 @@ export class TenantController {
   @Get()
   @RequireHeaders({ pg_id: true })
   // @UseGuards(JwtAuthGuard) // TODO: Add authentication
+  @ApiOperation({ summary: 'Get all tenants with filters' })
+  @ApiQuery({ name: 'page', required: false, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, example: 10 })
+  @ApiQuery({ name: 'status', required: false, example: 'ACTIVE' })
+  @ApiQuery({ name: 'search', required: false, example: 'john' })
+  @ApiQuery({ name: 'room_id', required: false, example: 101 })
+  @ApiQuery({ name: 'pending_rent', required: false, example: true })
+  @ApiQuery({ name: 'pending_advance', required: false, example: true })
+  @ApiQuery({ name: 'partial_rent', required: false, example: true })
+  @ApiResponse({ status: 200, description: 'Tenants fetched successfully' })
   async findAll(
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Query('page') page?: string,
@@ -79,72 +95,6 @@ export class TenantController {
   }
 
   /**
-   * Get tenants with pending rent
-   * GET /api/v1/tenants/pending-rent
-   * Headers: pg_id, organization_id, user_id
-   */
-  @Get('pending-rent')
-  @RequireHeaders()
-  async getTenantsWithPendingRent(
-    @ValidatedHeaders() headers: ValidatedHeaders,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const pageNumber = page ? parseInt(page) : 1;
-    const limitNumber = limit ? parseInt(limit) : 10;
-
-    return this.tenantService.getTenantsWithPendingRent({
-      page: pageNumber,
-      limit: limitNumber,
-      pg_id: headers.pg_id!,
-    });
-  }
-
-  /**
-   * Get tenants with partial rent
-   * GET /api/v1/tenants/partial-rent
-   * Headers: pg_id, organization_id, user_id
-   */
-  @Get('partial-rent')
-  @RequireHeaders()
-  async getTenantsWithPartialRent(
-    @ValidatedHeaders() headers: ValidatedHeaders,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const pageNumber = page ? parseInt(page) : 1;
-    const limitNumber = limit ? parseInt(limit) : 10;
-
-    return this.tenantService.getTenantsWithPartialRent({
-      page: pageNumber,
-      limit: limitNumber,
-      pg_id: headers.pg_id!,
-    });
-  }
-
-  /**
-   * Get tenants without advance payment
-   * GET /api/v1/tenants/pending-advance
-   * Headers: pg_id, organization_id, user_id
-   */
-  @Get('pending-advance')
-  @RequireHeaders()
-  async getTenantsWithoutAdvance(
-    @ValidatedHeaders() headers: ValidatedHeaders,
-    @Query('page') page?: string,
-    @Query('limit') limit?: string,
-  ) {
-    const pageNumber = page ? parseInt(page) : 1;
-    const limitNumber = limit ? parseInt(limit) : 10;
-
-    return this.tenantService.getTenantsWithoutAdvance({
-      page: pageNumber,
-      limit: limitNumber,
-      pg_id: headers.pg_id!,
-    });
-  }
-
-  /**
    * Get tenant by ID
    * GET /api/v1/tenants/:id
    * Headers: pg_id, organization_id, user_id
@@ -152,6 +102,10 @@ export class TenantController {
   @Get(':id')
   @RequireHeaders()
   // @UseGuards(JwtAuthGuard) // TODO: Add authentication
+  @ApiOperation({ summary: 'Get tenant by ID' })
+  @ApiParam({ name: 'id', description: 'Tenant ID', example: 1 })
+  @ApiResponse({ status: 200, description: 'Tenant fetched successfully' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
   async findOne(
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Param('id', ParseIntPipe) id: number,
@@ -167,6 +121,11 @@ export class TenantController {
   @Put(':id')
   @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
   // @UseGuards(JwtAuthGuard) // TODO: Add authentication
+  @ApiOperation({ summary: 'Update tenant' })
+  @ApiParam({ name: 'id', description: 'Tenant ID', example: 1 })
+  @ApiResponse({ status: 200, description: 'Tenant updated successfully' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
   async update(
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Param('id', ParseIntPipe) id: number,
@@ -183,6 +142,10 @@ export class TenantController {
   @Delete(':id')
   @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
   // @UseGuards(JwtAuthGuard) // TODO: Add authentication
+  @ApiOperation({ summary: 'Delete tenant (soft delete)' })
+  @ApiParam({ name: 'id', description: 'Tenant ID', example: 1 })
+  @ApiResponse({ status: 200, description: 'Tenant deleted successfully' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
   async remove(
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Param('id', ParseIntPipe) id: number,
@@ -191,61 +154,21 @@ export class TenantController {
   }
 
   /**
-   * Get detailed pending rent information for a specific tenant
-   * Headers: pg_id, organization_id, user_id
+   * Transfer tenant to another PG/room/bed (supports effective date)
+   * POST /api/v1/tenants/:id/transfer
    */
-  @Get(':id/pending-rent-details')
+  @Post(':id/transfer')
   @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
-  async getTenantPendingRentDetails(
+  @ApiOperation({ summary: 'Transfer tenant to another PG/room/bed' })
+  @ApiParam({ name: 'id', description: 'Tenant ID', example: 1 })
+  @ApiResponse({ status: 200, description: 'Tenant transferred successfully' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  async transferTenant(
     @ValidatedHeaders() headers: ValidatedHeaders,
-    @Param('id', ParseIntPipe) tenantId: number,
+    @Param('id', ParseIntPipe) id: number,
+    @Body() transferTenantDto: TransferTenantDto,
   ) {
-    return this.tenantService.getTenantPendingRentDetails(tenantId);
-  }
-
-  /**
-   * Get pending rent summary for all tenants
-   * Headers: pg_id, organization_id, user_id
-   */
-  @Get('pending-rent-summary')
-  @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
-  async getAllTenantsPendingRentSummary(
-    @ValidatedHeaders() headers: ValidatedHeaders,
-    @Query('page') page: string = '1',
-    @Query('limit') limit: string = '50',
-  ) {
-    return this.tenantService.getAllTenantsPendingRentSummary({
-      ...headers,
-      page: parseInt(page),
-      limit: parseInt(limit),
-    });
-  }
-
-  /**
-   * Get tenants with overdue payments
-   * Headers: pg_id, organization_id, user_id
-   */
-  @Get('overdue-tenants')
-  @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
-  async getOverdueTenants(
-    @ValidatedHeaders() headers: ValidatedHeaders,
-    @Query('min_amount') minAmount: string = '0',
-  ) {
-    return this.tenantService.getOverdueTenants({
-      ...headers,
-      min_amount: minAmount,
-    });
-  }
-
-  /**
-   * Get pending rent statistics for dashboard
-   * Headers: pg_id, organization_id, user_id
-   */
-  @Get('pending-rent-stats')
-  @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
-  async getPendingRentStats(
-    @ValidatedHeaders() headers: ValidatedHeaders,
-  ) {
-    return this.tenantService.getPendingRentStats(headers);
+    return this.tenantService.transferTenant(id, transferTenantDto);
   }
 }

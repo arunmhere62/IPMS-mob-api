@@ -27,7 +27,7 @@ export default registerAs('app', (): AppConfiguration => {
       return {
         otpExpiryMinutes: 60, // 1 hour
         otpMaxAttempts: 5, // More attempts for testing
-        jwtAccessTokenExpiry: '1m', // 1 minute
+        jwtAccessTokenExpiry: '10m', // 1 minute
         jwtRefreshTokenExpiry: '30d', // 30 days
       };
     } else {

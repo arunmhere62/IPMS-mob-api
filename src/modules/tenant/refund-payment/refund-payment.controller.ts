@@ -17,7 +17,7 @@ import { RequireHeaders } from '../../../common/decorators/require-headers.decor
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
 import { RefundPaymentService } from './refund-payment.service';
 
-@ApiTags('Refund Payments')
+@ApiTags('refund-payments')
 @Controller('refund-payments')
 @UseGuards(HeadersValidationGuard)
 export class RefundPaymentController {

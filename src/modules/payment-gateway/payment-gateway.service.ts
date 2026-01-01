@@ -183,7 +183,7 @@ export class PaymentGatewayService {
    * NOTE: Subscriptions are organization-scoped; this resolves organization_id from the user.
    */
   async getActiveSubscription(userId: number) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.users.findUnique({
       where: { s_no: userId },
       select: { organization_id: true },
     });
@@ -208,7 +208,7 @@ export class PaymentGatewayService {
    * NOTE: Subscriptions are organization-scoped; this resolves organization_id from the user.
    */
   async hasActiveSubscription(userId: number): Promise<boolean> {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.users.findUnique({
       where: { s_no: userId },
       select: { organization_id: true },
     });

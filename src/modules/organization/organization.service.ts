@@ -78,7 +78,7 @@ export class OrganizationService {
       organizations.map(async (org) => {
         // Get admin users directly from users table
         // Query: organization_id -> users table -> filter by role_name = 'ADMIN'
-        const adminUsers = await this.prisma.user.findMany({
+        const adminUsers = await this.prisma.users.findMany({
           where: {
             organization_id: org.s_no,  // Match organization
             is_deleted: false,
@@ -163,7 +163,7 @@ export class OrganizationService {
     });
 
     // Total users across all organizations
-    const totalUsers = await this.prisma.user.count({
+    const totalUsers = await this.prisma.users.count({
       where: { is_deleted: false },
     });
 
@@ -274,7 +274,7 @@ export class OrganizationService {
     const totalRevenue = revenueResult._sum.amount_paid || 0;
 
     // Get all users for this organization
-    const allUsers = await this.prisma.user.findMany({
+    const allUsers = await this.prisma.users.findMany({
       where: {
         organization_id: id,
         is_deleted: false,

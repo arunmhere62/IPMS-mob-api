@@ -29,7 +29,7 @@ import { UpdateLegalDocumentDto } from './dto/update-legal-document.dto';
 import { AcceptLegalDocumentDto } from './dto/accept-legal-document.dto';
 import { RevokeLegalAcceptanceDto } from './dto/revoke-legal-acceptance.dto';
 
-@ApiTags('Legal Documents')
+@ApiTags('legal-documents')
 @Controller('legal-documents')
 @UseGuards(HeadersValidationGuard)
 export class LegalDocumentsController {

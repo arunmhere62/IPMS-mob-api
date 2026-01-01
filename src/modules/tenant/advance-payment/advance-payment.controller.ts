@@ -17,7 +17,7 @@ import { HeadersValidationGuard } from '../../../common/guards/headers-validatio
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
 
-@ApiTags('Advance Payments')
+@ApiTags('advance-payments')
 @Controller('advance-payments')
 @UseGuards(HeadersValidationGuard)
 export class AdvancePaymentController {

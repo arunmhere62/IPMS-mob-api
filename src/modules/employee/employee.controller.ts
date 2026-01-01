@@ -32,12 +32,12 @@ export class EmployeeController {
   @ApiResponse({ status: 201, description: 'Employee created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
   @ApiResponse({ status: 409, description: 'Email already exists' })
-  @RequireHeaders({ organization_id: true, user_id: true })
+  @RequireHeaders({ organization_id: true, user_id: true, pg_id: true })
   create(
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Body() createDto: CreateEmployeeDto,
   ) {
-    return this.employeeService.create(headers.organization_id!, createDto);
+    return this.employeeService.create(headers.organization_id!, headers.pg_id!, createDto);
   }
 
   @Get()

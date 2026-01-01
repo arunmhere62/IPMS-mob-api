@@ -1,7 +1,9 @@
 import { CommonHeaders, CommonHeadersDecorator } from '../../../common/decorators/common-headers.decorator';
 import { Controller, Get, Param, Query } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { PendingPaymentService } from './pending-payment.service';
 
+@ApiTags('pending-payments')
 @Controller('tenants/pending-payments')
 export class PendingPaymentController {
   constructor(private readonly pendingPaymentService: PendingPaymentService) {}

@@ -18,21 +18,18 @@ export class CreateEmployeeDto {
   @IsNotEmpty()
   password: string;
 
-  @ApiProperty({ example: '9876543210', description: 'Phone number (10 digits)' })
+  @ApiProperty({ example: '+919876543210', description: 'Phone number with country code (E.164 format)' })
   @IsString()
   @IsNotEmpty()
-  @Matches(/^\d{10}$/, { message: 'Phone number must be 10 digits' })
+  @Matches(/^\+[1-9]\d{6,14}$/, {
+    message: 'Phone number must include country code (e.g., +919876543210)',
+  })
   phone: string;
 
   @ApiProperty({ example: 2, description: 'Role ID' })
   @IsInt()
   @IsNotEmpty()
   role_id: number;
-
-  @ApiPropertyOptional({ example: 1, description: 'PG Location ID' })
-  @IsOptional()
-  @IsInt()
-  pg_id?: number;
 
   @ApiProperty({ example: 'MALE', enum: users_gender, description: 'Gender' })
   @IsEnum(users_gender)

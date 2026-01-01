@@ -55,7 +55,7 @@ export class AuthDbService {
     const normalizedPhone = normalizePhoneNumber(phone);
 
     // Check if user exists with this phone number
-    const user = await this.prisma.user.findFirst({
+    const user = await this.prisma.users.findFirst({
       where: {
         phone: normalizedPhone,
         is_deleted: false,
@@ -206,7 +206,7 @@ export class AuthDbService {
     });
 
     // Get user details
-    const user = await this.prisma.user.findFirst({
+    const user = await this.prisma.users.findFirst({
       where: {
         phone: normalizedPhone,
         is_deleted: false,
@@ -334,7 +334,7 @@ export class AuthDbService {
       throw new UnauthorizedException('Refresh token has expired');
     }
 
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.users.findUnique({
       where: { s_no: payload.sub },
       select: {
         s_no: true,
@@ -541,7 +541,7 @@ export class AuthDbService {
     const normalizedPhone = normalizePhoneNumber(phone);
     
     // Check if phone already exists (if provided)
-    const existingPhone = await this.prisma.user.findFirst({
+    const existingPhone = await this.prisma.users.findFirst({
       where: { phone: normalizedPhone },
     });
 
@@ -587,12 +587,14 @@ export class AuthDbService {
         }
 
         // 3. Create user (status INACTIVE until admin approval)
-        const user = await prisma.user.create({
+        const user = await prisma.users.create({
           data: {
             name,
             phone: normalizedPhone,
             status: 'ACTIVE', // User needs admin approval
-            organization_id: organization.s_no,
+            organization_users_organization_idToorganization: {
+              connect: { s_no: organization.s_no },
+            },
             is_deleted: false,
             roles: {
               connect: { s_no: role.s_no },
@@ -606,6 +608,7 @@ export class AuthDbService {
           data: {
             created_by: user.s_no,
             updated_by: user.s_no,
+            superadmin_id: user.s_no,
           },
         });
 
@@ -618,7 +621,6 @@ export class AuthDbService {
 
         const pgLocation = await prisma.pg_locations.create({
           data: {
-            user_id: user.s_no,
             location_name: pgName,
             address: '',
             status: 'ACTIVE',
@@ -630,10 +632,13 @@ export class AuthDbService {
           },
         });
 
-        // 6. Update user with pgId
-        await prisma.user.update({
-          where: { s_no: user.s_no },
-          data: { pg_id: pgLocation.s_no },
+        // 6. Assign user as owner of the PG using pg_users junction table
+        await prisma.pg_users.create({
+          data: {
+            pg_id: pgLocation.s_no,
+            user_id: user.s_no,
+            is_active: true,
+          },
         });
 
         const endDate = new Date(Date.now() + freePlan.duration * 24 * 60 * 60 * 1000);
@@ -718,7 +723,7 @@ export class AuthDbService {
    */
   async updateProfile(userId: number, updateProfileDto: UpdateProfileDto) {
     // Check if user exists
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.users.findUnique({
       where: { s_no: userId },
     });
 
@@ -728,7 +733,7 @@ export class AuthDbService {
 
     // Check if email is being changed and if it's already taken
     if (updateProfileDto.email && updateProfileDto.email !== user.email) {
-      const existingEmail = await this.prisma.user.findFirst({
+      const existingEmail = await this.prisma.users.findFirst({
         where: {
           email: updateProfileDto.email,
           s_no: { not: userId },
@@ -743,7 +748,7 @@ export class AuthDbService {
     // Check if phone is being changed and if it's already taken
     if (updateProfileDto.phone && updateProfileDto.phone !== user.phone) {
       const normalizedPhone = normalizePhoneNumber(updateProfileDto.phone);
-      const existingPhone = await this.prisma.user.findFirst({
+      const existingPhone = await this.prisma.users.findFirst({
         where: {
           phone: normalizedPhone,
           s_no: { not: userId },
@@ -805,7 +810,7 @@ export class AuthDbService {
     // Update user profile
     console.log('=== DATABASE UPDATE DEBUG ===');
     console.log('Updating profile_images to:', updateProfileDto.profile_images);
-    const updatedUser = await this.prisma.user.update({
+    const updatedUser = await this.prisma.users.update({
       where: { s_no: userId },
       data: {
         name: updateProfileDto.name,
@@ -854,7 +859,7 @@ export class AuthDbService {
     const { currentPassword, newPassword } = changePasswordDto;
 
     // Check if user exists
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.users.findUnique({
       where: { s_no: userId },
       select: {
         s_no: true,
@@ -872,7 +877,7 @@ export class AuthDbService {
     }
 
     // Update password (no encryption for now)
-    await this.prisma.user.update({
+    await this.prisma.users.update({
       where: { s_no: userId },
       data: {
         password: newPassword,
@@ -887,7 +892,7 @@ export class AuthDbService {
    */
   async getProfileById(userId: number, organizationId?: number, pgId?: number) {
     // Check if user exists
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.users.findUnique({
       where: { 
         s_no: userId,
         is_deleted: false 
@@ -905,7 +910,6 @@ export class AuthDbService {
         state_id: true,
         gender: true,
         profile_images: true,
-        pg_id: true,
         pincode: true,
         country: true,
         created_at: true,
@@ -960,26 +964,33 @@ export class AuthDbService {
       });
     }
 
-    // Fetch PG location data if pg_id exists
-    let pgLocation = null;
-    if (user.pg_id) {
-      pgLocation = await this.prisma.pg_locations.findUnique({
-        where: { s_no: user.pg_id },
-        select: {
-          s_no: true,
-          location_name: true,
-          address: true,
-          pincode: true,
-          status: true,
-          pg_type: true,
-          rent_cycle_type: true,
-          rent_cycle_start: true,
-          rent_cycle_end: true,
-          city_id: true,
-          state_id: true,
+    // Fetch user's PG locations from pg_users junction table
+    const userPgAssignments = await this.prisma.pg_users.findMany({
+      where: {
+        user_id: userId,
+        is_active: true,
+      },
+      include: {
+        pg_locations: {
+          select: {
+            s_no: true,
+            location_name: true,
+            address: true,
+            pincode: true,
+            status: true,
+            pg_type: true,
+            rent_cycle_type: true,
+            rent_cycle_start: true,
+            rent_cycle_end: true,
+            city_id: true,
+            state_id: true,
+          },
         },
-      });
-    }
+      },
+    });
+
+    // Extract PG locations from assignments
+    const pgLocations = userPgAssignments.map(assignment => assignment.pg_locations);
 
     // Build profile response object
     const profileResponse = {
@@ -1000,12 +1011,11 @@ export class AuthDbService {
       state_name: user.state?.name || null,
       gender: user.gender,
       profile_images: user.profile_images,
-      pg_id: user.pg_id,
       pincode: user.pincode,
       country: user.country,
       created_at: user.created_at,
       updated_at: user.updated_at,
-      pg_location: pgLocation,
+      pg_locations: pgLocations,
     };
 
     return ResponseUtil.success(profileResponse, 'Profile retrieved successfully');
@@ -1015,7 +1025,7 @@ export class AuthDbService {
    * Get all users for an organization
    */
   async getUsers(organizationId: number) {
-    const users = await this.prisma.user.findMany({
+    const users = await this.prisma.users.findMany({
       where: {
         organization_id: organizationId,
         is_deleted: false,

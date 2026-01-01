@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { RoomService } from './room.service';
 import { CreateRoomDto } from './dto/create-room.dto';
 import { UpdateRoomDto } from './dto/update-room.dto';
@@ -17,6 +18,7 @@ import { RequireHeaders } from '../../common/decorators/require-headers.decorato
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
+@ApiTags('rooms')
 @Controller('rooms')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
 export class RoomController {

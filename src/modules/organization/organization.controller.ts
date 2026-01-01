@@ -1,6 +1,8 @@
 import { Controller, Get, UseGuards, Query } from '@nestjs/common';
+import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { OrganizationService } from './organization.service';
 
+@ApiTags('organizations')
 @Controller('organizations')
 export class OrganizationController {
   constructor(private readonly organizationService: OrganizationService) {}
@@ -11,6 +13,8 @@ export class OrganizationController {
    */
   @Get()
   // @UseGuards(JwtAuthGuard, SuperAdminGuard) // TODO: Add authentication guards
+  @ApiOperation({ summary: 'Get all organizations for SuperAdmin' })
+  @ApiResponse({ status: 200, description: 'Organizations retrieved successfully' })
   async getAllOrganizations(
     @Query('page') page?: string,
     @Query('limit') limit?: string,
@@ -30,6 +34,8 @@ export class OrganizationController {
    */
   @Get('stats')
   // @UseGuards(JwtAuthGuard, SuperAdminGuard) // TODO: Add authentication guards
+  @ApiOperation({ summary: 'Get organization statistics (SuperAdmin only)' })
+  @ApiResponse({ status: 200, description: 'Organization stats retrieved successfully' })
   async getOrganizationStats() {
     return this.organizationService.getOrganizationStats();
   }
@@ -40,6 +46,8 @@ export class OrganizationController {
    */
   @Get(':id')
   // @UseGuards(JwtAuthGuard, SuperAdminGuard) // TODO: Add authentication guards
+  @ApiOperation({ summary: 'Get organization details by ID (SuperAdmin only)' })
+  @ApiResponse({ status: 200, description: 'Organization retrieved successfully' })
   async getOrganizationById(@Query('id') id: string) {
     return this.organizationService.getOrganizationById(parseInt(id, 10));
   }

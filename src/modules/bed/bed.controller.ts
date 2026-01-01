@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { ApiTags } from '@nestjs/swagger';
 import { BedService } from './bed.service';
 import { CreateBedDto } from './dto/create-bed.dto';
 import { UpdateBedDto } from './dto/update-bed.dto';
@@ -17,6 +18,7 @@ import { RequireHeaders } from '../../common/decorators/require-headers.decorato
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
+@ApiTags('beds')
 @Controller('beds')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
 export class BedController {

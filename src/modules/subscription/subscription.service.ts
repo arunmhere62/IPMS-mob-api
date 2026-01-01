@@ -201,7 +201,7 @@ export class SubscriptionService {
     }
 
     // Get user details
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.users.findUnique({
       where: { s_no: userId },
     });
 

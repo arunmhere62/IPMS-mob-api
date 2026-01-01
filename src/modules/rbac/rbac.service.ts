@@ -11,7 +11,7 @@ export class RbacService {
   }
 
   async getEffectivePermissionsForUser(userId: number) {
-    const user = await this.prisma.user.findUnique({
+    const user = await this.prisma.users.findUnique({
       where: { s_no: userId },
       select: {
         s_no: true,

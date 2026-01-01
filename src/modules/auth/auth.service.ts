@@ -45,7 +45,7 @@ export class AuthService {
     const normalizedPhone = normalizePhoneNumber(phone);
 
     // Check if user exists with this phone number
-    const user = await this.prisma.user.findFirst({
+    const user = await this.prisma.users.findFirst({
       where: {
         phone: normalizedPhone,
         is_deleted: false,
@@ -128,7 +128,7 @@ export class AuthService {
     this.otpStore.delete(normalizedPhone);
 
     // Get user details
-    const user = await this.prisma.user.findFirst({
+    const user = await this.prisma.users.findFirst({
       where: {
         phone: normalizedPhone,
         is_deleted: false,

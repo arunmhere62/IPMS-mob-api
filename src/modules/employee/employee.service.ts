@@ -17,15 +17,40 @@ export class EmployeeService {
   /**
    * Create a new employee
    */
-  async create(organizationId: number, createDto: CreateEmployeeDto) {
+  async create(organizationId: number, pgId: number, createDto: CreateEmployeeDto) {
     await this.subscriptionRestrictionService.assertCanCreateEmployeeForOrganization(organizationId);
+
+    // Restrict creating multiple SUPER_ADMINs per organization
+    if (createDto.role_id) {
+      const superAdminRole = await this.prisma.roles.findFirst({
+        where: {
+          role_name: 'SUPER_ADMIN',
+          is_deleted: false,
+        },
+        select: { s_no: true },
+      });
+
+      if (superAdminRole && createDto.role_id === superAdminRole.s_no) {
+        const org = await this.prisma.organization.findFirst({
+          where: {
+            s_no: organizationId,
+            is_deleted: false,
+          },
+          select: { superadmin_id: true },
+        });
+
+        if (org?.superadmin_id) {
+          throw new BadRequestException('SUPER_ADMIN already exists for this organization');
+        }
+      }
+    }
 
     if (!createDto.phone) {
       throw new BadRequestException('Phone number is required');
     }
 
-    if (!/^\d{10}$/.test(createDto.phone)) {
-      throw new BadRequestException('Phone number must be 10 digits');
+    if (!/^\+[1-9]\d{6,14}$/.test(createDto.phone)) {
+      throw new BadRequestException('Phone number must include country code (e.g., +919876543210)');
     }
 
     if (!createDto.gender) {
@@ -33,7 +58,7 @@ export class EmployeeService {
     }
 
     // Check if email already exists
-    const existingUser = await this.prisma.user.findUnique({
+    const existingUser = await this.prisma.users.findUnique({
       where: { email: createDto.email },
     });
 
@@ -41,47 +66,66 @@ export class EmployeeService {
       throw new ConflictException('Email already exists');
     }
 
-    // Create employee (password stored as plain text for now)
-    const employee = await this.prisma.user.create({
-      data: {
-        name: createDto.name,
-        email: createDto.email,
-        password: createDto.password,
-        phone: createDto.phone,
-        role_id: createDto.role_id,
-        pg_id: createDto.pg_id,
-        organization_id: organizationId,
-        gender: createDto.gender,
-        address: createDto.address,
-        city_id: createDto.city_id,
-        state_id: createDto.state_id,
-        pincode: createDto.pincode,
-        country: createDto.country,
-        proof_documents: createDto.proof_documents ? JSON.stringify(createDto.proof_documents) : null,
-        profile_images: createDto.profile_images ? JSON.stringify(createDto.profile_images) : null,
-        status: 'ACTIVE',
-        is_deleted: false,
-      },
-      include: {
-        roles: {
-          select: {
-            s_no: true,
-            role_name: true,
+    const employee = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.users.create({
+        data: {
+          name: createDto.name,
+          email: createDto.email,
+          password: createDto.password,
+          phone: createDto.phone,
+          role_id: createDto.role_id,
+          organization_id: organizationId,
+          gender: createDto.gender,
+          address: createDto.address,
+          city_id: createDto.city_id,
+          state_id: createDto.state_id,
+          pincode: createDto.pincode,
+          country: createDto.country,
+          proof_documents: createDto.proof_documents ? JSON.stringify(createDto.proof_documents) : null,
+          profile_images: createDto.profile_images ? JSON.stringify(createDto.profile_images) : null,
+          status: 'ACTIVE',
+          is_deleted: false,
+        },
+        include: {
+          roles: {
+            select: {
+              s_no: true,
+              role_name: true,
+            },
+          },
+          city: {
+            select: {
+              s_no: true,
+              name: true,
+            },
+          },
+          state: {
+            select: {
+              s_no: true,
+              name: true,
+            },
           },
         },
-        city: {
-          select: {
-            s_no: true,
-            name: true,
+      });
+
+      await tx.pg_users.upsert({
+        where: {
+          pg_id_user_id: {
+            pg_id: pgId,
+            user_id: created.s_no,
           },
         },
-        state: {
-          select: {
-            s_no: true,
-            name: true,
-          },
+        update: {
+          is_active: true,
         },
-      },
+        create: {
+          pg_id: pgId,
+          user_id: created.s_no,
+          is_active: true,
+        },
+      });
+
+      return created;
     });
 
     // Remove password from response
@@ -114,7 +158,13 @@ export class EmployeeService {
     };
 
     if (pgId) {
-      whereClause.pg_id = pgId;
+      // Filter users assigned to specific PG via pg_users table
+      whereClause.pg_users = {
+        some: {
+          pg_id: pgId,
+          is_active: true,
+        },
+      };
     }
 
     if (roleId) {
@@ -130,7 +180,7 @@ export class EmployeeService {
     }
 
     const [employees, total] = await Promise.all([
-      this.prisma.user.findMany({
+      this.prisma.users.findMany({
         where: whereClause,
         orderBy: { created_at: 'desc' },
         skip,
@@ -142,7 +192,6 @@ export class EmployeeService {
           phone: true,
           status: true,
           role_id: true,
-          pg_id: true,
           organization_id: true,
           gender: true,
           city_id: true,
@@ -169,7 +218,7 @@ export class EmployeeService {
           },
         },
       }),
-      this.prisma.user.count({ where: whereClause }),
+      this.prisma.users.count({ where: whereClause }),
     ]);
 
     return ResponseUtil.paginated(employees, total, page, limit, 'Employees fetched successfully');
@@ -179,7 +228,7 @@ export class EmployeeService {
    * Get a single employee by ID
    */
   async findOne(id: number, organizationId: number) {
-    const employee = await this.prisma.user.findFirst({
+    const employee = await this.prisma.users.findFirst({
       where: {
         s_no: id,
         organization_id: organizationId,
@@ -192,7 +241,6 @@ export class EmployeeService {
         phone: true,
         status: true,
         role_id: true,
-        pg_id: true,
         organization_id: true,
         gender: true,
         address: true,
@@ -237,7 +285,7 @@ export class EmployeeService {
    */
   async update(id: number, organizationId: number, currentUserId: number, updateDto: UpdateEmployeeDto) {
     // Check if employee exists
-    const existing = await this.prisma.user.findFirst({
+    const existing = await this.prisma.users.findFirst({
       where: {
         s_no: id,
         organization_id: organizationId,
@@ -264,6 +312,29 @@ export class EmployeeService {
 
     // Check if trying to change role of last admin
     if (updateDto.role_id && updateDto.role_id !== existing.role_id) {
+      // Prevent creating multiple SUPER_ADMINs per organization
+      const superAdminRole = await this.prisma.roles.findFirst({
+        where: {
+          role_name: 'SUPER_ADMIN',
+          is_deleted: false,
+        },
+        select: { s_no: true },
+      });
+
+      if (superAdminRole && updateDto.role_id === superAdminRole.s_no) {
+        const org = await this.prisma.organization.findFirst({
+          where: {
+            s_no: organizationId,
+            is_deleted: false,
+          },
+          select: { superadmin_id: true },
+        });
+
+        if (org?.superadmin_id && org.superadmin_id !== id) {
+          throw new BadRequestException('SUPER_ADMIN already exists for this organization');
+        }
+      }
+
       // Check if this employee is an admin
       const adminRoleId = await this.prisma.roles.findFirst({
         where: {
@@ -274,7 +345,7 @@ export class EmployeeService {
 
       if (adminRoleId && existing.role_id === adminRoleId.s_no) {
         // Count total admins in organization
-        const adminCount = await this.prisma.user.count({
+        const adminCount = await this.prisma.users.count({
           where: {
             organization_id: organizationId,
             role_id: adminRoleId.s_no,
@@ -316,13 +387,12 @@ export class EmployeeService {
       );
     }
 
-    const employee = await this.prisma.user.update({
+    const employee = await this.prisma.users.update({
       where: { s_no: id },
       data: {
         name: updateDto.name,
         phone: updateDto.phone,
         role_id: updateDto.role_id,
-        pg_id: updateDto.pg_id,
         gender: updateDto.gender,
         address: updateDto.address,
         city_id: updateDto.city_id,
@@ -339,7 +409,6 @@ export class EmployeeService {
         phone: true,
         status: true,
         role_id: true,
-        pg_id: true,
         organization_id: true,
         gender: true,
         address: true,
@@ -380,7 +449,7 @@ export class EmployeeService {
    */
   async remove(id: number, organizationId: number, currentUserId: number) {
     // Check if employee exists
-    const existing = await this.prisma.user.findFirst({
+    const existing = await this.prisma.users.findFirst({
       where: {
         s_no: id,
         organization_id: organizationId,
@@ -414,7 +483,7 @@ export class EmployeeService {
     });
 
     if (adminRoleId && existing.role_id === adminRoleId.s_no) {
-      const adminCount = await this.prisma.user.count({
+      const adminCount = await this.prisma.users.count({
         where: {
           organization_id: organizationId,
           role_id: adminRoleId.s_no,
@@ -447,7 +516,7 @@ export class EmployeeService {
       );
     }
 
-    await this.prisma.user.update({
+    await this.prisma.users.update({
       where: { s_no: id },
       data: {
         is_deleted: true,
@@ -468,13 +537,19 @@ export class EmployeeService {
     };
 
     if (pgId) {
-      whereClause.pg_id = pgId;
+      // Filter users assigned to specific PG via pg_users table
+      whereClause.pg_users = {
+        some: {
+          pg_id: pgId,
+          is_active: true,
+        },
+      };
     }
 
     const [totalEmployees, activeEmployees, employeesByRole] = await Promise.all([
-      this.prisma.user.count({ where: whereClause }),
-      this.prisma.user.count({ where: { ...whereClause, status: 'ACTIVE' } }),
-      this.prisma.user.groupBy({
+      this.prisma.users.count({ where: whereClause }),
+      this.prisma.users.count({ where: { ...whereClause, status: 'ACTIVE' } }),
+      this.prisma.users.groupBy({
         by: ['role_id'],
         where: whereClause,
         _count: true,

@@ -4,7 +4,7 @@ import { SubscriptionService } from './subscription.service';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ResponseUtil } from '../../common/utils/response.util';
 
-@ApiTags('Subscription')
+@ApiTags('subscription')
 @Controller('subscription')
 export class SubscriptionController {
   constructor(private readonly subscriptionService: SubscriptionService) {}

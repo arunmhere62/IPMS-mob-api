@@ -8,101 +8,6 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model otp_verifications {
-  s_no        Int       @id @default(autoincrement())
-  user_id     Int?
-  phone       String    @db.VarChar(15)
-  otp         String    @db.VarChar(6)
-  is_verified Boolean?  @default(false)
-  attempts    Int?      @default(0)
-  expires_at  DateTime  @db.DateTime(0)
-  created_at  DateTime  @default(now()) @db.Timestamp(0)
-  updated_at  DateTime  @default(now()) @db.Timestamp(0)
-  verified_at DateTime? @db.DateTime(0)
-  ip_address  String?   @db.VarChar(45)
-  user_agent  String?   @db.VarChar(255)
-  user        User?     @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_otp_user")
-
-  @@index([phone], map: "idx_phone")
-  @@index([phone, otp], map: "idx_phone_otp")
-  @@index([expires_at], map: "idx_expires_at")
-  @@index([is_verified], map: "idx_is_verified")
-  @@index([user_id], map: "idx_user_id")
-}
-
-model tokens {
-  s_no               Int       @id @default(autoincrement())
-  user_id            Int
-  access_token       String    @db.Text
-  refresh_token      String?   @db.Text
-  token_type         String?   @default("Bearer") @db.VarChar(20)
-  expires_at         DateTime  @db.DateTime(0)
-  refresh_expires_at DateTime? @db.DateTime(0)
-  is_revoked         Boolean?  @default(false)
-  revoked_at         DateTime? @db.DateTime(0)
-  ip_address         String?   @db.VarChar(45)
-  user_agent         String?   @db.VarChar(255)
-  device_info        Json?
-  created_at         DateTime  @default(now()) @db.Timestamp(0)
-  updated_at         DateTime  @default(now()) @db.Timestamp(0)
-  last_used_at       DateTime? @db.DateTime(0)
-  user               User      @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_token_user")
-
-  @@index([user_id], map: "idx_user_id")
-  @@index([access_token(length: 255)], map: "idx_access_token")
-  @@index([refresh_token(length: 255)], map: "idx_refresh_token")
-  @@index([is_revoked], map: "idx_is_revoked")
-  @@index([expires_at], map: "idx_expires_at")
-}
-
-model User {
-  s_no                                                                  Int                         @id @default(autoincrement())
-  name                                                                  String                      @db.VarChar(100)
-  email                                                                 String?                     @unique(map: "email") @db.VarChar(100)
-  password                                                              String?                     @db.VarChar(255)
-  phone                                                                 String?                     @db.VarChar(15)
-  status                                                                users_status?               @default(ACTIVE)
-  created_at                                                            DateTime?                   @default(now()) @db.Timestamp(0)
-  updated_at                                                            DateTime?                   @default(now()) @db.Timestamp(0)
-  role_id                                                               Int
-  pg_id                                                                 Int?
-  is_deleted                                                            Boolean?                    @default(false)
-  organization_id                                                       Int?
-  address                                                               String?                     @db.VarChar(255)
-  city_id                                                               Int?
-  state_id                                                              Int?
-  pincode                                                               String?                     @db.VarChar(20)
-  country                                                               String?                     @db.VarChar(100)
-  gender                                                                users_gender?
-  proof_documents                                                       Json?
-  profile_images                                                        Json?
-  employee_salary                                                       employee_salary[]
-  issue_ticket_comments                                                 issue_ticket_comments[]
-  issue_tickets_issue_tickets_assigned_toTousers                        issue_tickets[]             @relation("issue_tickets_assigned_toTousers")
-  issue_tickets_issue_tickets_reported_byTousers                        issue_tickets[]             @relation("issue_tickets_reported_byTousers")
-  legal_documents_legal_documents_created_byTousers                     legal_documents[]           @relation("legal_documents_created_byTousers")
-  legal_documents_legal_documents_updated_byTousers                     legal_documents[]           @relation("legal_documents_updated_byTousers")
-  notification_settings                                                 notification_settings?
-  notifications                                                         notifications[]
-  otp_verifications                                                     otp_verifications[]
-  tokens                                                                tokens[]
-  user_fcm_tokens                                                       user_fcm_tokens[]
-  user_legal_acceptance_user_legal_acceptance_user_idTousers            user_legal_acceptance[]     @relation("user_legal_acceptance_user_idTousers")
-  user_legal_acceptance_user_legal_acceptance_created_byTousers         user_legal_acceptance[]     @relation("user_legal_acceptance_created_byTousers")
-  user_legal_acceptance_user_legal_acceptance_updated_byTousers         user_legal_acceptance[]     @relation("user_legal_acceptance_updated_byTousers")
-  user_permission_overrides_user_permission_overrides_created_byTousers user_permission_overrides[] @relation("user_permission_overrides_created_byTousers")
-  user_permission_overrides_user_permission_overrides_user_idTousers    user_permission_overrides[] @relation("user_permission_overrides_user_idTousers")
-  city                                                                  city?                       @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_city")
-  roles                                                                 roles                       @relation(fields: [role_id], references: [s_no], onUpdate: Restrict, map: "fk_users_role")
-  state                                                                 state?                      @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_state")
-
-  @@index([city_id], map: "fk_users_city")
-  @@index([organization_id], map: "fk_users_organization")
-  @@index([role_id], map: "fk_users_role")
-  @@index([state_id], map: "fk_users_state")
-  @@map("users")
-}
-
 model advance_payments {
   s_no               Int                             @id @default(autoincrement())
   tenant_id          Int
@@ -130,22 +35,23 @@ model advance_payments {
 }
 
 model beds {
-  s_no             Int                @id @default(autoincrement())
-  bed_no           String             @db.VarChar(50)
-  room_id          Int?
-  pg_id            Int?
-  images           Json?
-  created_at       DateTime?          @default(now()) @db.Timestamp(0)
-  updated_at       DateTime?          @default(now()) @db.Timestamp(0)
-  is_deleted       Boolean?           @default(false)
-  bed_price        Decimal            @default(0.00) @db.Decimal(10, 2)
-  advance_payments advance_payments[]
-  rooms            rooms?             @relation(fields: [room_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "beds_ibfk_1")
-  pg_locations     pg_locations?      @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_id")
-  refund_payments  refund_payments[]
-  tenant_payments  tenant_payments[]
-  tenants          tenants[]
-  visitors         visitors[]
+  s_no               Int                  @id @default(autoincrement())
+  bed_no             String               @db.VarChar(50)
+  room_id            Int?
+  pg_id              Int?
+  images             Json?
+  created_at         DateTime?            @default(now()) @db.Timestamp(0)
+  updated_at         DateTime?            @default(now()) @db.Timestamp(0)
+  is_deleted         Boolean?             @default(false)
+  bed_price          Decimal              @default(0.00) @db.Decimal(10, 2)
+  advance_payments   advance_payments[]
+  rooms              rooms?               @relation(fields: [room_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "beds_ibfk_1")
+  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_id")
+  refund_payments    refund_payments[]
+  tenant_allocations tenant_allocations[]
+  tenant_payments    tenant_payments[]
+  tenants            tenants[]
+  visitors           visitors[]
 
   @@unique([room_id, bed_no], map: "unique_bed_per_room")
   @@index([pg_id], map: "fk_pg_id")
@@ -160,7 +66,7 @@ model city {
   longitude    Decimal        @db.Decimal(10, 7)
   pg_locations pg_locations[]
   tenants      tenants[]
-  users        User[]
+  users        users[]
   visitors     visitors[]
 }
 
@@ -206,7 +112,7 @@ model employee_salary {
   pg_id          Int?
   month          DateTime                        @db.Date
   pg_locations   pg_locations?                   @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_location_id")
-  users          User                            @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_id")
+  users          users                           @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_id")
 
   @@unique([user_id, month, is_deleted], map: "unique_user_month")
   @@index([pg_id], map: "fk_pg_location_id")
@@ -230,59 +136,231 @@ model expenses {
   @@index([pg_id], map: "pg_location_id")
 }
 
+model issue_ticket_comments {
+  s_no                  Int                                 @id @default(autoincrement())
+  ticket_id             Int
+  user_id               Int?
+  author_source         issue_ticket_comments_author_source @default(CONSUMER)
+  management_user_id    Int?
+  management_user_name  String?                             @db.VarChar(150)
+  management_user_email String?                             @db.VarChar(150)
+  comment               String                              @db.Text
+  attachments           Json?
+  created_at            String                              @db.VarChar(50)
+  is_deleted            Boolean                             @default(false)
+  issue_tickets         issue_tickets                       @relation(fields: [ticket_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_comment_ticket")
+  users                 users?                              @relation(fields: [user_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_comment_user")
+
+  @@index([author_source], map: "idx_itc_author_source")
+  @@index([management_user_id], map: "idx_itc_management_user_id")
+  @@index([ticket_id], map: "idx_ticket_id")
+  @@index([user_id], map: "idx_user_id")
+}
+
+model issue_tickets {
+  s_no                                   Int                     @id @default(autoincrement())
+  ticket_number                          String                  @unique(map: "ticket_number") @db.VarChar(50)
+  title                                  String                  @db.VarChar(200)
+  description                            String                  @db.Text
+  category                               String                  @db.VarChar(50)
+  priority                               String                  @db.VarChar(20)
+  status                                 String                  @default("OPEN") @db.VarChar(20)
+  reported_by                            Int
+  assigned_to                            Int?
+  organization_id                        Int?
+  pg_id                                  Int?
+  attachments                            Json?
+  resolution                             String?                 @db.Text
+  created_at                             String                  @db.VarChar(50)
+  updated_at                             String                  @db.VarChar(50)
+  resolved_at                            String?                 @db.VarChar(50)
+  is_deleted                             Boolean                 @default(false)
+  issue_ticket_comments                  issue_ticket_comments[]
+  users_issue_tickets_assigned_toTousers users?                  @relation("issue_tickets_assigned_toTousers", fields: [assigned_to], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_ticket_assignee")
+  users_issue_tickets_reported_byTousers users                   @relation("issue_tickets_reported_byTousers", fields: [reported_by], references: [s_no], onUpdate: Restrict, map: "fk_ticket_user")
+
+  @@index([assigned_to], map: "idx_assigned_to")
+  @@index([organization_id], map: "idx_organization")
+  @@index([reported_by], map: "idx_reported_by")
+  @@index([status], map: "idx_status")
+  @@index([ticket_number], map: "idx_ticket_number")
+}
+
+model legal_documents {
+  s_no                                    Int                     @id @default(autoincrement())
+  type                                    String                  @db.VarChar(50)
+  title                                   String                  @db.VarChar(255)
+  version                                 String                  @db.VarChar(20)
+  url                                     String                  @db.VarChar(255)
+  is_active                               Boolean                 @default(true)
+  is_required                             Boolean                 @default(true)
+  effective_date                          DateTime                @default(now()) @db.Timestamp(0)
+  expiry_date                             DateTime?               @db.Timestamp(0)
+  organization_id                         Int?
+  created_by                              Int?
+  updated_by                              Int?
+  created_at                              DateTime                @default(now()) @db.Timestamp(0)
+  updated_at                              DateTime                @default(now()) @db.Timestamp(0)
+  users_legal_documents_created_byTousers users?                  @relation("legal_documents_created_byTousers", fields: [created_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "legal_documents_ibfk_1")
+  users_legal_documents_updated_byTousers users?                  @relation("legal_documents_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "legal_documents_ibfk_2")
+  organization                            organization?           @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "legal_documents_ibfk_3")
+  user_legal_acceptance                   user_legal_acceptance[]
+
+  @@unique([type, version], map: "type")
+  @@index([created_by], map: "created_by")
+  @@index([is_active], map: "idx_legal_active")
+  @@index([effective_date], map: "idx_legal_effective")
+  @@index([organization_id], map: "idx_legal_org")
+  @@index([type], map: "idx_legal_type")
+  @@index([updated_by], map: "updated_by")
+}
+
+model notification_settings {
+  s_no                  Int      @id @default(autoincrement())
+  user_id               Int      @unique(map: "user_id")
+  rent_reminders        Boolean? @default(true)
+  payment_confirmations Boolean? @default(true)
+  tenant_alerts         Boolean? @default(true)
+  maintenance_alerts    Boolean? @default(true)
+  general_notifications Boolean? @default(true)
+  created_at            DateTime @default(now()) @db.Timestamp(0)
+  updated_at            DateTime @default(now()) @db.Timestamp(0)
+  users                 users    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_notification_settings_user")
+}
+
+model notifications {
+  s_no    Int       @id @default(autoincrement())
+  user_id Int
+  title   String    @db.VarChar(255)
+  body    String    @db.Text
+  type    String?   @db.VarChar(50)
+  data    Json?
+  is_read Boolean?  @default(false)
+  sent_at DateTime  @default(now()) @db.Timestamp(0)
+  read_at DateTime? @db.Timestamp(0)
+  users   users     @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_notifications_user")
+
+  @@index([user_id], map: "fk_notifications_user")
+}
+
 model organization {
-  s_no            Int                 @id @default(autoincrement())
-  name            String              @db.VarChar(100)
-  description     String?             @db.Text
-  created_at      DateTime?           @default(now()) @db.DateTime(0)
-  updated_at      DateTime?           @default(now()) @db.DateTime(0)
-  deleted_at      DateTime?           @db.DateTime(0)
-  created_by      Int?
-  updated_by      Int?
-  deleted_by      Int?
-  is_deleted      Boolean?            @default(false)
-  status          organization_status @default(ACTIVE)
-  legal_documents legal_documents[]
-  pg_locations    pg_locations[]
+  s_no                                      Int                 @id @default(autoincrement())
+  name                                      String              @db.VarChar(100)
+  description                               String?             @db.Text
+  superadmin_id                             Int?                @unique
+  created_at                                DateTime?           @default(now()) @db.DateTime(0)
+  updated_at                                DateTime?           @default(now()) @db.DateTime(0)
+  deleted_at                                DateTime?           @db.DateTime(0)
+  created_by                                Int?
+  updated_by                                Int?
+  deleted_by                                Int?
+  is_deleted                                Boolean?            @default(false)
+  status                                    organization_status @default(ACTIVE)
+  legal_documents                           legal_documents[]
+  users_organization_superadmin_idTousers   users?              @relation("organization_superadmin_idTousers", fields: [superadmin_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_org_superadmin")
+  pg_locations                              pg_locations[]
+  users_users_organization_idToorganization users[]             @relation("users_organization_idToorganization")
+
+  @@index([superadmin_id], map: "fk_org_superadmin")
+}
+
+model otp_verifications {
+  s_no        Int       @id @default(autoincrement())
+  user_id     Int?
+  phone       String    @db.VarChar(15)
+  otp         String    @db.VarChar(6)
+  is_verified Boolean?  @default(false)
+  attempts    Int?      @default(0)
+  expires_at  DateTime  @db.DateTime(0)
+  created_at  DateTime  @default(now()) @db.Timestamp(0)
+  updated_at  DateTime  @default(now()) @db.Timestamp(0)
+  verified_at DateTime? @db.DateTime(0)
+  ip_address  String?   @db.VarChar(45)
+  user_agent  String?   @db.VarChar(255)
+  users       users?    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_otp_user")
+
+  @@index([expires_at], map: "idx_expires_at")
+  @@index([is_verified], map: "idx_is_verified")
+  @@index([phone], map: "idx_phone")
+  @@index([phone, otp], map: "idx_phone_otp")
+  @@index([user_id], map: "idx_user_id")
+}
+
+model permissions_master {
+  s_no                      Int                         @id @default(autoincrement())
+  screen_name               String                      @db.VarChar(100)
+  action                    permissions_master_action
+  description               String?                     @db.VarChar(255)
+  created_at                DateTime                    @default(now()) @db.Timestamp(0)
+  updated_at                DateTime                    @default(now()) @db.Timestamp(0)
+  role_permissions          role_permissions[]
+  user_permission_overrides user_permission_overrides[]
+
+  @@unique([screen_name, action], map: "unique_screen_action")
 }
 
 model pg_locations {
-  s_no             Int                          @id @unique(map: "s_no_2") @default(autoincrement())
-  user_id          Int
-  location_name    String                       @db.VarChar(100)
-  address          String                       @db.VarChar(255)
-  pincode          String?                      @db.VarChar(10)
-  rent_cycle_start Int?
-  rent_cycle_end   Int?
-  rent_cycle_type  pg_locations_rent_cycle_type @default(CALENDAR)
-  created_at       DateTime?                    @default(now()) @db.Timestamp(0)
-  updated_at       DateTime?                    @default(now()) @db.Timestamp(0)
-  status           pg_locations_status?         @default(ACTIVE)
-  images           Json?
-  city_id          Int?
-  state_id         Int?
-  organization_id  Int
-  is_deleted       Boolean                      @default(false)
-  pg_type          pg_locations_pg_type         @default(COLIVING)
-  advance_payments advance_payments[]
-  beds             beds[]
-  current_bills    current_bills[]
-  employee_salary  employee_salary[]
-  expenses         expenses[]
-  city             city?                        @relation(fields: [city_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_city")
-  organization     organization                 @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, map: "fk_pg_organization")
-  state            state?                       @relation(fields: [state_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_state")
-  refund_payments  refund_payments[]
-  rooms            rooms[]
-  tenant_payments  tenant_payments[]
-  tenants          tenants[]
-  visitors         visitors[]
+  s_no               Int                          @id @unique(map: "s_no_2") @default(autoincrement())
+  location_name      String                       @db.VarChar(100)
+  address            String                       @db.VarChar(255)
+  pincode            String?                      @db.VarChar(10)
+  rent_cycle_start   Int?
+  rent_cycle_end     Int?
+  rent_cycle_type    pg_locations_rent_cycle_type @default(CALENDAR)
+  created_at         DateTime?                    @default(now()) @db.Timestamp(0)
+  updated_at         DateTime?                    @default(now()) @db.Timestamp(0)
+  status             pg_locations_status?         @default(ACTIVE)
+  images             Json?
+  city_id            Int?
+  state_id           Int?
+  organization_id    Int
+  is_deleted         Boolean                      @default(false)
+  pg_type            pg_locations_pg_type         @default(COLIVING)
+  advance_payments   advance_payments[]
+  beds               beds[]
+  current_bills      current_bills[]
+  employee_salary    employee_salary[]
+  expenses           expenses[]
+  city               city?                        @relation(fields: [city_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_city")
+  organization       organization                 @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_locations_organization")
+  state              state?                       @relation(fields: [state_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_state")
+  pg_users           pg_users[]
+  refund_payments    refund_payments[]
+  rooms              rooms[]
+  tenant_allocations tenant_allocations[]
+  tenant_payments    tenant_payments[]
+  tenants            tenants[]
+  visitors           visitors[]
 
   @@index([city_id], map: "fk_city")
-  @@index([organization_id], map: "fk_pg_organization")
+  @@index([organization_id], map: "fk_pg_locations_organization")
   @@index([state_id], map: "fk_state")
-  @@index([user_id], map: "owner_id")
   @@index([s_no], map: "s_no")
+}
+
+model pg_types {
+  s_no        Int      @id @default(autoincrement())
+  name        String   @unique @db.VarChar(100)
+  description String?  @db.VarChar(255)
+  is_active   Boolean  @default(true)
+  created_at  DateTime @default(now()) @db.DateTime(0)
+  updated_at  DateTime @default(now()) @db.DateTime(0)
+}
+
+model pg_users {
+  s_no         Int          @id @default(autoincrement())
+  pg_id        Int
+  user_id      Int
+  is_active    Boolean?     @default(true)
+  created_at   DateTime     @default(now()) @db.Timestamp(0)
+  updated_at   DateTime     @default(now()) @db.Timestamp(0)
+  pg_locations pg_locations @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_users_pg")
+  users        users        @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_users_user")
+
+  @@unique([pg_id, user_id], map: "uq_pg_user")
+  @@index([is_active], map: "idx_pg_users_active")
+  @@index([pg_id], map: "idx_pg_users_pg")
+  @@index([user_id], map: "idx_pg_users_user")
 }
 
 model refund_payments {
@@ -311,6 +389,20 @@ model refund_payments {
   @@index([tenant_id], map: "tenantId")
 }
 
+model role_permissions {
+  s_no               Int                @id @default(autoincrement())
+  role_id            Int
+  permission_id      Int
+  created_at         DateTime           @default(now()) @db.Timestamp(0)
+  updated_at         DateTime           @default(now()) @db.Timestamp(0)
+  permissions_master permissions_master @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_role_permissions_permission")
+  roles              roles              @relation(fields: [role_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_role_permissions_role")
+
+  @@unique([role_id, permission_id], map: "unique_role_permission")
+  @@index([permission_id], map: "idx_role_permissions_permission")
+  @@index([role_id], map: "idx_role_permissions_role")
+}
+
 model roles {
   s_no             Int                @id @default(autoincrement())
   role_name        String             @unique(map: "role_name") @db.VarChar(50)
@@ -320,25 +412,26 @@ model roles {
   updated_at       DateTime?          @default(now()) @db.Timestamp(0)
   is_deleted       Boolean?           @default(false)
   role_permissions role_permissions[]
-  users            User[]
+  users            users[]
 }
 
 model rooms {
-  s_no             Int                @id @default(autoincrement())
-  room_id          String?            @unique(map: "room_id") @db.VarChar(36)
-  pg_id            Int?
-  room_no          String?            @db.VarChar(20)
-  created_at       DateTime?          @default(now()) @db.Timestamp(0)
-  updated_at       DateTime?          @default(now()) @db.Timestamp(0)
-  images           Json?
-  is_deleted       Boolean?           @default(false)
-  advance_payments advance_payments[]
-  beds             beds[]
-  refund_payments  refund_payments[]
-  pg_locations     pg_locations?      @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "rooms_ibfk_1")
-  tenant_payments  tenant_payments[]
-  tenants          tenants[]
-  visitors         visitors[]
+  s_no               Int                  @id @default(autoincrement())
+  room_id            String?              @unique(map: "room_id") @db.VarChar(36)
+  pg_id              Int?
+  room_no            String?              @db.VarChar(20)
+  created_at         DateTime?            @default(now()) @db.Timestamp(0)
+  updated_at         DateTime?            @default(now()) @db.Timestamp(0)
+  images             Json?
+  is_deleted         Boolean?             @default(false)
+  advance_payments   advance_payments[]
+  beds               beds[]
+  refund_payments    refund_payments[]
+  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "rooms_ibfk_1")
+  tenant_allocations tenant_allocations[]
+  tenant_payments    tenant_payments[]
+  tenants            tenants[]
+  visitors           visitors[]
 
   @@unique([pg_id, room_no], map: "unique_pg_room")
 }
@@ -353,10 +446,93 @@ model state {
   pg_locations pg_locations[]
   country      country        @relation(fields: [country_code], references: [iso_code], onDelete: Cascade, map: "fk_state_country")
   tenants      tenants[]
-  users        User[]
+  users        users[]
   visitors     visitors[]
 
   @@index([country_code], map: "fk_state_country")
+}
+
+model subscription_payments {
+  s_no               Int                                @id @default(autoincrement())
+  order_id           String                             @unique(map: "order_id") @db.VarChar(255)
+  user_id            Int
+  organization_id    Int
+  subscription_id    Int?
+  plan_id            Int
+  amount             String                             @db.VarChar(50)
+  currency           String                             @default("INR") @db.VarChar(10)
+  payment_type       subscription_payments_payment_type
+  status             subscription_payments_status       @default(INITIATED)
+  tracking_id        String?                            @db.VarChar(255)
+  bank_ref_no        String?                            @db.VarChar(255)
+  payment_mode       String?                            @db.VarChar(100)
+  status_code        String?                            @db.VarChar(50)
+  status_message     String?                            @db.Text
+  failure_message    String?                            @db.Text
+  response_data      Json?
+  metadata           Json?
+  created_at         DateTime                           @default(now()) @db.Timestamp(0)
+  updated_at         DateTime                           @default(now()) @db.Timestamp(0)
+  subscription_plans subscription_plans                 @relation(fields: [plan_id], references: [s_no], onUpdate: Restrict, map: "fk_subscription_payment_plan")
+  user_subscriptions user_subscriptions?                @relation(fields: [subscription_id], references: [s_no], onUpdate: Restrict, map: "fk_subscription_payment_subscription")
+
+  @@index([plan_id], map: "fk_subscription_payment_plan")
+  @@index([subscription_id], map: "fk_subscription_payment_subscription")
+  @@index([created_at], map: "idx_created_at")
+  @@index([order_id], map: "idx_order_id")
+  @@index([organization_id], map: "idx_organization_id")
+  @@index([status], map: "idx_status")
+  @@index([user_id], map: "idx_user_id")
+}
+
+model subscription_plans {
+  s_no                   Int                     @id @default(autoincrement())
+  name                   String                  @db.VarChar(100)
+  description            String?                 @db.Text
+  duration               Int
+  price                  Decimal                 @db.Decimal(10, 2)
+  currency               String                  @default("INR") @db.VarChar(10)
+  features               Json?
+  max_pg_locations       Int?
+  max_tenants            Int?
+  is_active              Boolean                 @default(true)
+  created_at             DateTime                @default(now()) @db.Timestamp(0)
+  updated_at             DateTime                @default(now()) @db.Timestamp(0)
+  max_rooms              Int?
+  max_beds               Int?
+  max_employees          Int?
+  max_users              Int?
+  max_invoices_per_month Int?
+  max_sms_per_month      Int?
+  max_whatsapp_per_month Int?
+  subscription_payments  subscription_payments[]
+  user_subscriptions     user_subscriptions[]
+
+  @@index([is_active], map: "idx_is_active")
+}
+
+model tenant_allocations {
+  s_no               Int          @id @default(autoincrement())
+  tenant_id          Int
+  pg_id              Int
+  room_id            Int
+  bed_id             Int
+  effective_from     DateTime     @db.DateTime(0)
+  effective_to       DateTime?    @db.DateTime(0)
+  bed_price_snapshot Decimal      @default(0.00) @db.Decimal(10, 2)
+  created_at         DateTime     @default(now()) @db.Timestamp(0)
+  updated_at         DateTime     @default(now()) @db.Timestamp(0)
+  beds               beds         @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_allocations_bed")
+  pg_locations       pg_locations @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_allocations_pg")
+  rooms              rooms        @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_allocations_room")
+  tenants            tenants      @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_allocations_tenant")
+
+  @@unique([tenant_id, effective_from], map: "uk_tenant_allocations_tenant_from")
+  @@index([bed_id], map: "idx_tenant_allocations_bed")
+  @@index([tenant_id, effective_from], map: "idx_tenant_allocations_effective_from")
+  @@index([pg_id], map: "idx_tenant_allocations_pg")
+  @@index([room_id], map: "idx_tenant_allocations_room")
+  @@index([tenant_id], map: "idx_tenant_allocations_tenant")
 }
 
 model tenant_payments {
@@ -392,42 +568,200 @@ model tenant_payments {
 }
 
 model tenants {
-  s_no             Int                @id @default(autoincrement())
-  tenant_id        String             @unique(map: "tenant_id") @db.VarChar(50)
-  name             String             @db.VarChar(100)
-  phone_no         String?            @db.VarChar(15)
-  whatsapp_number  String?            @db.VarChar(15)
-  email            String?            @db.VarChar(100)
-  pg_id            Int?
-  room_id          Int?
-  bed_id           Int?
-  check_in_date    DateTime           @db.DateTime(0)
-  check_out_date   DateTime?          @db.DateTime(0)
-  status           tenants_status?    @default(ACTIVE)
-  created_at       DateTime?          @default(now()) @db.Timestamp(0)
-  updated_at       DateTime?          @default(now()) @db.Timestamp(0)
-  images           Json?
-  proof_documents  Json?
-  is_deleted       Boolean?           @default(false)
-  occupation       String?            @db.VarChar(100)
-  tenant_address   String?            @db.VarChar(255)
-  city_id          Int?
-  state_id         Int?
-  advance_payments advance_payments[]
-  current_bills    current_bills[]
-  refund_payments  refund_payments[]
-  tenant_payments  tenant_payments[]
-  city             city?              @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_tenants_city")
-  state            state?             @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_tenants_state")
-  pg_locations     pg_locations?      @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_1")
-  rooms            rooms?             @relation(fields: [room_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_2")
-  beds             beds?              @relation(fields: [bed_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_3")
+  s_no               Int                  @id @default(autoincrement())
+  tenant_id          String               @unique(map: "tenant_id") @db.VarChar(50)
+  name               String               @db.VarChar(100)
+  phone_no           String?              @db.VarChar(15)
+  whatsapp_number    String?              @db.VarChar(15)
+  email              String?              @db.VarChar(100)
+  pg_id              Int?
+  room_id            Int?
+  bed_id             Int?
+  check_in_date      DateTime             @db.DateTime(0)
+  check_out_date     DateTime?            @db.DateTime(0)
+  status             tenants_status?      @default(ACTIVE)
+  created_at         DateTime?            @default(now()) @db.Timestamp(0)
+  updated_at         DateTime?            @default(now()) @db.Timestamp(0)
+  images             Json?
+  proof_documents    Json?
+  is_deleted         Boolean?             @default(false)
+  occupation         String?              @db.VarChar(100)
+  tenant_address     String?              @db.VarChar(255)
+  city_id            Int?
+  state_id           Int?
+  advance_payments   advance_payments[]
+  current_bills      current_bills[]
+  refund_payments    refund_payments[]
+  tenant_allocations tenant_allocations[]
+  tenant_payments    tenant_payments[]
+  city               city?                @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_tenants_city")
+  state              state?               @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_tenants_state")
+  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_1")
+  rooms              rooms?               @relation(fields: [room_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_2")
+  beds               beds?                @relation(fields: [bed_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_3")
 
   @@index([bed_id], map: "bed_id")
   @@index([city_id], map: "fk_tenants_city")
   @@index([state_id], map: "fk_tenants_state")
   @@index([pg_id], map: "pg_location_id")
   @@index([room_id], map: "room_id")
+}
+
+model tokens {
+  s_no               Int       @id @default(autoincrement())
+  user_id            Int
+  access_token       String    @db.Text
+  refresh_token      String?   @db.Text
+  token_type         String?   @default("Bearer") @db.VarChar(20)
+  expires_at         DateTime  @db.DateTime(0)
+  refresh_expires_at DateTime? @db.DateTime(0)
+  is_revoked         Boolean?  @default(false)
+  revoked_at         DateTime? @db.DateTime(0)
+  ip_address         String?   @db.VarChar(45)
+  user_agent         String?   @db.VarChar(255)
+  device_info        Json?
+  created_at         DateTime  @default(now()) @db.Timestamp(0)
+  updated_at         DateTime  @default(now()) @db.Timestamp(0)
+  last_used_at       DateTime? @db.DateTime(0)
+  users              users     @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_token_user")
+
+  @@index([access_token(length: 255)], map: "idx_access_token")
+  @@index([expires_at], map: "idx_expires_at")
+  @@index([is_revoked], map: "idx_is_revoked")
+  @@index([refresh_token(length: 255)], map: "idx_refresh_token")
+  @@index([user_id], map: "idx_user_id")
+}
+
+model user_fcm_tokens {
+  s_no        Int      @id @default(autoincrement())
+  user_id     Int
+  fcm_token   String   @unique(map: "uk_user_fcm_tokens_token") @db.VarChar(512)
+  device_type String?  @db.VarChar(20)
+  device_id   String?  @db.VarChar(255)
+  device_name String?  @db.VarChar(255)
+  is_active   Boolean? @default(true)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+  updated_at  DateTime @default(now()) @db.Timestamp(0)
+  users       users    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_fcm_tokens_user")
+
+  @@index([user_id], map: "fk_user_fcm_tokens_user")
+}
+
+model user_legal_acceptance {
+  s_no                                          Int             @id @default(autoincrement())
+  user_id                                       Int
+  legal_document_id                             Int
+  accepted_at                                   DateTime        @default(now()) @db.Timestamp(0)
+  acceptance_context                            String?         @default("SIGNUP") @db.VarChar(50)
+  ip_address                                    String?         @db.VarChar(45)
+  user_agent                                    String?         @db.VarChar(255)
+  is_active                                     Boolean         @default(true)
+  revoked_at                                    DateTime?       @db.Timestamp(0)
+  revoked_reason                                String?         @db.Text
+  created_by                                    Int?
+  updated_by                                    Int?
+  created_at                                    DateTime        @default(now()) @db.Timestamp(0)
+  updated_at                                    DateTime        @default(now()) @db.Timestamp(0)
+  users_user_legal_acceptance_user_idTousers    users           @relation("user_legal_acceptance_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_1")
+  legal_documents                               legal_documents @relation(fields: [legal_document_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_2")
+  users_user_legal_acceptance_created_byTousers users?          @relation("user_legal_acceptance_created_byTousers", fields: [created_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_3")
+  users_user_legal_acceptance_updated_byTousers users?          @relation("user_legal_acceptance_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_4")
+
+  @@unique([user_id, legal_document_id], map: "user_id")
+  @@index([created_by], map: "created_by")
+  @@index([accepted_at], map: "idx_accept_date")
+  @@index([legal_document_id], map: "idx_accept_doc")
+  @@index([user_id], map: "idx_accept_user")
+  @@index([updated_by], map: "updated_by")
+}
+
+model user_permission_overrides {
+  s_no                                              Int                              @id @default(autoincrement())
+  user_id                                           Int
+  permission_id                                     Int
+  effect                                            user_permission_overrides_effect
+  created_by                                        Int?
+  expires_at                                        DateTime?                        @db.DateTime(0)
+  created_at                                        DateTime                         @default(now()) @db.Timestamp(0)
+  updated_at                                        DateTime                         @default(now()) @db.Timestamp(0)
+  users_user_permission_overrides_created_byTousers users?                           @relation("user_permission_overrides_created_byTousers", fields: [created_by], references: [s_no], onUpdate: Restrict, map: "fk_user_permission_overrides_created_by")
+  permissions_master                                permissions_master               @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_permission_overrides_permission")
+  users_user_permission_overrides_user_idTousers    users                            @relation("user_permission_overrides_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_permission_overrides_user")
+
+  @@unique([user_id, permission_id], map: "unique_user_permission_override")
+  @@index([created_by], map: "idx_user_permission_override_created_by")
+  @@index([permission_id], map: "idx_user_permission_override_permission")
+  @@index([user_id], map: "idx_user_permission_override_user")
+}
+
+model user_subscriptions {
+  s_no                  Int                       @id @default(autoincrement())
+  user_id               Int
+  organization_id       Int
+  plan_id               Int
+  status                user_subscriptions_status @default(PENDING)
+  start_date            DateTime                  @default(now()) @db.Timestamp(0)
+  end_date              DateTime                  @default(dbgenerated("'0000-00-00 00:00:00'")) @db.Timestamp(0)
+  auto_renew            Boolean                   @default(false)
+  created_at            DateTime                  @default(now()) @db.Timestamp(0)
+  updated_at            DateTime                  @default(now()) @db.Timestamp(0)
+  subscription_payments subscription_payments[]
+  subscription_plans    subscription_plans        @relation(fields: [plan_id], references: [s_no], onUpdate: Restrict, map: "fk_user_subscription_plan")
+
+  @@index([plan_id], map: "fk_user_subscription_plan")
+  @@index([end_date], map: "idx_end_date")
+  @@index([organization_id], map: "idx_organization_id")
+  @@index([status], map: "idx_status")
+  @@index([user_id], map: "idx_user_id")
+}
+
+model users {
+  s_no                                                                  Int                         @id @default(autoincrement())
+  name                                                                  String                      @db.VarChar(100)
+  email                                                                 String?                     @unique(map: "email") @db.VarChar(100)
+  password                                                              String?                     @db.VarChar(255)
+  phone                                                                 String?                     @db.VarChar(15)
+  status                                                                users_status?               @default(ACTIVE)
+  created_at                                                            DateTime?                   @default(now()) @db.Timestamp(0)
+  updated_at                                                            DateTime?                   @default(now()) @db.Timestamp(0)
+  role_id                                                               Int
+  is_deleted                                                            Boolean?                    @default(false)
+  organization_id                                                       Int?
+  address                                                               String?                     @db.VarChar(255)
+  city_id                                                               Int?
+  state_id                                                              Int?
+  pincode                                                               String?                     @db.VarChar(20)
+  country                                                               String?                     @db.VarChar(100)
+  gender                                                                users_gender?
+  proof_documents                                                       Json?
+  profile_images                                                        Json?
+  employee_salary                                                       employee_salary[]
+  issue_ticket_comments                                                 issue_ticket_comments[]
+  issue_tickets_issue_tickets_assigned_toTousers                        issue_tickets[]             @relation("issue_tickets_assigned_toTousers")
+  issue_tickets_issue_tickets_reported_byTousers                        issue_tickets[]             @relation("issue_tickets_reported_byTousers")
+  legal_documents_legal_documents_created_byTousers                     legal_documents[]           @relation("legal_documents_created_byTousers")
+  legal_documents_legal_documents_updated_byTousers                     legal_documents[]           @relation("legal_documents_updated_byTousers")
+  notification_settings                                                 notification_settings?
+  notifications                                                         notifications[]
+  organization_organization_superadmin_idTousers                        organization?               @relation("organization_superadmin_idTousers")
+  otp_verifications                                                     otp_verifications[]
+  pg_users                                                              pg_users[]
+  tokens                                                                tokens[]
+  user_fcm_tokens                                                       user_fcm_tokens[]
+  user_legal_acceptance_user_legal_acceptance_user_idTousers            user_legal_acceptance[]     @relation("user_legal_acceptance_user_idTousers")
+  user_legal_acceptance_user_legal_acceptance_created_byTousers         user_legal_acceptance[]     @relation("user_legal_acceptance_created_byTousers")
+  user_legal_acceptance_user_legal_acceptance_updated_byTousers         user_legal_acceptance[]     @relation("user_legal_acceptance_updated_byTousers")
+  user_permission_overrides_user_permission_overrides_created_byTousers user_permission_overrides[] @relation("user_permission_overrides_created_byTousers")
+  user_permission_overrides_user_permission_overrides_user_idTousers    user_permission_overrides[] @relation("user_permission_overrides_user_idTousers")
+  city                                                                  city?                       @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_city")
+  organization_users_organization_idToorganization                      organization?               @relation("users_organization_idToorganization", fields: [organization_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_organization")
+  roles                                                                 roles                       @relation(fields: [role_id], references: [s_no], onUpdate: Restrict, map: "fk_users_role")
+  state                                                                 state?                      @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_state")
+
+  @@index([city_id], map: "fk_users_city")
+  @@index([organization_id], map: "fk_users_organization")
+  @@index([role_id], map: "fk_users_role")
+  @@index([state_id], map: "fk_users_state")
 }
 
 model visitors {
@@ -459,291 +793,16 @@ model visitors {
   @@index([pg_id], map: "pg_location_id")
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model issue_ticket_comments {
-  s_no                  Int                                 @id @default(autoincrement())
-  ticket_id             Int
-  user_id               Int?
-  author_source         issue_ticket_comments_author_source @default(CONSUMER)
-  management_user_id    Int?
-  management_user_name  String?                             @db.VarChar(150)
-  management_user_email String?                             @db.VarChar(150)
-  comment               String                              @db.Text
-  attachments           Json?
-  created_at            String                              @db.VarChar(50)
-  is_deleted            Boolean                             @default(false)
-  issue_tickets         issue_tickets                       @relation(fields: [ticket_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_comment_ticket")
-  users                 User?                               @relation(fields: [user_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_comment_user")
-
-  @@index([ticket_id], map: "idx_ticket_id")
-  @@index([user_id], map: "idx_user_id")
-  @@index([author_source], map: "idx_itc_author_source")
-  @@index([management_user_id], map: "idx_itc_management_user_id")
+enum permissions_master_action {
+  CREATE
+  EDIT
+  VIEW
+  DELETE
 }
 
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-model issue_tickets {
-  s_no                                   Int                     @id @default(autoincrement())
-  ticket_number                          String                  @unique(map: "ticket_number") @db.VarChar(50)
-  title                                  String                  @db.VarChar(200)
-  description                            String                  @db.Text
-  category                               String                  @db.VarChar(50)
-  priority                               String                  @db.VarChar(20)
-  status                                 String                  @default("OPEN") @db.VarChar(20)
-  reported_by                            Int
-  assigned_to                            Int?
-  organization_id                        Int?
-  pg_id                                  Int?
-  attachments                            Json?
-  resolution                             String?                 @db.Text
-  created_at                             String                  @db.VarChar(50)
-  updated_at                             String                  @db.VarChar(50)
-  resolved_at                            String?                 @db.VarChar(50)
-  is_deleted                             Boolean                 @default(false)
-  issue_ticket_comments                  issue_ticket_comments[]
-  users_issue_tickets_assigned_toTousers User?                   @relation("issue_tickets_assigned_toTousers", fields: [assigned_to], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_ticket_assignee")
-  users_issue_tickets_reported_byTousers User                    @relation("issue_tickets_reported_byTousers", fields: [reported_by], references: [s_no], onUpdate: Restrict, map: "fk_ticket_user")
-
-  @@index([assigned_to], map: "idx_assigned_to")
-  @@index([organization_id], map: "idx_organization")
-  @@index([reported_by], map: "idx_reported_by")
-  @@index([status], map: "idx_status")
-  @@index([ticket_number], map: "idx_ticket_number")
-}
-
-model notification_settings {
-  s_no                  Int      @id @default(autoincrement())
-  user_id               Int      @unique(map: "user_id")
-  rent_reminders        Boolean? @default(true)
-  payment_confirmations Boolean? @default(true)
-  tenant_alerts         Boolean? @default(true)
-  maintenance_alerts    Boolean? @default(true)
-  general_notifications Boolean? @default(true)
-  created_at            DateTime @default(now()) @db.Timestamp(0)
-  updated_at            DateTime @default(now()) @db.Timestamp(0)
-  users                 User     @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_notification_settings_user")
-}
-
-model notifications {
-  s_no    Int       @id @default(autoincrement())
-  user_id Int
-  title   String    @db.VarChar(255)
-  body    String    @db.Text
-  type    String?   @db.VarChar(50)
-  data    Json?
-  is_read Boolean?  @default(false)
-  sent_at DateTime  @default(now()) @db.Timestamp(0)
-  read_at DateTime? @db.Timestamp(0)
-  users   User      @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_notifications_user")
-
-  @@index([user_id], map: "fk_notifications_user")
-}
-
-model user_fcm_tokens {
-  s_no        Int      @id @default(autoincrement())
-  user_id     Int
-  fcm_token   String   @unique(map: "uk_user_fcm_tokens_token") @db.VarChar(512)
-  device_type String?  @db.VarChar(20)
-  device_id   String?  @db.VarChar(255)
-  device_name String?  @db.VarChar(255)
-  is_active   Boolean? @default(true)
-  created_at  DateTime @default(now()) @db.Timestamp(0)
-  updated_at  DateTime @default(now()) @db.Timestamp(0)
-  users       User     @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_fcm_tokens_user")
-
-  @@index([user_id], map: "fk_user_fcm_tokens_user")
-}
-
-model subscription_plans {
-  s_no                   Int                     @id @default(autoincrement())
-  name                   String                  @db.VarChar(100)
-  description            String?                 @db.Text
-  duration               Int
-  price                  Decimal                 @db.Decimal(10, 2)
-  currency               String                  @default("INR") @db.VarChar(10)
-  features               Json?
-  max_pg_locations       Int?
-  max_tenants            Int?
-  is_active              Boolean                 @default(true)
-  created_at             DateTime                @default(now()) @db.Timestamp(0)
-  updated_at             DateTime                @default(now()) @db.Timestamp(0)
-  max_rooms              Int?
-  max_beds               Int?
-  max_employees          Int?
-  max_users              Int?
-  max_invoices_per_month Int?
-  max_sms_per_month      Int?
-  max_whatsapp_per_month Int?
-  subscription_payments  subscription_payments[]
-  user_subscriptions     user_subscriptions[]
-
-  @@index([is_active], map: "idx_is_active")
-}
-
-model user_subscriptions {
-  s_no                  Int                     @id @default(autoincrement())
-  user_id               Int
-  organization_id       Int
-  plan_id               Int
-  status                subscription_status     @default(PENDING)
-  start_date            DateTime                @default(now()) @db.Timestamp(0)
-  end_date              DateTime                @default(dbgenerated("'0000-00-00 00:00:00'")) @db.Timestamp(0)
-  auto_renew            Boolean                 @default(false)
-  created_at            DateTime                @default(now()) @db.Timestamp(0)
-  updated_at            DateTime                @default(now()) @db.Timestamp(0)
-  subscription_payments subscription_payments[]
-  subscription_plans    subscription_plans      @relation(fields: [plan_id], references: [s_no], onUpdate: Restrict, map: "fk_user_subscription_plan")
-
-  @@index([plan_id], map: "fk_user_subscription_plan")
-  @@index([end_date], map: "idx_end_date")
-  @@index([organization_id], map: "idx_organization_id")
-  @@index([status], map: "idx_status")
-  @@index([user_id], map: "idx_user_id")
-}
-
-model subscription_payments {
-  s_no               Int                       @id @default(autoincrement())
-  order_id           String                    @unique(map: "order_id") @db.VarChar(255)
-  user_id            Int
-  organization_id    Int
-  subscription_id    Int?
-  plan_id            Int
-  amount             String                    @db.VarChar(50)
-  currency           String                    @default("INR") @db.VarChar(10)
-  payment_type       subscription_payment_type
-  status             payment_status            @default(INITIATED)
-  tracking_id        String?                   @db.VarChar(255)
-  bank_ref_no        String?                   @db.VarChar(255)
-  payment_mode       String?                   @db.VarChar(100)
-  status_code        String?                   @db.VarChar(50)
-  status_message     String?                   @db.Text
-  failure_message    String?                   @db.Text
-  response_data      Json?
-  metadata           Json?
-  created_at         DateTime                  @default(now()) @db.Timestamp(0)
-  updated_at         DateTime                  @default(now()) @db.Timestamp(0)
-  subscription_plans subscription_plans        @relation(fields: [plan_id], references: [s_no], onUpdate: Restrict, map: "fk_subscription_payment_plan")
-  user_subscriptions user_subscriptions?       @relation(fields: [subscription_id], references: [s_no], onUpdate: Restrict, map: "fk_subscription_payment_subscription")
-
-  @@index([order_id], map: "idx_order_id")
-  @@index([user_id], map: "idx_user_id")
-  @@index([organization_id], map: "idx_organization_id")
-  @@index([status], map: "idx_status")
-  @@index([created_at], map: "idx_created_at")
-  @@index([plan_id], map: "fk_subscription_payment_plan")
-  @@index([subscription_id], map: "fk_subscription_payment_subscription")
-}
-
-model permissions_master {
-  s_no                      Int                         @id @default(autoincrement())
-  screen_name               String                      @db.VarChar(100)
-  action                    permissions_master_action
-  description               String?                     @db.VarChar(255)
-  created_at                DateTime                    @default(now()) @db.Timestamp(0)
-  updated_at                DateTime                    @default(now()) @db.Timestamp(0)
-  role_permissions          role_permissions[]
-  user_permission_overrides user_permission_overrides[]
-
-  @@unique([screen_name, action], map: "unique_screen_action")
-}
-
-model legal_documents {
-  s_no                                    Int                     @id @default(autoincrement())
-  type                                    String                  @db.VarChar(50)
-  title                                   String                  @db.VarChar(255)
-  version                                 String                  @db.VarChar(20)
-  url                                     String                  @db.VarChar(255)
-  is_active                               Boolean                 @default(true)
-  is_required                             Boolean                 @default(true)
-  effective_date                          DateTime                @default(now()) @db.Timestamp(0)
-  expiry_date                             DateTime?               @db.Timestamp(0)
-  organization_id                         Int?
-  created_by                              Int?
-  updated_by                              Int?
-  created_at                              DateTime                @default(now()) @db.Timestamp(0)
-  updated_at                              DateTime                @default(now()) @db.Timestamp(0)
-  users_legal_documents_created_byTousers User?                   @relation("legal_documents_created_byTousers", fields: [created_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "legal_documents_ibfk_1")
-  users_legal_documents_updated_byTousers User?                   @relation("legal_documents_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "legal_documents_ibfk_2")
-  organization                            organization?           @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "legal_documents_ibfk_3")
-  user_legal_acceptance                   user_legal_acceptance[]
-
-  @@unique([type, version], map: "type")
-  @@index([created_by], map: "created_by")
-  @@index([is_active], map: "idx_legal_active")
-  @@index([effective_date], map: "idx_legal_effective")
-  @@index([organization_id], map: "idx_legal_org")
-  @@index([type], map: "idx_legal_type")
-  @@index([updated_by], map: "updated_by")
-}
-
-model user_legal_acceptance {
-  s_no                                          Int             @id @default(autoincrement())
-  user_id                                       Int
-  legal_document_id                             Int
-  accepted_at                                   DateTime        @default(now()) @db.Timestamp(0)
-  acceptance_context                            String?         @default("SIGNUP") @db.VarChar(50)
-  ip_address                                    String?         @db.VarChar(45)
-  user_agent                                    String?         @db.VarChar(255)
-  is_active                                     Boolean         @default(true)
-  revoked_at                                    DateTime?       @db.Timestamp(0)
-  revoked_reason                                String?         @db.Text
-  created_by                                    Int?
-  updated_by                                    Int?
-  created_at                                    DateTime        @default(now()) @db.Timestamp(0)
-  updated_at                                    DateTime        @default(now()) @db.Timestamp(0)
-  users_user_legal_acceptance_user_idTousers    User            @relation("user_legal_acceptance_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_1")
-  legal_documents                               legal_documents @relation(fields: [legal_document_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_2")
-  users_user_legal_acceptance_created_byTousers User?           @relation("user_legal_acceptance_created_byTousers", fields: [created_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_3")
-  users_user_legal_acceptance_updated_byTousers User?           @relation("user_legal_acceptance_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_4")
-
-  @@unique([user_id, legal_document_id], map: "user_id")
-  @@index([created_by], map: "created_by")
-  @@index([accepted_at], map: "idx_accept_date")
-  @@index([legal_document_id], map: "idx_accept_doc")
-  @@index([user_id], map: "idx_accept_user")
-  @@index([updated_by], map: "updated_by")
-}
-
-model role_permissions {
-  s_no               Int                @id @default(autoincrement())
-  role_id            Int
-  permission_id      Int
-  created_at         DateTime           @default(now()) @db.Timestamp(0)
-  updated_at         DateTime           @default(now()) @db.Timestamp(0)
-  permissions_master permissions_master @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_role_permissions_permission")
-  roles              roles              @relation(fields: [role_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_role_permissions_role")
-
-  @@unique([role_id, permission_id], map: "unique_role_permission")
-  @@index([permission_id], map: "idx_role_permissions_permission")
-  @@index([role_id], map: "idx_role_permissions_role")
-}
-
-model user_permission_overrides {
-  s_no                                              Int                              @id @default(autoincrement())
-  user_id                                           Int
-  permission_id                                     Int
-  effect                                            user_permission_overrides_effect
-  created_by                                        Int?
-  expires_at                                        DateTime?                        @db.DateTime(0)
-  created_at                                        DateTime                         @default(now()) @db.Timestamp(0)
-  updated_at                                        DateTime                         @default(now()) @db.Timestamp(0)
-  users_user_permission_overrides_created_byTousers User?                            @relation("user_permission_overrides_created_byTousers", fields: [created_by], references: [s_no], onUpdate: Restrict, map: "fk_user_permission_overrides_created_by")
-  permissions_master                                permissions_master               @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_permission_overrides_permission")
-  users_user_permission_overrides_user_idTousers    User                             @relation("user_permission_overrides_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_permission_overrides_user")
-
-  @@unique([user_id, permission_id], map: "unique_user_permission_override")
-  @@index([created_by], map: "idx_user_permission_override_created_by")
-  @@index([permission_id], map: "idx_user_permission_override_permission")
-  @@index([user_id], map: "idx_user_permission_override_user")
-}
-
-model pg_types {
-  s_no        Int      @id @default(autoincrement())
-  name        String   @unique @db.VarChar(100)
-  description String?  @db.VarChar(255)
-  is_active   Boolean  @default(true)
-  created_at  DateTime @default(now()) @db.DateTime(0)
-  updated_at  DateTime @default(now()) @db.DateTime(0)
+enum issue_ticket_comments_author_source {
+  CONSUMER
+  MANAGEMENT
 }
 
 enum roles_status {
@@ -751,11 +810,23 @@ enum roles_status {
   INACTIVE
 }
 
+enum user_permission_overrides_effect {
+  ALLOW
+  DENY
+}
+
 enum employee_salary_payment_method {
   GPAY
   PHONEPE
   CASH
   BANK_TRANSFER
+}
+
+enum user_subscriptions_status {
+  ACTIVE
+  EXPIRED
+  CANCELLED
+  PENDING
 }
 
 enum users_status {
@@ -770,16 +841,16 @@ enum expenses_payment_method {
   BANK_TRANSFER
 }
 
+enum pg_locations_rent_cycle_type {
+  CALENDAR
+  MIDMONTH
+}
+
 enum advance_payments_payment_method {
   GPAY
   PHONEPE
   CASH
   BANK_TRANSFER
-}
-
-enum pg_locations_status {
-  ACTIVE
-  INACTIVE
 }
 
 enum refund_payments_payment_method {
@@ -796,14 +867,10 @@ enum tenant_payments_payment_method {
   BANK_TRANSFER
 }
 
-enum tenants_status {
-  ACTIVE
-  INACTIVE
-}
-
-enum users_gender {
-  MALE
-  FEMALE
+enum subscription_payments_payment_type {
+  NEW_SUBSCRIPTION
+  RENEWAL
+  UPGRADE
 }
 
 enum tenant_payments_status {
@@ -814,11 +881,29 @@ enum tenant_payments_status {
   PARTIAL
 }
 
+enum pg_locations_status {
+  ACTIVE
+  INACTIVE
+}
+
+enum subscription_payments_status {
+  INITIATED
+  SUCCESS
+  FAILURE
+  ABORTED
+  PENDING
+}
+
 enum advance_payments_status {
   PAID
   PENDING
   FAILED
   PARTIAL
+}
+
+enum organization_status {
+  ACTIVE
+  INACTIVE
 }
 
 enum refund_payments_status {
@@ -828,32 +913,9 @@ enum refund_payments_status {
   PARTIAL
 }
 
-enum subscription_status {
+enum tenants_status {
   ACTIVE
-  EXPIRED
-  CANCELLED
-  PENDING
-}
-
-enum subscription_payment_type {
-  NEW_SUBSCRIPTION
-  RENEWAL
-  UPGRADE
-}
-
-enum payment_status {
-  INITIATED
-  SUCCESS
-  FAILURE
-  ABORTED
-  PENDING
-}
-
-enum permissions_master_action {
-  CREATE
-  EDIT
-  VIEW
-  DELETE
+  INACTIVE
 }
 
 enum pg_locations_pg_type {
@@ -862,22 +924,7 @@ enum pg_locations_pg_type {
   WOMENS
 }
 
-enum pg_locations_rent_cycle_type {
-  CALENDAR
-  MIDMONTH
-}
-
-enum organization_status {
-  ACTIVE
-  INACTIVE
-}
-
-enum user_permission_overrides_effect {
-  ALLOW
-  DENY
-}
-
-enum issue_ticket_comments_author_source {
-  CONSUMER
-  MANAGEMENT
+enum users_gender {
+  MALE
+  FEMALE
 }

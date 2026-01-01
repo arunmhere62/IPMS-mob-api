@@ -82,57 +82,78 @@ export class PendingPaymentCronService {
   }
 
   private async groupTenantsByOwner(pendingPayments: any[]) {
-    const tenantsByOwner: Record<number, any[]> = {};
+    const tenantsByUser: Record<number, any[]> = {};
 
     for (const payment of pendingPayments) {
       const tenant = await this.prisma.tenants.findUnique({
         where: { s_no: payment.tenant_id },
-        include: {
-          pg_locations: {
-            select: {
-              user_id: true,
-            },
-          },
+        select: {
+          s_no: true,
+          pg_id: true,
         },
       });
 
-      if (tenant?.pg_locations?.user_id) {
-        const ownerId = tenant.pg_locations.user_id;
-        if (!tenantsByOwner[ownerId]) {
-          tenantsByOwner[ownerId] = [];
+      if (!tenant?.pg_id) {
+        continue;
+      }
+
+      // Notify all active users assigned to this PG
+      const assignments = await this.prisma.pg_users.findMany({
+        where: {
+          pg_id: tenant.pg_id,
+          is_active: true,
+        },
+        select: {
+          user_id: true,
+        },
+      });
+
+      for (const a of assignments) {
+        if (!tenantsByUser[a.user_id]) {
+          tenantsByUser[a.user_id] = [];
         }
-        tenantsByOwner[ownerId].push(payment);
+        tenantsByUser[a.user_id].push(payment);
       }
     }
 
-    return tenantsByOwner;
+    return tenantsByUser;
   }
 
   private async groupTenantsByOwnerFromDueList(tenantsDue: any[]) {
-    const tenantsByOwner: Record<number, any[]> = {};
+    const tenantsByUser: Record<number, any[]> = {};
 
     for (const tenant of tenantsDue) {
       const tenantDetails = await this.prisma.tenants.findUnique({
         where: { s_no: tenant.tenant_id },
-        include: {
-          pg_locations: {
-            select: {
-              user_id: true,
-            },
-          },
+        select: {
+          s_no: true,
+          pg_id: true,
         },
       });
 
-      if (tenantDetails?.pg_locations?.user_id) {
-        const ownerId = tenantDetails.pg_locations.user_id;
-        if (!tenantsByOwner[ownerId]) {
-          tenantsByOwner[ownerId] = [];
+      if (!tenantDetails?.pg_id) {
+        continue;
+      }
+
+      const assignments = await this.prisma.pg_users.findMany({
+        where: {
+          pg_id: tenantDetails.pg_id,
+          is_active: true,
+        },
+        select: {
+          user_id: true,
+        },
+      });
+
+      for (const a of assignments) {
+        if (!tenantsByUser[a.user_id]) {
+          tenantsByUser[a.user_id] = [];
         }
-        tenantsByOwner[ownerId].push(tenant);
+        tenantsByUser[a.user_id].push(tenant);
       }
     }
 
-    return tenantsByOwner;
+    return tenantsByUser;
   }
 
   private async sendPendingRentNotification(ownerId: number, tenants: any[]) {
@@ -212,12 +233,17 @@ export class PendingPaymentCronService {
   }
 
   private async checkPendingRentPaymentsForUser(userId: number) {
-    const pgLocations = await this.prisma.pg_locations.findMany({
-      where: { user_id: userId },
-      select: { s_no: true },
+    const assignments = await this.prisma.pg_users.findMany({
+      where: {
+        user_id: userId,
+        is_active: true,
+      },
+      select: {
+        pg_id: true,
+      },
     });
 
-    const pgIds = pgLocations.map((p) => p.s_no);
+    const pgIds = assignments.map((a) => a.pg_id);
     if (pgIds.length === 0) {
       this.logger.log(`✅ [CRON] No PG locations found for user ${userId}`);
       return { success: true, tenantCount: 0, totalPending: 0 };

@@ -15,7 +15,7 @@ import { ValidatedHeaders } from '../../../common/decorators/validated-headers.d
 import { UpdateCheckoutDateDto } from '../dto/update-checkout-date.dto';
 import { CheckoutService } from './checkout.service';
 
-@ApiTags('Tenant Checkout')
+@ApiTags('tenants')
 @Controller('tenants')
 @UseGuards(HeadersValidationGuard)
 export class CheckoutController {

@@ -210,7 +210,7 @@ export class TicketService {
     // Fetch user to verify role if isSuperAdmin is false
     let actualIsSuperAdmin = isSuperAdmin;
     if (!isSuperAdmin && userId) {
-      const user = await this.prisma.user.findUnique({
+      const user = await this.prisma.users.findUnique({
         where: { s_no: userId },
         include: { roles: true },
       });
@@ -288,7 +288,7 @@ export class TicketService {
     // Fetch user to verify role if isSuperAdmin is false
     let actualIsSuperAdmin = isSuperAdmin;
     if (!isSuperAdmin && userId) {
-      const user = await this.prisma.user.findUnique({
+      const user = await this.prisma.users.findUnique({
         where: { s_no: userId },
         include: { roles: true },
       });

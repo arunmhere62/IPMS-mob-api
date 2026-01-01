@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
   ParseIntPipe,
+  MethodNotAllowedException,
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { TenantPaymentService } from './rent-payment.service';
@@ -17,7 +18,7 @@ import { HeadersValidationGuard } from '../../../common/guards/headers-validatio
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
 
-@ApiTags('Tenant Payments')
+@ApiTags('tenant-payments')
 @Controller('tenant-payments')
 @UseGuards(HeadersValidationGuard)
 export class TenantPaymentController {
@@ -107,7 +108,9 @@ export class TenantPaymentController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateTenantPaymentDto: UpdateTenantPaymentDto,
   ) {
-    return this.tenantPaymentService.update(id, updateTenantPaymentDto);
+    throw new MethodNotAllowedException(
+      'Tenant payments are immutable. Create a new payment entry instead of editing an existing one.',
+    );
   }
 
   @Patch(':id/status')

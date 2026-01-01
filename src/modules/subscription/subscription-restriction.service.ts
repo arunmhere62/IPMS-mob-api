@@ -168,7 +168,7 @@ export class SubscriptionRestrictionService {
     const max = plan.max_employees;
     if (max == null) return;
 
-    const current = await this.prisma.user.count({
+    const current = await this.prisma.users.count({
       where: {
         organization_id: organizationId,
         is_deleted: false,

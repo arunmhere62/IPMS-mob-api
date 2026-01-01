@@ -242,9 +242,15 @@ export class LegalDocumentsService {
     return ResponseUtil.success(updated, 'Legal acceptance revoked successfully');
   }
 
-  async requiredStatus(headers: { user_id?: number; organization_id?: number }, context?: string) {
+  async requiredStatus(
+    headers: { user_id?: number; organization_id?: number },
+    context?: string,
+    type?: string,
+  ) {
     const normalizedContext = (context ?? '').toUpperCase();
     const isSignupContext = normalizedContext === 'SIGNUP';
+
+    const normalizedType = (type ?? '').toUpperCase().trim();
 
     if (!headers.user_id && !isSignupContext) {
       throw new BadRequestException('Missing x-user-id header');
@@ -261,7 +267,7 @@ export class LegalDocumentsService {
           { expiry_date: null },
           { expiry_date: { gt: now } },
         ],
-        ...(isSignupContext ? { type: { in: SIGNUP_REQUIRED_LEGAL_DOCUMENT_TYPES } } : {}),
+        ...(normalizedType ? { type: normalizedType } : isSignupContext ? { type: { in: SIGNUP_REQUIRED_LEGAL_DOCUMENT_TYPES } } : {}),
         // If you pass organization_id, return org-specific docs + global docs
         ...(headers.organization_id
           ? {

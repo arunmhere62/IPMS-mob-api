@@ -150,12 +150,14 @@ export class LegalDocumentsController {
   @ApiHeader({ name: 'x-user-id', required: false, description: 'User to check acceptance for (required except SIGNUP context)' })
   @ApiHeader({ name: 'x-organization-id', required: false, description: 'Organization scope (optional)' })
   @ApiQuery({ name: 'context', required: false, description: 'Optional context label (SIGNUP/LOGIN/INVOICE/etc) returned back in response' })
+  @ApiQuery({ name: 'type', required: false, description: 'Optional legal document type filter (e.g. PRIVACY_POLICY)' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Legal acceptance status fetched successfully' })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Missing x-user-id' })
   async requiredStatus(
     @ValidatedHeaders() headers: any,
     @Query('context') context?: string,
+    @Query('type') type?: string,
   ) {
-    return this.legalDocumentsService.requiredStatus(headers, context);
+    return this.legalDocumentsService.requiredStatus(headers, context, type);
   }
 }

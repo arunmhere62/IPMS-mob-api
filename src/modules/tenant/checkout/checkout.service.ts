@@ -3,160 +3,297 @@ import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseUtil } from '../../../common/utils/response.util';
 import { CheckoutTenantDto } from './dto/checkout-tenant.dto';
 import { UpdateCheckoutDateDto } from '../dto/update-checkout-date.dto';
+import { TenantRentSummaryService } from '../tenant-rent-summary.service';
 
 @Injectable()
 export class CheckoutService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private tenantRentSummaryService: TenantRentSummaryService,
+  ) {}
+
+  private toDateOnlyUtc(d: Date): Date {
+    return new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
+  }
+
+  private makeUtcDateClamped(year: number, month: number, day: number): Date {
+    const firstOfMonth = new Date(Date.UTC(year, month, 1));
+    const lastDay = new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth() + 1, 0)).getUTCDate();
+    const clampedDay = Math.min(Math.max(day, 1), lastDay);
+    return new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth(), clampedDay));
+  }
+
+  private computeCycleWindow(params: {
+    cycleType: 'CALENDAR' | 'MIDMONTH';
+    tenantCheckInDate: Date;
+    referenceDate: Date;
+  }): { cycleStart: Date; cycleEnd: Date; anchorDay: number } {
+    const ref = this.toDateOnlyUtc(params.referenceDate);
+    const checkIn = this.toDateOnlyUtc(params.tenantCheckInDate);
+    const anchorDay = checkIn.getUTCDate();
+
+    const refY = ref.getUTCFullYear();
+    const refM = ref.getUTCMonth();
+    const refD = ref.getUTCDate();
+
+    if (params.cycleType === 'CALENDAR') {
+      const isCheckInMonth =
+        ref.getUTCFullYear() === checkIn.getUTCFullYear() && ref.getUTCMonth() === checkIn.getUTCMonth();
+      const cycleStart = isCheckInMonth ? checkIn : new Date(Date.UTC(refY, refM, 1));
+      const cycleEnd = new Date(Date.UTC(refY, refM + 1, 0));
+      return { cycleStart, cycleEnd, anchorDay };
+    }
+
+    const startMonth = refD >= anchorDay ? refM : refM - 1;
+    const cycleStart = this.makeUtcDateClamped(refY, startMonth, anchorDay);
+    const nextStart = this.makeUtcDateClamped(
+      cycleStart.getUTCFullYear(),
+      cycleStart.getUTCMonth() + 1,
+      anchorDay,
+    );
+    const cycleEnd = new Date(nextStart);
+    cycleEnd.setUTCDate(cycleEnd.getUTCDate() - 1);
+
+    return { cycleStart, cycleEnd, anchorDay };
+  }
 
   /**
    * Check out tenant
    */
   async checkout(id: number, checkoutDto: CheckoutTenantDto) {
-    const tenant = await this.prisma.tenants.findFirst({
-      where: {
-        s_no: id,
-        is_deleted: false,
-      },
-      include: {
-        rent_payments: {
-          where: {
-            is_deleted: false,
-          },
-          select: {
-            s_no: true,
-            status: true,
-            amount_paid: true,
-            payment_date: true,
-          },
-        },
-        advance_payments: {
-          where: {
-            is_deleted: false,
-          },
-          select: {
-            s_no: true,
-            status: true,
-            amount_paid: true,
-            payment_date: true,
-          },
-        },
-        refund_payments: {
-          where: {
-            is_deleted: false,
-          },
-          select: {
-            s_no: true,
-            status: true,
-            amount_paid: true,
-            payment_date: true,
-          },
-        },
-      },
-    });
-
-    if (!tenant) {
-      throw new NotFoundException(`Tenant with ID ${id} not found`);
-    }
-
-    // Check for PARTIAL status payments first (strict validation)
-    const partialRentPayments = tenant.rent_payments.filter(
-      (payment) => payment.status === 'PARTIAL'
-    );
-    const partialAdvancePayments = tenant.advance_payments.filter(
-      (payment) => payment.status === 'PARTIAL'
-    );
-    const partialRefundPayments = tenant.refund_payments.filter(
-      (payment) => payment.status === 'PARTIAL'
-    );
-
-    const totalPartialPayments = 
-      partialRentPayments.length + 
-      partialAdvancePayments.length + 
-      partialRefundPayments.length;
-
-    // Reject checkout if there are any PARTIAL payments
-    if (totalPartialPayments > 0) {
-      const partialDetails = [];
-      
-      if (partialRentPayments.length > 0) {
-        partialDetails.push(`${partialRentPayments.length} rent payment(s) with PARTIAL status`);
-      }
-      if (partialAdvancePayments.length > 0) {
-        partialDetails.push(`${partialAdvancePayments.length} advance payment(s) with PARTIAL status`);
-      }
-      if (partialRefundPayments.length > 0) {
-        partialDetails.push(`${partialRefundPayments.length} refund payment(s) with PARTIAL status`);
-      }
-
-      throw new BadRequestException(
-        `Cannot checkout tenant. Tenant has ${totalPartialPayments} payment(s) in PARTIAL status: ${partialDetails.join(', ')}. Please complete or mark all PARTIAL payments as PAID before checkout.`
-      );
-    }
-
-    // Check if all remaining payments are paid (excluding PARTIAL which we already checked)
-    const unpaidRentPayments = tenant.rent_payments.filter(
-      (payment) => payment.status !== 'PAID' && payment.status !== 'PARTIAL'
-    );
-    const unpaidAdvancePayments = tenant.advance_payments.filter(
-      (payment) => payment.status !== 'PAID' && payment.status !== 'PARTIAL'
-    );
-    const unpaidRefundPayments = tenant.refund_payments.filter(
-      (payment) => payment.status !== 'PAID' && payment.status !== 'PARTIAL'
-    );
-
-    const totalUnpaidPayments = 
-      unpaidRentPayments.length + 
-      unpaidAdvancePayments.length + 
-      unpaidRefundPayments.length;
-
-    if (totalUnpaidPayments > 0) {
-      const unpaidDetails = [];
-      
-      if (unpaidRentPayments.length > 0) {
-        unpaidDetails.push(`${unpaidRentPayments.length} rent payment(s)`);
-      }
-      if (unpaidAdvancePayments.length > 0) {
-        unpaidDetails.push(`${unpaidAdvancePayments.length} advance payment(s)`);
-      }
-      if (unpaidRefundPayments.length > 0) {
-        unpaidDetails.push(`${unpaidRefundPayments.length} refund payment(s)`);
-      }
-
-      throw new BadRequestException(
-        `Cannot checkout tenant. There are ${totalUnpaidPayments} unpaid payment(s): ${unpaidDetails.join(', ')}. Please mark all payments as PAID before checkout.`
-      );
-    }
-
     // Checkout date is required - must be provided from frontend
     if (!checkoutDto.check_out_date) {
       throw new BadRequestException('Checkout date is required. Please provide a valid checkout date.');
     }
 
     const checkoutDate = new Date(checkoutDto.check_out_date);
-    const checkInDate = new Date(tenant.check_in_date);
 
-    // Validate that checkout date is not before check-in date (same-day checkout allowed)
-    if (checkoutDate < checkInDate) {
-      throw new BadRequestException(
-        `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`
-      );
+    if (Number.isNaN(checkoutDate.getTime())) {
+      throw new BadRequestException('Checkout date is invalid. Please provide a valid checkout date.');
     }
 
-    // Update tenant status
-    const updatedTenant = await this.prisma.tenants.update({
-      where: { s_no: id },
-      data: {
-        status: 'INACTIVE',
-        check_out_date: checkoutDate,
-      },
-      include: {
-        pg_locations: true,
-        rooms: true,
-        beds: true,
-      },
+    const result = await this.prisma.$transaction(async (tx) => {
+      const tenant = await tx.tenants.findFirst({
+        where: {
+          s_no: id,
+          is_deleted: false,
+        },
+        include: {
+          pg_locations: {
+            select: {
+              rent_cycle_type: true,
+            },
+          },
+          tenant_allocations: {
+            orderBy: { effective_from: 'asc' },
+            select: {
+              s_no: true,
+              effective_from: true,
+              effective_to: true,
+              bed_price_snapshot: true,
+            },
+          },
+          tenant_rent_cycles: {
+            orderBy: { cycle_start: 'asc' },
+            select: {
+              s_no: true,
+              cycle_start: true,
+              cycle_end: true,
+            },
+          },
+          rent_payments: {
+            where: {
+              is_deleted: false,
+            },
+            select: {
+              s_no: true,
+              status: true,
+              amount_paid: true,
+              payment_date: true,
+              actual_rent_amount: true,
+              cycle_id: true,
+            },
+          },
+          advance_payments: {
+            where: {
+              is_deleted: false,
+            },
+            select: {
+              s_no: true,
+              status: true,
+              amount_paid: true,
+              payment_date: true,
+            },
+          },
+        },
+      });
+
+      if (!tenant) {
+        throw new NotFoundException(`Tenant with ID ${id} not found`);
+      }
+
+      const checkInDate = new Date(tenant.check_in_date);
+      if (checkoutDate < checkInDate) {
+        throw new BadRequestException(
+          `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`
+        );
+      }
+
+      await tx.tenants.update({
+        where: { s_no: id },
+        data: {
+          check_out_date: checkoutDate,
+          status: 'INACTIVE',
+        },
+      });
+
+      const activeAllocation = (tenant as any).tenant_allocations?.find((a: any) => !a.effective_to);
+      if (activeAllocation) {
+        await (tx as any).tenant_allocations.update({
+          where: { s_no: activeAllocation.s_no },
+          data: {
+            effective_to: checkoutDate,
+            updated_at: new Date(),
+          },
+        });
+      }
+
+      const cycleType = ((tenant as any)?.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+      const checkInUtc = this.toDateOnlyUtc(new Date(tenant.check_in_date));
+      const checkoutUtc = this.toDateOnlyUtc(new Date(checkoutDate));
+
+      let cursor = new Date(checkInUtc);
+      let iterations = 0;
+      const maxIterations = 240;
+
+      while (iterations < maxIterations) {
+        iterations++;
+
+        const computed = this.computeCycleWindow({
+          cycleType,
+          tenantCheckInDate: new Date(tenant.check_in_date),
+          referenceDate: cursor,
+        });
+
+        const endClamped = computed.cycleEnd > checkoutUtc ? checkoutUtc : computed.cycleEnd;
+
+        await (tx as any).tenant_rent_cycles.upsert({
+          where: {
+            tenant_id_cycle_start: {
+              tenant_id: id,
+              cycle_start: computed.cycleStart,
+            },
+          },
+          create: {
+            tenant_id: id,
+            cycle_type: cycleType,
+            anchor_day: computed.anchorDay,
+            cycle_start: computed.cycleStart,
+            cycle_end: endClamped,
+          },
+          update: {
+            cycle_type: cycleType,
+            anchor_day: computed.anchorDay,
+            cycle_end: endClamped,
+            updated_at: new Date(),
+          },
+          select: { s_no: true },
+        });
+
+        if (endClamped.getTime() >= checkoutUtc.getTime()) break;
+
+        const next = new Date(endClamped);
+        next.setUTCDate(next.getUTCDate() + 1);
+        cursor = next;
+      }
+
+      const tenantAfter = await tx.tenants.findFirst({
+        where: {
+          s_no: id,
+          is_deleted: false,
+        },
+        include: {
+          pg_locations: true,
+          rooms: true,
+          beds: true,
+          tenant_allocations: {
+            orderBy: { effective_from: 'asc' },
+            select: {
+              effective_from: true,
+              effective_to: true,
+              bed_price_snapshot: true,
+            },
+          },
+          tenant_rent_cycles: {
+            orderBy: { cycle_start: 'asc' },
+            select: {
+              s_no: true,
+              cycle_start: true,
+              cycle_end: true,
+            },
+          },
+          rent_payments: {
+            where: {
+              is_deleted: false,
+            },
+            select: {
+              s_no: true,
+              status: true,
+              amount_paid: true,
+              payment_date: true,
+              actual_rent_amount: true,
+              cycle_id: true,
+            },
+          },
+          advance_payments: {
+            where: {
+              is_deleted: false,
+            },
+            select: {
+              s_no: true,
+              status: true,
+              amount_paid: true,
+              payment_date: true,
+            },
+          },
+        },
+      });
+
+      if (!tenantAfter) {
+        throw new NotFoundException(`Tenant with ID ${id} not found`);
+      }
+
+      const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant: tenantAfter });
+      const rentDueAmount = Number(rentSummary?.rent_due_amount || 0);
+
+      const advances = (tenantAfter as any).advance_payments || [];
+      const hasAnyAdvance = advances.length > 0;
+      const hasPaidAdvance = advances.some((p: any) => p.status === 'PAID');
+      const hasNonPaidAdvance = advances.some((p: any) => p.status && p.status !== 'PAID');
+      const hasAdvancePending = !hasPaidAdvance || hasNonPaidAdvance || !hasAnyAdvance;
+
+      if (rentDueAmount > 0 || hasAdvancePending) {
+        const parts: string[] = [];
+        if (rentDueAmount > 0) parts.push(`Pending rent ₹${rentDueAmount}`);
+        if (hasAdvancePending) parts.push('Advance pending');
+        throw new BadRequestException(
+          `Cannot checkout tenant. ${parts.join(' and ')} must be settled before checkout.`
+        );
+      }
+
+      const updatedTenant = await tx.tenants.findFirst({
+        where: { s_no: id },
+        include: {
+          pg_locations: true,
+          rooms: true,
+          beds: true,
+        },
+      });
+
+      return updatedTenant;
     });
 
-    return ResponseUtil.success(updatedTenant, 'Tenant checked out successfully');
+    return ResponseUtil.success(result, 'Tenant checked out successfully');
   }
 
   /**
@@ -169,24 +306,41 @@ export class CheckoutService {
         is_deleted: false,
       },
       include: {
+        tenant_allocations: {
+          orderBy: { effective_from: 'asc' },
+          select: {
+            effective_from: true,
+            effective_to: true,
+            bed_price_snapshot: true,
+          },
+        },
+        tenant_rent_cycles: {
+          orderBy: { cycle_start: 'asc' },
+          select: {
+            s_no: true,
+            cycle_start: true,
+            cycle_end: true,
+          },
+        },
         rent_payments: {
           where: { is_deleted: false },
-          select: { status: true },
+          select: {
+            status: true,
+            amount_paid: true,
+            actual_rent_amount: true,
+            cycle_id: true,
+          },
         },
         advance_payments: {
           where: { is_deleted: false },
-          select: { status: true },
-        },
-        refund_payments: {
-          where: { is_deleted: false },
-          select: { status: true },
+          select: {
+            status: true,
+            amount_paid: true,
+            payment_date: true,
+          },
         },
       },
     });
-
-    if (!tenant) {
-      throw new NotFoundException(`Tenant with ID ${id} not found`);
-    }
 
     let updateData: any = {};
 
@@ -197,30 +351,21 @@ export class CheckoutService {
         status: 'ACTIVE',
       };
     } else if (updateCheckoutDateDto.check_out_date) {
-      // Validate before updating checkout date (only if setting a new checkout date)
-      // Check for PARTIAL payments
-      const partialPayments = [
-        ...tenant.rent_payments.filter(p => p.status === 'PARTIAL'),
-        ...tenant.advance_payments.filter(p => p.status === 'PARTIAL'),
-        ...tenant.refund_payments.filter(p => p.status === 'PARTIAL'),
-      ];
+      const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
+      const rentDueAmount = Number(rentSummary?.rent_due_amount || 0);
 
-      if (partialPayments.length > 0) {
+      const advances = (tenant as any).advance_payments || [];
+      const hasAnyAdvance = advances.length > 0;
+      const hasPaidAdvance = advances.some((p: any) => p.status === 'PAID');
+      const hasNonPaidAdvance = advances.some((p: any) => p.status && p.status !== 'PAID');
+      const hasAdvancePending = !hasPaidAdvance || hasNonPaidAdvance || !hasAnyAdvance;
+
+      if (rentDueAmount > 0 || hasAdvancePending) {
+        const parts: string[] = [];
+        if (rentDueAmount > 0) parts.push(`Rent due ₹${rentDueAmount}`);
+        if (hasAdvancePending) parts.push('Advance pending');
         throw new BadRequestException(
-          `Cannot update checkout date. Tenant has ${partialPayments.length} payment(s) in PARTIAL status. Please complete or mark all PARTIAL payments as PAID before checkout.`
-        );
-      }
-
-      // Check for other unpaid payments
-      const unpaidPayments = [
-        ...tenant.rent_payments.filter(p => p.status !== 'PAID' && p.status !== 'PARTIAL'),
-        ...tenant.advance_payments.filter(p => p.status !== 'PAID' && p.status !== 'PARTIAL'),
-        ...tenant.refund_payments.filter(p => p.status !== 'PAID' && p.status !== 'PARTIAL'),
-      ];
-
-      if (unpaidPayments.length > 0) {
-        throw new BadRequestException(
-          `Cannot update checkout date. There are ${unpaidPayments.length} unpaid payment(s). Please mark all payments as PAID before checkout.`
+          `Cannot update checkout date. Pending dues exist: ${parts.join(' and ')}. Please clear pending amounts before checkout.`
         );
       }
 

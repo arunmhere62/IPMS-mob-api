@@ -450,18 +450,18 @@ export class TenantService {
             bed_price: true,
           },
         },
-        city: {
-          select: {
-            s_no: true,
-            name: true,
-          },
-        },
-        state: {
-          select: {
-            s_no: true,
-            name: true,
-          },
-        },
+        // city: {
+        //   select: {
+        //     s_no: true,
+        //     name: true,
+        //   },
+        // },
+        // state: {
+        //   select: {
+        //     s_no: true,
+        //     name: true,
+        //   },
+        // },
         tenant_rent_cycles: {
           orderBy: {
             cycle_start: 'asc',

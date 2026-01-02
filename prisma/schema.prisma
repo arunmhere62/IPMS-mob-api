@@ -54,6 +54,7 @@ model beds {
   visitors           visitors[]
 
   @@unique([room_id, bed_no], map: "unique_bed_per_room")
+  @@unique([room_id, bed_no, is_deleted], map: "unique_bed_per_room_active")
   @@index([pg_id], map: "fk_pg_id")
 }
 
@@ -530,6 +531,7 @@ model rooms {
   visitors           visitors[]
 
   @@unique([pg_id, room_no], map: "unique_pg_room")
+  @@unique([pg_id, room_no, is_deleted], map: "unique_pg_room_active")
 }
 
 model state {

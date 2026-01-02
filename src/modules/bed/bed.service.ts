@@ -47,69 +47,29 @@ export class BedService {
       );
     }
 
-    // Check if a soft-deleted bed exists with the same room_id and bed_no
-    const existingDeletedBed = await this.prisma.beds.findFirst({
-      where: {
+    const bed = await this.prisma.beds.create({
+      data: {
         room_id: createBedDto.room_id,
         bed_no: createBedDto.bed_no,
-        is_deleted: true,
+        pg_id: createBedDto.pg_id,
+        images: createBedDto.images,
+        bed_price: createBedDto.bed_price,
+      },
+      include: {
+        rooms: {
+          select: {
+            s_no: true,
+            room_no: true,
+            pg_locations: {
+              select: {
+                s_no: true,
+                location_name: true,
+              },
+            },
+          },
+        },
       },
     });
-
-    let bed;
-
-    if (existingDeletedBed) {
-      // Restore the soft-deleted bed by updating it
-      bed = await this.prisma.beds.update({
-        where: { s_no: existingDeletedBed.s_no },
-        data: {
-          is_deleted: false,
-          pg_id: createBedDto.pg_id,
-          images: createBedDto.images,
-          bed_price: createBedDto.bed_price,
-          updated_at: new Date(),
-        },
-        include: {
-          rooms: {
-            select: {
-              s_no: true,
-              room_no: true,
-              pg_locations: {
-                select: {
-                  s_no: true,
-                  location_name: true,
-                },
-              },
-            },
-          },
-        },
-      });
-    } else {
-      // Create a new bed
-      bed = await this.prisma.beds.create({
-        data: {
-          room_id: createBedDto.room_id,
-          bed_no: createBedDto.bed_no,
-          pg_id: createBedDto.pg_id,
-          images: createBedDto.images,
-          bed_price: createBedDto.bed_price,
-        },
-        include: {
-          rooms: {
-            select: {
-              s_no: true,
-              room_no: true,
-              pg_locations: {
-                select: {
-                  s_no: true,
-                  location_name: true,
-                },
-              },
-            },
-          },
-        },
-      });
-    }
 
     return ResponseUtil.created(bed, 'Bed created successfully');
   }
@@ -299,6 +259,20 @@ export class BedService {
 
     if (!existingBed) {
       throw new NotFoundException(`Bed with ID ${id} not found`);
+    }
+
+    // 🔒 Identity lock: once any tenant has ever been assigned to this bed, bed_no cannot be changed
+    if (updateBedDto.bed_no && updateBedDto.bed_no !== existingBed.bed_no) {
+      const tenantCount = await this.prisma.tenants.count({
+        where: {
+          bed_id: id,
+          OR: [{ is_deleted: false }, { is_deleted: null }],
+        },
+      });
+
+      if (tenantCount > 0) {
+        throw new BadRequestException('Bed number cannot be changed once it has been assigned to a tenant');
+      }
     }
 
     // If room_id is being updated, verify new room exists

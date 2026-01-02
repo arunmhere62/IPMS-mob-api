@@ -21,77 +21,47 @@ export class RoomService {
   async create(createRoomDto: CreateRoomDto) {
     await this.subscriptionRestrictionService.assertCanCreateRoomInPg(createRoomDto.pg_id);
 
-    // Check if a soft-deleted room exists with the same pg_id and room_no
-    const existingDeletedRoom = await this.prisma.rooms.findFirst({
+    const existingActiveRoom = await this.prisma.rooms.findFirst({
       where: {
         pg_id: createRoomDto.pg_id,
         room_no: createRoomDto.room_no,
-        is_deleted: true,
+        is_deleted: false,
       },
     });
 
-    let room;
-
-    if (existingDeletedRoom) {
-      // Restore the soft-deleted room by updating it
-      room = await this.prisma.rooms.update({
-        where: { s_no: existingDeletedRoom.s_no },
-        data: {
-          is_deleted: false,
-          images: createRoomDto.images,
-          updated_at: new Date(),
-        },
-        include: {
-          pg_locations: {
-            select: {
-              s_no: true,
-              location_name: true,
-            },
-          },
-          beds: {
-            where: {
-              is_deleted: false,
-            },
-            select: {
-              s_no: true,
-              bed_no: true,
-              bed_price: true,
-            },
-          },
-        },
-      });
-
-      return ResponseUtil.success(room, 'Room restored successfully');
-    } else {
-      // Create a new room
-      room = await this.prisma.rooms.create({
-        data: {
-          pg_id: createRoomDto.pg_id,
-          room_no: createRoomDto.room_no,
-          images: createRoomDto.images,
-        },
-        include: {
-          pg_locations: {
-            select: {
-              s_no: true,
-              location_name: true,
-            },
-          },
-          beds: {
-            where: {
-              is_deleted: false,
-            },
-            select: {
-              s_no: true,
-              bed_no: true,
-              bed_price: true,
-            },
-          },
-        },
-      });
-
-      return ResponseUtil.success(room, 'Room created successfully');
+    if (existingActiveRoom) {
+      throw new BadRequestException(
+        `Room number "${createRoomDto.room_no}" already exists in this PG. Please use a different room number.`,
+      );
     }
+
+    const room = await this.prisma.rooms.create({
+      data: {
+        pg_id: createRoomDto.pg_id,
+        room_no: createRoomDto.room_no,
+        images: createRoomDto.images,
+      },
+      include: {
+        pg_locations: {
+          select: {
+            s_no: true,
+            location_name: true,
+          },
+        },
+        beds: {
+          where: {
+            is_deleted: false,
+          },
+          select: {
+            s_no: true,
+            bed_no: true,
+            bed_price: true,
+          },
+        },
+      },
+    });
+
+    return ResponseUtil.success(room, 'Room created successfully');
   }
 
   /**
@@ -239,6 +209,20 @@ export class RoomService {
 
     if (!existingRoom) {
       throw new NotFoundException(`Room with ID ${id} not found`);
+    }
+
+    // 🔒 Identity lock: once any bed exists for this room, room_no cannot be changed
+    if (updateRoomDto.room_no && updateRoomDto.room_no !== existingRoom.room_no) {
+      const bedCount = await this.prisma.beds.count({
+        where: {
+          room_id: id,
+          is_deleted: false,
+        },
+      });
+
+      if (bedCount > 0) {
+        throw new BadRequestException('Room number cannot be changed once beds are created for this room');
+      }
     }
 
     // Handle S3 image deletion if images are being updated

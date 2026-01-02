@@ -178,7 +178,7 @@ export class OrganizationService {
     });
 
     // Total revenue (sum of all paid tenant payments)
-    const revenueResult = await this.prisma.tenant_payments.aggregate({
+    const revenueResult = await this.prisma.rent_payments.aggregate({
       where: {
         is_deleted: false,
         status: 'PAID',
@@ -258,7 +258,7 @@ export class OrganizationService {
     });
 
     // Get revenue for this organization (through pg_locations)
-    const revenueResult = await this.prisma.tenant_payments.aggregate({
+    const revenueResult = await this.prisma.rent_payments.aggregate({
       where: {
         is_deleted: false,
         status: 'PAID',

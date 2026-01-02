@@ -48,8 +48,8 @@ model beds {
   rooms              rooms?               @relation(fields: [room_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "beds_ibfk_1")
   pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_id")
   refund_payments    refund_payments[]
+  rent_payments      rent_payments[]
   tenant_allocations tenant_allocations[]
-  tenant_payments    tenant_payments[]
   tenants            tenants[]
   visitors           visitors[]
 
@@ -83,17 +83,17 @@ model country {
 }
 
 model current_bills {
-  s_no            Int               @id @default(autoincrement())
-  tenant_id       Int
-  pg_id           Int
-  bill_amount     Decimal           @db.Decimal(10, 2)
-  bill_date       DateTime          @default(now()) @db.Timestamp(0)
-  created_at      DateTime          @default(now()) @db.Timestamp(0)
-  updated_at      DateTime          @default(now()) @db.Timestamp(0)
-  is_deleted      Boolean?          @default(false)
-  pg_locations    pg_locations      @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_bills_pg")
-  tenants         tenants           @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_bills_tenant")
-  tenant_payments tenant_payments[]
+  s_no          Int             @id @default(autoincrement())
+  tenant_id     Int
+  pg_id         Int
+  bill_amount   Decimal         @db.Decimal(10, 2)
+  bill_date     DateTime        @default(now()) @db.Timestamp(0)
+  created_at    DateTime        @default(now()) @db.Timestamp(0)
+  updated_at    DateTime        @default(now()) @db.Timestamp(0)
+  is_deleted    Boolean?        @default(false)
+  pg_locations  pg_locations    @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_bills_pg")
+  tenants       tenants         @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_bills_tenant")
+  rent_payments rent_payments[]
 
   @@index([pg_id], map: "fk_tenant_bills_pg")
   @@index([tenant_id], map: "fk_tenant_bills_tenant")
@@ -388,9 +388,9 @@ model pg_locations {
   state              state?                       @relation(fields: [state_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_state")
   pg_users           pg_users[]
   refund_payments    refund_payments[]
+  rent_payments      rent_payments[]
   rooms              rooms[]
   tenant_allocations tenant_allocations[]
-  tenant_payments    tenant_payments[]
   tenants            tenants[]
   visitors           visitors[]
 
@@ -452,6 +452,39 @@ model refund_payments {
   @@index([tenant_id], map: "tenantId")
 }
 
+model rent_payments {
+  s_no               Int                          @id @default(autoincrement())
+  tenant_id          Int
+  pg_id              Int
+  room_id            Int
+  bed_id             Int
+  cycle_id           Int?
+  amount_paid        Decimal                      @db.Decimal(10, 2)
+  payment_date       DateTime?                    @db.Timestamp(0)
+  payment_method     rent_payments_payment_method
+  status             rent_payments_status
+  remarks            String?                      @db.VarChar(255)
+  created_at         DateTime?                    @default(now()) @db.Timestamp(0)
+  updated_at         DateTime?                    @default(now()) @db.Timestamp(0)
+  is_deleted         Boolean?                     @default(false)
+  current_bill       Decimal?                     @db.Decimal(10, 2)
+  actual_rent_amount Decimal                      @default(0.00) @db.Decimal(10, 2)
+  current_bill_id    Int?
+  current_bills      current_bills?               @relation(fields: [current_bill_id], references: [s_no], map: "fk_current_bill")
+  beds               beds                         @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_bed")
+  tenant_rent_cycles tenant_rent_cycles?          @relation(fields: [cycle_id], references: [s_no], onUpdate: Restrict, map: "fk_tenant_payment_cycle")
+  pg_locations       pg_locations                 @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_pg")
+  rooms              rooms                        @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_room")
+  tenants            tenants                      @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_tenant")
+
+  @@index([current_bill_id], map: "fk_current_bill")
+  @@index([bed_id], map: "fk_tenant_payment_bed")
+  @@index([cycle_id], map: "fk_tenant_payment_cycle")
+  @@index([pg_id], map: "fk_tenant_payment_pg")
+  @@index([room_id], map: "fk_tenant_payment_room")
+  @@index([tenant_id], map: "fk_tenant_payment_tenant")
+}
+
 model role_permissions {
   s_no               Int                @id @default(autoincrement())
   role_id            Int
@@ -490,9 +523,9 @@ model rooms {
   advance_payments   advance_payments[]
   beds               beds[]
   refund_payments    refund_payments[]
+  rent_payments      rent_payments[]
   pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "rooms_ibfk_1")
   tenant_allocations tenant_allocations[]
-  tenant_payments    tenant_payments[]
   tenants            tenants[]
   visitors           visitors[]
 
@@ -598,36 +631,22 @@ model tenant_allocations {
   @@index([tenant_id], map: "idx_tenant_allocations_tenant")
 }
 
-model tenant_payments {
-  s_no               Int                            @id @default(autoincrement())
-  tenant_id          Int
-  pg_id              Int
-  room_id            Int
-  bed_id             Int
-  amount_paid        Decimal                        @db.Decimal(10, 2)
-  payment_date       DateTime?                      @db.Timestamp(0)
-  payment_method     tenant_payments_payment_method
-  status             tenant_payments_status
-  remarks            String?                        @db.VarChar(255)
-  created_at         DateTime?                      @default(now()) @db.Timestamp(0)
-  updated_at         DateTime?                      @default(now()) @db.Timestamp(0)
-  start_date         DateTime                       @default(dbgenerated("'0000-00-00 00:00:00'")) @db.Timestamp(0)
-  end_date           DateTime                       @default(dbgenerated("'0000-00-00 00:00:00'")) @db.Timestamp(0)
-  is_deleted         Boolean?                       @default(false)
-  current_bill       Decimal?                       @db.Decimal(10, 2)
-  actual_rent_amount Decimal                        @default(0.00) @db.Decimal(10, 2)
-  current_bill_id    Int?
-  current_bills      current_bills?                 @relation(fields: [current_bill_id], references: [s_no], map: "fk_current_bill")
-  beds               beds                           @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_bed")
-  pg_locations       pg_locations                   @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_pg")
-  rooms              rooms                          @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_room")
-  tenants            tenants                        @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_tenant")
+model tenant_rent_cycles {
+  s_no          Int             @id @default(autoincrement())
+  tenant_id     Int
+  cycle_type    String          @db.VarChar(20)
+  anchor_day    Int
+  cycle_start   DateTime        @db.DateTime(0)
+  cycle_end     DateTime        @db.DateTime(0)
+  created_at    DateTime        @default(now()) @db.Timestamp(0)
+  updated_at    DateTime        @default(now()) @db.Timestamp(0)
+  rent_payments rent_payments[]
+  tenants       tenants         @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_rent_cycles_tenant")
 
-  @@index([current_bill_id], map: "fk_current_bill")
-  @@index([bed_id], map: "fk_tenant_payment_bed")
-  @@index([pg_id], map: "fk_tenant_payment_pg")
-  @@index([room_id], map: "fk_tenant_payment_room")
-  @@index([tenant_id], map: "fk_tenant_payment_tenant")
+  @@unique([tenant_id, cycle_start], map: "uk_tenant_rent_cycles_tenant_start")
+  @@index([cycle_end], map: "idx_tenant_rent_cycles_end")
+  @@index([cycle_start], map: "idx_tenant_rent_cycles_start")
+  @@index([tenant_id], map: "idx_tenant_rent_cycles_tenant")
 }
 
 model tenants {
@@ -655,8 +674,9 @@ model tenants {
   advance_payments   advance_payments[]
   current_bills      current_bills[]
   refund_payments    refund_payments[]
+  rent_payments      rent_payments[]
   tenant_allocations tenant_allocations[]
-  tenant_payments    tenant_payments[]
+  tenant_rent_cycles tenant_rent_cycles[]
   city               city?                @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_tenants_city")
   state              state?               @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_tenants_state")
   pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_1")
@@ -945,7 +965,7 @@ enum refund_payments_payment_method {
   BANK_TRANSFER
 }
 
-enum tenant_payments_payment_method {
+enum rent_payments_payment_method {
   GPAY
   PHONEPE
   CASH
@@ -958,17 +978,17 @@ enum subscription_payments_payment_type {
   UPGRADE
 }
 
-enum tenant_payments_status {
+enum pg_locations_status {
+  ACTIVE
+  INACTIVE
+}
+
+enum rent_payments_status {
   PAID
   PENDING
   FAILED
   REFUNDED
   PARTIAL
-}
-
-enum pg_locations_status {
-  ACTIVE
-  INACTIVE
 }
 
 enum subscription_payments_status {

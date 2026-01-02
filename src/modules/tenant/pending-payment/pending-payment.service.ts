@@ -66,7 +66,7 @@ export class PendingPaymentService {
             bed_price_snapshot: true,
           },
         },
-        tenant_payments: {
+        rent_payments: {
           where: {
             is_deleted: false,
           },
@@ -77,8 +77,12 @@ export class PendingPaymentService {
             payment_date: true,
             amount_paid: true,
             actual_rent_amount: true,
-            start_date: true,
-            end_date: true,
+            tenant_rent_cycles: {
+              select: {
+                cycle_start: true,
+                cycle_end: true,
+              },
+            },
           },
         },
       },
@@ -177,7 +181,7 @@ export class PendingPaymentService {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
-    const lastPayment = tenant.tenant_payments.length > 0 ? tenant.tenant_payments[0] : null;
+    const lastPayment = tenant.rent_payments.length > 0 ? tenant.rent_payments[0] : null;
 
     let totalPending = 0;
     let paymentStatus: 'PAID' | 'PARTIAL' | 'PENDING' | 'OVERDUE' = 'PAID';
@@ -218,7 +222,9 @@ export class PendingPaymentService {
     } 
     // Case 2: Has payments - check if coverage has ended
     else {
-      const lastPaymentEndDate = lastPayment.end_date ? new Date(lastPayment.end_date) : null;
+      const lastPaymentEndDate = lastPayment.tenant_rent_cycles?.cycle_end
+        ? new Date(lastPayment.tenant_rent_cycles.cycle_end)
+        : null;
       
       if (lastPaymentEndDate) {
         lastPaymentEndDate.setHours(23, 59, 59, 999);
@@ -256,8 +262,12 @@ export class PendingPaymentService {
         // Case 2b: Last payment is still valid (end date is today or future)
         else {
           // Check if partial payment
-          const periodStart = new Date(lastPayment.start_date);
-          const periodEnd = new Date(lastPayment.end_date);
+          const periodStart = lastPayment.tenant_rent_cycles?.cycle_start
+            ? new Date(lastPayment.tenant_rent_cycles.cycle_start)
+            : new Date(today.getFullYear(), today.getMonth(), 1);
+          const periodEnd = lastPayment.tenant_rent_cycles?.cycle_end
+            ? new Date(lastPayment.tenant_rent_cycles.cycle_end)
+            : new Date(today.getFullYear(), today.getMonth() + 1, 0);
 
           // Prefer allocation-aware expected due for the period. This allows detecting
           // price differences after a mid-cycle transfer, even if actual_rent_amount
@@ -375,7 +385,7 @@ export class PendingPaymentService {
             bed_price: true,
           },
         },
-        tenant_payments: {
+        rent_payments: {
           where: {
             is_deleted: false,
           },
@@ -387,11 +397,15 @@ export class PendingPaymentService {
             payment_date: true,
             amount_paid: true,
             actual_rent_amount: true,
-            start_date: true,
-            end_date: true,
             payment_method: true,
             status: true,
             remarks: true,
+            tenant_rent_cycles: {
+              select: {
+                cycle_start: true,
+                cycle_end: true,
+              },
+            },
           },
         },
         advance_payments: {
@@ -490,7 +504,7 @@ export class PendingPaymentService {
             bed_price: true,
           },
         },
-        tenant_payments: {
+        rent_payments: {
           where: {
             is_deleted: false,
           },
@@ -499,7 +513,11 @@ export class PendingPaymentService {
           },
           take: 1,
           select: {
-            end_date: true,
+            tenant_rent_cycles: {
+              select: {
+                cycle_end: true,
+              },
+            },
           },
         },
       },
@@ -507,12 +525,12 @@ export class PendingPaymentService {
 
     const dueTomorrow = tenants
       .filter((tenant) => {
-        if (tenant.tenant_payments.length === 0) return false;
+        if (tenant.rent_payments.length === 0) return false;
 
-        const lastPayment = tenant.tenant_payments[0];
-        if (!lastPayment.end_date) return false;
+        const lastPayment = tenant.rent_payments[0];
+        if (!lastPayment.tenant_rent_cycles?.cycle_end) return false;
 
-        const endDate = new Date(lastPayment.end_date);
+        const endDate = new Date(lastPayment.tenant_rent_cycles.cycle_end);
         endDate.setHours(0, 0, 0, 0);
 
         // Check if end date is today
@@ -522,7 +540,7 @@ export class PendingPaymentService {
         tenant_id: tenant.s_no,
         tenant_name: tenant.name,
         room_no: tenant.rooms?.room_no,
-        last_payment_end_date: tenant.tenant_payments[0].end_date.toISOString(),
+        last_payment_end_date: tenant.rent_payments[0].tenant_rent_cycles.cycle_end.toISOString(),
         monthly_rent: tenant.beds?.bed_price
           ? parseFloat(tenant.beds.bed_price.toString())
           : 0,

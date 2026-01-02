@@ -19,7 +19,7 @@ Previously, tenants could be checked out even if they had pending payments in PA
 
 ```typescript
 // Check for PARTIAL status payments first (strict validation)
-const partialRentPayments = tenant.tenant_payments.filter(
+const partialRentPayments = tenant.rent_payments.filter(
   (payment) => payment.status === 'PARTIAL'
 );
 const partialAdvancePayments = tenant.advance_payments.filter(

@@ -19,7 +19,7 @@ model current_bills {
   is_deleted      Boolean?          @default(false)
   pg_locations    pg_locations      @relation(...)
   tenants         tenants           @relation(...)
-  tenant_payments tenant_payments[]
+  rent_payments rent_payments[]
 }
 ```
 

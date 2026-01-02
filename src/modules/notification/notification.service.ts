@@ -845,7 +845,7 @@ export class NotificationService {
           tp.due_date,
           tp.payment_status
         FROM tenants t
-        INNER JOIN tenant_payments tp ON t.s_no = tp.tenant_id
+        INNER JOIN rent_payments tp ON t.s_no = tp.tenant_id
         WHERE tp.payment_status = 'PENDING'
           AND t.status = 'ACTIVE'
           AND t.user_id IS NOT NULL
@@ -889,7 +889,7 @@ export class NotificationService {
           tp.due_date,
           DATEDIFF(tp.due_date, CURRENT_DATE) as days_remaining
         FROM tenants t
-        INNER JOIN tenant_payments tp ON t.s_no = tp.tenant_id
+        INNER JOIN rent_payments tp ON t.s_no = tp.tenant_id
         WHERE tp.payment_status = 'PENDING'
           AND DATEDIFF(tp.due_date, CURRENT_DATE) = 3
           AND t.status = 'ACTIVE'
@@ -934,7 +934,7 @@ export class NotificationService {
           tp.amount,
           DATEDIFF(CURRENT_DATE, tp.due_date) as overdue_days
         FROM tenants t
-        INNER JOIN tenant_payments tp ON t.s_no = tp.tenant_id
+        INNER JOIN rent_payments tp ON t.s_no = tp.tenant_id
         WHERE tp.payment_status = 'PENDING'
           AND tp.due_date < CURRENT_DATE
           AND t.status = 'ACTIVE'

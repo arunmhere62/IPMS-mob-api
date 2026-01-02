@@ -18,8 +18,8 @@ import { HeadersValidationGuard } from '../../../common/guards/headers-validatio
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
 
-@ApiTags('tenant-payments')
-@Controller('tenant-payments')
+@ApiTags('rent-payments')
+@Controller('rent-payments')
 @UseGuards(HeadersValidationGuard)
 export class TenantPaymentController {
   constructor(private readonly tenantPaymentService: TenantPaymentService) {}
@@ -46,8 +46,8 @@ export class TenantPaymentController {
   @ApiQuery({ name: 'status', required: false, type: String })
   @ApiQuery({ name: 'month', required: false, type: String, description: 'Month name (e.g., January)' })
   @ApiQuery({ name: 'year', required: false, type: Number, description: 'Year (e.g., 2024)' })
-  @ApiQuery({ name: 'start_date', required: false, type: String, description: 'Start date (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'end_date', required: false, type: String, description: 'End date (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'start_date', required: false, type: String, description: 'Payment date start (YYYY-MM-DD)' })
+  @ApiQuery({ name: 'end_date', required: false, type: String, description: 'Payment date end (YYYY-MM-DD)' })
   @ApiQuery({ name: 'room_id', required: false, type: Number })
   @ApiQuery({ name: 'bed_id', required: false, type: Number })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })

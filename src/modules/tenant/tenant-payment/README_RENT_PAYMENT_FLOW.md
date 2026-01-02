@@ -1,6 +1,40 @@
 # Tenant Rent Payment Flow (Mobile)
 
-This document explains the **rent payment entry flow** used by the Mobile app (`mob-ui`) and Mobile API (`mob-api`) for tenant rent payments, including:
+This document explains the **rent payment entry flow** used by the Mobile app (`mob-ui`) and Mobile API (`mob-api`) for tenant rent payments.
+
+It is written for:
+
+- backend developers working in `mob-api`
+- frontend/mobile developers working in `mob-ui`
+- anyone trying to understand how rent cycles, transfers, and partial payments behave
+
+---
+
+## TL;DR (Mental Model)
+
+The system works best when you keep these responsibilities separate:
+
+1) **Allocations (`tenant_allocations`) = where the tenant stayed + price history**
+- Tracks bed/room/PG changes over time.
+- Stores `bed_price_snapshot` so rent calculation stays accounting-safe even if prices change later.
+
+2) **Rent cycles (periods) = derived from rules (not “invented” per payment)**
+- A rent cycle is a computed date window (start/end) based on:
+  - tenant check-in date
+  - PG rent cycle type (`CALENDAR` vs `MIDMONTH`)
+  - date math
+
+3) **Payments (`rent_payments`) = money events**
+- Each row is “money received”, possibly partial.
+- Multiple payments can belong to the same cycle.
+
+4) **Cycle summary = expected vs paid vs due**
+- Compute expected rent from allocations.
+- Compute paid total from payments.
+
+One-line rule:
+
+`Cycles group payments; payments should not define cycles.`
 
 - Gap detection (`GET /tenant-payments/gaps/:tenant_id`)
 - Suggested next payment dates (`GET /tenant-payments/next-dates/:tenant_id`)
@@ -24,9 +58,82 @@ This document explains the **rent payment entry flow** used by the Mobile app (`
 
 ---
 
+## 1.1) User-friendly flow (what the user does in the app)
+
+When the user opens **Add Rent Payment** for a tenant:
+
+1) App calls `GET /api/v1/tenant-payments/gaps/:tenant_id`
+- If gaps exist, show “Missing Rent Period(s)” and let the user pick a period.
+
+2) If user chooses “Continue (Skip gaps)”, app calls:
+- `GET /api/v1/tenant-payments/next-dates/:tenant_id?rentCycleType=...&skipGaps=true`
+
+3) App submits the payment:
+- `POST /api/v1/tenant-payments`
+
+4) Backend stores a new payment row (append-only).
+
+---
+
+## 1.2) Example scenarios (end-to-end)
+
+### Example A: CALENDAR cycle, tenant joins mid-month
+
+- Tenant check-in: `2025-12-10`
+- Cycle type: `CALENDAR`
+
+Computed cycle logic (ideal):
+
+- Cycle for check-in month: `2025-12-10` -> `2025-12-31`
+- Next cycle: `2026-01-01` -> `2026-01-31`
+
+Payment behavior:
+
+- Payment row(s) for Dec must map to the `2025-12-10` -> `2025-12-31` cycle.
+- If tenant pays in 2 installments, create 2 rows with the same cycle window.
+
+### Example B: MIDMONTH cycle, tenant joins on 10th
+
+- Tenant check-in: `2025-12-10`
+- Cycle type: `MIDMONTH`
+
+Cycles:
+
+- Cycle 1: `2025-12-10` -> `2026-01-09`
+- Cycle 2: `2026-01-10` -> `2026-02-09`
+
+Payment behavior:
+
+- If tenant pays late (e.g., `2026-01-20`), the payment still belongs to Cycle 2 (Jan10–Feb09), not “a new random period”.
+
+### Example C: Partial payment (installments) for the same cycle
+
+Assume due for a cycle is `₹5000`.
+
+- Payment 1: `₹2000`, status `PARTIAL`
+- Payment 2: `₹1500`, status `PARTIAL`
+- Payment 3: `₹1500`, status `PAID`
+
+All three rows must belong to the same computed cycle window.
+
+### Example D: Transfer within a cycle (allocation split)
+
+- Tenant is in Bed A (₹6000/month) from `2025-12-01` to `2025-12-14`
+- Tenant transfers to Bed B (₹9000/month) from `2025-12-15` onward
+- Cycle type: `CALENDAR` (Dec = `2025-12-01` -> `2025-12-31`)
+
+Expected rent is computed by splitting the cycle across allocations:
+
+- Dec 1–14 at ₹6000/month (prorated)
+- Dec 15–31 at ₹9000/month (prorated)
+
+Payments remain simple “money events”; they don’t store split logic.
+
+---
+
 ## 2) Data Model Used
 
-Table: `tenant_payments`
+Table: `rent_payments`
 
 Important columns for rent flow:
 
@@ -39,6 +146,13 @@ Important columns for rent flow:
 - `amount_paid` (amount received in this transaction)
 - `status` (`PAID`, `PARTIAL`, `PENDING`, `FAILED`, `REFUNDED`)
 - `is_deleted`
+
+Related table: `tenant_allocations`
+
+- `tenant_id`
+- `pg_id`, `room_id`, `bed_id`
+- `effective_from`, `effective_to`
+- `bed_price_snapshot`
 
 ---
 
@@ -85,6 +199,20 @@ Response (simplified):
 
 ---
 
+## 3.1) What the backend should be responsible for (target behavior)
+
+To keep the UX smooth and to avoid accounting bugs:
+
+- The backend should be the **source of truth** for which cycle window a payment belongs to.
+- UI can show suggestions, but it should not “invent” cycle boundaries.
+
+Practical meaning:
+
+- For `POST /tenant-payments`, the backend should compute the correct `start_date/end_date` for the tenant and cycle type.
+- The API can still return `start_date/end_date` to display/group in UI.
+
+---
+
 ## 4) Backend Gap Detection Logic
 
 File:
@@ -125,6 +253,18 @@ If not, it emits a gap for that cycle.
 
 ---
 
+## 4.4) Important note about “covered” vs “fully paid”
+
+Today there are two concepts:
+
+- **Covered (gap disappears)**: any payment overlaps the period with status `PAID`/`PARTIAL`.
+- **Fully paid (accounting correct)**: `SUM(amount_paid)` for the cycle >= `actual_rent_amount` (or computed expected rent).
+
+The “fully paid” rule is the correct accounting rule.
+The “covered” rule is a UX shortcut.
+
+---
+
 ## 5) Mobile UI Flow (RentPaymentForm)
 
 File:
@@ -155,13 +295,23 @@ This means:
 
 ---
 
+## 5.4) UX recommendation (to keep things simple)
+
+The smoothest UI/UX happens when:
+
+- UI asks backend for suggested cycle (`/gaps` or `/next-dates`).
+- UI submits only money event info.
+- Backend returns the final stored payment with computed cycle window.
+
+---
+
 ## 6) Partial Payments (Installments) — How to implement
 
 ### Goal
 Allow multiple transactions for the **same rent period** without editing previous records.
 
 ### Recommended approach (already supported)
-For a given period (`start_date`, `end_date`), create multiple `tenant_payments` rows:
+For a given period (`start_date`, `end_date`), create multiple `rent_payments` rows:
 
 - Payment 1: `amount_paid = 2000`, `status = PARTIAL`
 - Payment 2: `amount_paid = 1500`, `status = PARTIAL`
@@ -261,6 +411,15 @@ Impact on gaps:
 3) **CALENDAR partial month unsupported**
 - UI validation blocks it.
 - Backend generates full-month check-in gap.
+
+---
+
+## 12) Glossary
+
+- **Cycle / Rent period**: a computed date window like `2025-12-10` -> `2025-12-31`.
+- **Allocation**: where the tenant stayed during a range of dates, including a price snapshot.
+- **Payment event**: one money transaction row (append-only).
+- **Installment**: multiple payment events that belong to the same cycle.
 
 ---
 

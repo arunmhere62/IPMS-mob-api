@@ -9,12 +9,14 @@ import { TransferTenantDto } from './dto/transfer-tenant.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { TenantStatusService } from './tenant-status/tenant-status.service';
 import { SubscriptionRestrictionService } from '../subscription/subscription-restriction.service';
+import { TenantRentSummaryService } from './tenant-rent-summary.service';
 
 @Injectable()
 export class TenantService {
   constructor(
     private prisma: PrismaService,
     private tenantStatusService: TenantStatusService,
+    private tenantRentSummaryService: TenantRentSummaryService,
     private pendingRentCalculatorService: PendingRentCalculatorService,
     private rentCycleCalculatorService: RentCycleCalculatorService,
     private s3DeletionService: S3DeletionService,
@@ -64,13 +66,18 @@ export class TenantService {
   }
 
   async transferTenant(tenantId: number, dto: TransferTenantDto) {
-    const effectiveFrom = new Date(dto.effective_from);
-    if (Number.isNaN(effectiveFrom.getTime())) {
+    const parseDateOnlyToUtc = (input: string): Date => {
+      const datePart = String(input || '').slice(0, 10);
+      const match = /^\d{4}-\d{2}-\d{2}$/.exec(datePart);
+      if (!match) return new Date(NaN);
+      const [y, m, d] = datePart.split('-').map((n) => Number(n));
+      return new Date(Date.UTC(y, m - 1, d));
+    };
+
+    const effectiveFromDateOnly = parseDateOnlyToUtc(dto.effective_from);
+    if (Number.isNaN(effectiveFromDateOnly.getTime())) {
       throw new BadRequestException('Invalid effective_from date. Please provide a valid date.');
     }
-
-    // Normalize to date-only boundary (avoid timezone drift)
-    const effectiveFromDateOnly = new Date(effectiveFrom.toISOString().split('T')[0] + 'T00:00:00.000Z');
 
     const tenant = await this.prisma.tenants.findFirst({
       where: { s_no: tenantId, is_deleted: false },
@@ -89,7 +96,7 @@ export class TenantService {
       throw new BadRequestException('Only ACTIVE tenants can be transferred.');
     }
 
-    const checkInDateOnly = new Date(tenant.check_in_date.toISOString().split('T')[0] + 'T00:00:00.000Z');
+    const checkInDateOnly = parseDateOnlyToUtc(tenant.check_in_date.toISOString());
     if (effectiveFromDateOnly < checkInDateOnly) {
       throw new BadRequestException(
         `Invalid effective_from date. It cannot be before tenant check-in date (${tenant.check_in_date.toISOString().split('T')[0]}).`
@@ -455,20 +462,31 @@ export class TenantService {
             name: true,
           },
         },
-        tenant_payments: {
+        tenant_rent_cycles: {
+          orderBy: {
+            cycle_start: 'asc',
+          },
+          select: {
+            s_no: true,
+            cycle_type: true,
+            anchor_day: true,
+            cycle_start: true,
+            cycle_end: true,
+          },
+        },
+        rent_payments: {
           where: {
             is_deleted: false,
           },
           orderBy: {
-            end_date: 'desc',
+            payment_date: 'desc',
           },
           select: {
             s_no: true,
             payment_date: true,
             amount_paid: true,
             actual_rent_amount: true,
-            start_date: true,
-            end_date: true,
+            cycle_id: true,
             payment_method: true,
             status: true,
             remarks: true,
@@ -527,261 +545,29 @@ export class TenantService {
     // Enrich tenants with status calculations and rent cycle information
     const enrichedTenants = tenants.map((tenant: any) => {
       const statusEnriched = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0];
+      const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
+      const rentFlags = this.tenantStatusService.deriveRentFlags({
+        paymentStatus: rentSummary.payment_status,
+        unpaidMonthsCount: rentSummary.unpaid_months?.length || 0,
+        partialDueAmount: rentSummary.partial_due_amount || 0,
+      });
 
-      const moneyRound2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
-      const dateOnly = (d: Date | string): string => {
-        const dt = typeof d === 'string' ? new Date(d) : d;
-        return dt.toISOString().split('T')[0];
-      };
-
-      const toDateOnlyUtc = (d: Date): Date => new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
-      const getInclusiveDays = (start: Date, end: Date): number => {
-        const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
-        const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-        return Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24)) + 1;
-      };
-
-      const computeProratedAmountForMonth = (monthlyPrice: number, start: Date, end: Date): number => {
-        if (monthlyPrice <= 0) return 0;
-        const s = toDateOnlyUtc(start);
-        const e = toDateOnlyUtc(end);
-        const year = s.getUTCFullYear();
-        const month = s.getUTCMonth();
-        const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-        const daysInPeriod = getInclusiveDays(s, e);
-        return (monthlyPrice / daysInMonth) * daysInPeriod;
-      };
-
-      const computeExpectedDueFromAllocations = (periodStart: Date, periodEnd: Date): number => {
-        const allocations = (tenant as any).tenant_allocations || [];
-        if (!allocations || allocations.length === 0) return 0;
-
-        const start = toDateOnlyUtc(periodStart);
-        const end = toDateOnlyUtc(periodEnd);
-
-        const overlaps = allocations
-          .map((a: any) => ({
-            from: toDateOnlyUtc(new Date(a.effective_from)),
-            to: a.effective_to ? toDateOnlyUtc(new Date(a.effective_to)) : null,
-            price: a.bed_price_snapshot ? Number(a.bed_price_snapshot) : 0,
-          }))
-          .filter((a: any) => {
-            const aTo = a.to ?? end;
-            return a.from <= end && aTo >= start;
-          })
-          .sort((a: any, b: any) => a.from.getTime() - b.from.getTime());
-
-        if (overlaps.length === 0) return 0;
-
-        let total = 0;
-        overlaps.forEach((a: any) => {
-          const segStart = a.from > start ? a.from : start;
-          const segEnd = (a.to ?? end) < end ? (a.to ?? end) : end;
-          if (segStart > segEnd) return;
-
-          let cursor = new Date(segStart);
-          while (cursor <= segEnd) {
-            const y = cursor.getUTCFullYear();
-            const m = cursor.getUTCMonth();
-
-            const monthStart = new Date(Date.UTC(y, m, 1));
-            const monthEnd = new Date(Date.UTC(y, m + 1, 0));
-
-            const partStart = cursor > monthStart ? cursor : monthStart;
-            const partEnd = segEnd < monthEnd ? segEnd : monthEnd;
-
-            total += computeProratedAmountForMonth(a.price, partStart, partEnd);
-
-            const next = new Date(partEnd);
-            next.setUTCDate(next.getUTCDate() + 1);
-            cursor = next;
-          }
-        });
-
-        return moneyRound2(total);
-      };
-
-      const paymentsSortedByEndDesc = [...(tenant.tenant_payments || [])].sort(
-        (a: any, b: any) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime(),
-      );
-
-      const computeCycleSummaries = () => {
-        const groups = new Map<string, any[]>();
-
-        paymentsSortedByEndDesc.forEach((p: any) => {
-          const startKey = p.start_date ? dateOnly(p.start_date) : '';
-          const endKey = p.end_date ? dateOnly(p.end_date) : '';
-          const key = `${startKey}__${endKey}`;
-          if (!groups.has(key)) groups.set(key, []);
-          groups.get(key)!.push(p);
-        });
-
-        const summaries = Array.from(groups.entries())
-          .map(([key, ps]) => {
-            const [startStr, endStr] = key.split('__');
-            const payingRows = ps.filter((p) => p.status === 'PAID' || p.status === 'PARTIAL');
-            const totalPaid = moneyRound2(
-              payingRows.reduce((sum: number, p: any) => sum + Number(p.amount_paid || 0), 0),
-            );
-            const dueFromPayments = moneyRound2(
-              ps.reduce((max: number, p: any) => Math.max(max, Number(p.actual_rent_amount || 0)), 0),
-            );
-
-            // Dynamic expected due for this cycle based on allocation history (bed_price_snapshot)
-            const expectedFromAllocations = (() => {
-              try {
-                const start = new Date(`${startStr}T00:00:00.000Z`);
-                const end = new Date(`${endStr}T00:00:00.000Z`);
-                return computeExpectedDueFromAllocations(start, end);
-              } catch {
-                return 0;
-              }
-            })();
-
-            const due = expectedFromAllocations > 0 ? expectedFromAllocations : dueFromPayments;
-            const remainingDue = moneyRound2(Math.max(0, due - totalPaid));
-
-            let status: 'NO_PAYMENT' | 'PAID' | 'PARTIAL' | 'PENDING' | 'FAILED' = 'NO_PAYMENT';
-            if (due > 0) {
-              if (totalPaid >= due) status = 'PAID';
-              else if (totalPaid > 0) status = 'PARTIAL';
-              else status = 'NO_PAYMENT';
-            } else {
-              // If due is unknown (0), fall back to existence of paying rows
-              if (totalPaid > 0) status = 'PARTIAL';
-            }
-
-            return {
-              start_date: startStr,
-              end_date: endStr,
-              payments: ps,
-              totalPaid,
-              due,
-              remainingDue,
-              status,
-              expected_from_allocations: expectedFromAllocations,
-              due_from_payments: dueFromPayments,
-            };
-          })
-          .filter((s) => Boolean(s.start_date) && Boolean(s.end_date))
-          .sort((a, b) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime());
-
-        return summaries;
-      };
-
-      const cycleSummaries = computeCycleSummaries();
-      const latestCycle = cycleSummaries.length > 0 ? cycleSummaries[0] : null;
-      
-      // Calculate current rent cycle dates
-      let currentRentCycle = null;
-      if (tenant.pg_locations && tenant.tenant_payments.length > 0) {
-        const lastPayment = tenant.tenant_payments[0];
-        const cycleType = tenant.pg_locations.rent_cycle_type as 'CALENDAR' | 'MIDMONTH';
-        const nextCycleDates = this.rentCycleCalculatorService.getNextRentCycleDates(
-          lastPayment.end_date.toISOString().split('T')[0],
-          cycleType,
-        );
-        const daysInPeriod = this.rentCycleCalculatorService.calculateDaysInPeriod(
-          nextCycleDates.startDate,
-          nextCycleDates.endDate,
-        );
-        currentRentCycle = {
-          start_date: nextCycleDates.startDate,
-          end_date: nextCycleDates.endDate,
-          days: daysInPeriod,
-          cycle_type: cycleType,
-        };
-      } else if (tenant.pg_locations) {
-        // No previous payments, calculate from check-in date
-        const cycleType = tenant.pg_locations.rent_cycle_type as 'CALENDAR' | 'MIDMONTH';
-        const checkInDate = tenant.check_in_date.toISOString().split('T')[0];
-        let cycleDates;
-        
-        if (cycleType === 'CALENDAR') {
-          cycleDates = this.rentCycleCalculatorService.getCalendarMonthDates(checkInDate);
-        } else {
-          cycleDates = this.rentCycleCalculatorService.getMidmonthDates(checkInDate);
-        }
-        
-        const daysInPeriod = this.rentCycleCalculatorService.calculateDaysInPeriod(
-          cycleDates.start,
-          cycleDates.end,
-        );
-        currentRentCycle = {
-          start_date: cycleDates.start,
-          end_date: cycleDates.end,
-          days: daysInPeriod,
-          cycle_type: cycleType,
-        };
-      }
-
-      const paymentStatus = latestCycle?.status || 'NO_PAYMENT';
-
-      const underpaidCycles = cycleSummaries.filter(
-        (s) => s.status === 'PARTIAL' && s.remainingDue > 0,
-      );
-
-      const partialPayments = underpaidCycles.flatMap((s) => s.payments);
-      const totalPartialDue = moneyRound2(
-        underpaidCycles.reduce((sum: number, s) => sum + Number(s.remainingDue || 0), 0),
-      );
-
-      // Check for unpaid months between check-in date and now
-      const unpaidMonths = this.getUnpaidMonthsWithCycleDates(
-        tenant.check_in_date,
-        tenant.check_out_date,
-        tenant.tenant_payments,
-        tenant.pg_locations?.rent_cycle_type as 'CALENDAR' | 'MIDMONTH'
-      );
-      
-      const bedPriceNumber = tenant.beds?.bed_price ? Number(tenant.beds.bed_price) : 0;
-
-      // Reuse the same allocation-aware computation for unpaid cycles too
-      const computeProratedDueFromAllocations = computeExpectedDueFromAllocations;
-
-      // Strict per-cycle amounts
-      const partialDueAmount = moneyRound2(totalPartialDue);
-      const pendingDueAmount = moneyRound2(
-        unpaidMonths.reduce((sum: number, m: any) => {
-          const start = new Date(`${m.cycle_start}T00:00:00.000Z`);
-          const end = new Date(`${m.cycle_end}T00:00:00.000Z`);
-
-          const dueFromAllocations = computeProratedDueFromAllocations(start, end);
-          if (dueFromAllocations > 0) return sum + dueFromAllocations;
-
-          // Legacy fallback: assume current bed price for full cycle (or prorate if partial calendar month)
-          const daysInPeriod = getInclusiveDays(start, end);
-          const daysInMonth = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
-          const legacy = bedPriceNumber > 0 ? (bedPriceNumber / daysInMonth) * daysInPeriod : 0;
-          return sum + legacy;
-        }, 0)
-      );
-      const rentDueAmount = moneyRound2(partialDueAmount + pendingDueAmount);
-
-      // Strict status flags for the latest cycle, then overridden by unpaid cycles
-      const isRentPaidBase = paymentStatus === 'PAID';
-      const isRentPartialBase = paymentStatus === 'PARTIAL' && partialDueAmount > 0;
-
-      // If there are unpaid cycles, tenant cannot be fully paid
-      const isRentPaid = unpaidMonths.length === 0 && isRentPaidBase;
-      const isRentPartial = !isRentPaid && isRentPartialBase;
-      
       return {
         ...statusEnriched,
-        is_rent_paid: isRentPaid,
-        is_rent_partial: isRentPartial,
-        rent_due_amount: rentDueAmount,
-        partial_due_amount: partialDueAmount,
-        pending_due_amount: pendingDueAmount,
-        rent_cycle: currentRentCycle,
-        payment_status: paymentStatus,
-        partial_payments: partialPayments,
-        total_partial_due: totalPartialDue,
-        unpaid_months: unpaidMonths,
-        tenant_payments: tenant.tenant_payments,
+        is_rent_paid: rentFlags.is_rent_paid,
+        is_rent_partial: rentFlags.is_rent_partial,
+        rent_due_amount: rentSummary.rent_due_amount,
+        partial_due_amount: rentSummary.partial_due_amount,
+        pending_due_amount: rentSummary.pending_due_amount,
+        rent_cycle: rentSummary.rent_cycle,
+        payment_status: rentSummary.payment_status,
+        partial_payments: rentSummary.partial_payments,
+        total_partial_due: rentSummary.total_partial_due,
+        unpaid_months: rentSummary.unpaid_months,
+        rent_payments: tenant.rent_payments,
         advance_payments: tenant.advance_payments,
         refund_payments: tenant.refund_payments,
-        payment_cycle_summaries: cycleSummaries,
+        payment_cycle_summaries: rentSummary.payment_cycle_summaries,
       };
     });
 
@@ -862,7 +648,19 @@ export class TenantService {
             name: true,
           },
         },
-        tenant_payments: {
+        tenant_rent_cycles: {
+          orderBy: {
+            cycle_start: 'asc',
+          },
+          select: {
+            s_no: true,
+            cycle_type: true,
+            anchor_day: true,
+            cycle_start: true,
+            cycle_end: true,
+          },
+        },
+        rent_payments: {
           where: {
             is_deleted: false,
           },
@@ -877,11 +675,18 @@ export class TenantService {
             bed_id: true,
             amount_paid: true,
             actual_rent_amount: true,
-            start_date: true,
-            end_date: true,
+            cycle_id: true,
             payment_method: true,
             remarks: true,
             status: true,
+            tenant_rent_cycles: {
+              select: {
+                s_no: true,
+                cycle_type: true,
+                cycle_start: true,
+                cycle_end: true,
+              },
+            },
             pg_locations: {
               select: {
                 s_no: true,
@@ -1035,144 +840,97 @@ export class TenantService {
     // Enrich tenant with status calculations using TenantStatusService
     const enrichedTenant = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0];
 
-    // Dynamic due computation (allocation-aware) so transfers within a paid period reflect the price difference
-    const moneyRound2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
-    const toDateOnlyUtc = (d: Date): Date => new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
-    const getInclusiveDays = (start: Date, end: Date): number => {
-      const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
-      const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-      return Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24)) + 1;
-    };
+    const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
+    const paymentStatus = rentSummary.payment_status || 'NO_PAYMENT';
 
-    const computeProratedAmountForMonth = (monthlyPrice: number, start: Date, end: Date): number => {
-      if (monthlyPrice <= 0) return 0;
-      const s = toDateOnlyUtc(start);
-      const e = toDateOnlyUtc(end);
-      const year = s.getUTCFullYear();
-      const month = s.getUTCMonth();
-      const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-      const daysInPeriod = getInclusiveDays(s, e);
-      return (monthlyPrice / daysInMonth) * daysInPeriod;
-    };
-
-    const computeExpectedDueFromAllocations = (periodStart: Date, periodEnd: Date): number => {
+    const transferDifferenceDueCycle = (() => {
       const allocations = (tenant as any).tenant_allocations || [];
-      if (!allocations || allocations.length === 0) return 0;
+      if (!allocations || allocations.length <= 1) return null;
 
-      const start = toDateOnlyUtc(periodStart);
-      const end = toDateOnlyUtc(periodEnd);
+      const toDateOnlyUtcLocal = (input: any): Date => {
+        const d = input instanceof Date ? input : new Date(input);
+        if (Number.isNaN(d.getTime())) return new Date(NaN);
+        return new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
+      };
 
-      const overlaps = allocations
-        .map((a: any) => ({
-          from: toDateOnlyUtc(new Date(a.effective_from)),
-          to: a.effective_to ? toDateOnlyUtc(new Date(a.effective_to)) : null,
-          price: a.bed_price_snapshot ? Number(a.bed_price_snapshot) : 0,
-        }))
+      // Identify most recent transfer allocation (exclude initial check-in allocation)
+      const checkInDateOnly = toDateOnlyUtcLocal(tenant.check_in_date);
+      const transferAllocations = allocations
         .filter((a: any) => {
-          const aTo = a.to ?? end;
-          return a.from <= end && aTo >= start;
+          const ef = toDateOnlyUtcLocal(a.effective_from);
+          if (Number.isNaN(ef.getTime())) return false;
+          return ef.getTime() !== checkInDateOnly.getTime();
         })
-        .sort((a: any, b: any) => a.from.getTime() - b.from.getTime());
+        .sort((a: any, b: any) => new Date(b.effective_from).getTime() - new Date(a.effective_from).getTime());
 
-      if (overlaps.length === 0) return 0;
+      if (transferAllocations.length === 0) return null;
+      const transferDate = toDateOnlyUtcLocal(transferAllocations[0].effective_from);
+      if (Number.isNaN(transferDate.getTime())) return null;
 
-      let total = 0;
-      overlaps.forEach((a: any) => {
-        const segStart = a.from > start ? a.from : start;
-        const segEnd = (a.to ?? end) < end ? (a.to ?? end) : end;
-        if (segStart > segEnd) return;
-
-        let cursor = new Date(segStart);
-        while (cursor <= segEnd) {
-          const y = cursor.getUTCFullYear();
-          const m = cursor.getUTCMonth();
-
-          const monthStart = new Date(Date.UTC(y, m, 1));
-          const monthEnd = new Date(Date.UTC(y, m + 1, 0));
-
-          const partStart = cursor > monthStart ? cursor : monthStart;
-          const partEnd = segEnd < monthEnd ? segEnd : monthEnd;
-
-          total += computeProratedAmountForMonth(a.price, partStart, partEnd);
-
-          const next = new Date(partEnd);
-          next.setUTCDate(next.getUTCDate() + 1);
-          cursor = next;
-        }
+      const candidate = rentSummary.payment_cycle_summaries.find((c: any) => {
+        const start = toDateOnlyUtcLocal(String(c.start_date));
+        const end = toDateOnlyUtcLocal(String(c.end_date));
+        if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+        return transferDate >= start && transferDate <= end;
       });
 
-      return moneyRound2(total);
-    };
+      if (!candidate) return null;
 
-    const payments = [...((tenant as any).tenant_payments || [])]
-      .filter((p: any) => p.start_date && p.end_date)
-      .sort((a: any, b: any) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime());
+      const remaining = Number(candidate.remainingDue || 0);
+      if (!(remaining > 0)) return null;
 
-    // Group payments by cycle window (start_date + end_date)
-    const cycleGroups = new Map<string, any[]>();
-    payments.forEach((p: any) => {
-      const startKey = new Date(p.start_date).toISOString().split('T')[0];
-      const endKey = new Date(p.end_date).toISOString().split('T')[0];
-      const key = `${startKey}__${endKey}`;
-      if (!cycleGroups.has(key)) cycleGroups.set(key, []);
-      cycleGroups.get(key)!.push(p);
-    });
+      const todayUtc = toDateOnlyUtcLocal(new Date());
+      const candidateStartUtc = toDateOnlyUtcLocal(String(candidate.start_date));
+      if (Number.isNaN(candidateStartUtc.getTime())) return null;
+      if (candidateStartUtc.getTime() > todayUtc.getTime()) return null;
 
-    const cycleSummaries = Array.from(cycleGroups.entries())
-      .map(([key, ps]) => {
-        const [startStr, endStr] = key.split('__');
-        const payingRows = ps.filter((p: any) => p.status === 'PAID' || p.status === 'PARTIAL');
-        const totalPaid = moneyRound2(payingRows.reduce((sum: number, p: any) => sum + Number(p.amount_paid || 0), 0));
-        const dueFromPayments = moneyRound2(ps.reduce((max: number, p: any) => Math.max(max, Number(p.actual_rent_amount || 0)), 0));
-        const expectedFromAllocations = computeExpectedDueFromAllocations(
-          new Date(`${startStr}T00:00:00.000Z`),
-          new Date(`${endStr}T00:00:00.000Z`),
-        );
-        const due = expectedFromAllocations > 0 ? expectedFromAllocations : dueFromPayments;
-        const remainingDue = moneyRound2(Math.max(0, due - totalPaid));
-        const status = due > 0 ? (totalPaid >= due ? 'PAID' : totalPaid > 0 ? 'PARTIAL' : 'NO_PAYMENT') : totalPaid > 0 ? 'PARTIAL' : 'NO_PAYMENT';
-        return { start_date: startStr, end_date: endStr, totalPaid, due, remainingDue, status, expected_from_allocations: expectedFromAllocations };
-      })
-      .sort((a, b) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime());
-
-    const dynamicPartialDue = moneyRound2(
-      cycleSummaries
-        .filter((s: any) => s.status === 'PARTIAL' && s.remainingDue > 0)
-        .reduce((sum: number, s: any) => sum + Number(s.remainingDue || 0), 0),
-    );
+      return candidate;
+    })();
 
     const unpaidMonths = this.getUnpaidMonthsWithCycleDates(
       tenant.check_in_date,
       tenant.check_out_date,
-      (tenant as any).tenant_payments || [],
-      (tenant as any).pg_locations?.rent_cycle_type as 'CALENDAR' | 'MIDMONTH',
+      (tenant as any).tenant_rent_cycles || [],
+      (tenant as any).rent_payments || [],
     );
 
-    const pendingDueAmount = moneyRound2(
-      unpaidMonths.reduce((sum: number, m: any) => {
-        const start = new Date(`${m.cycle_start}T00:00:00.000Z`);
-        const end = new Date(`${m.cycle_end}T00:00:00.000Z`);
-        const dueFromAllocations = computeExpectedDueFromAllocations(start, end);
-        if (dueFromAllocations > 0) return sum + dueFromAllocations;
+    const rentFlags = this.tenantStatusService.deriveRentFlags({
+      paymentStatus,
+      unpaidMonthsCount: unpaidMonths.length,
+      partialDueAmount: rentSummary.partial_due_amount || 0,
+    });
 
-        const bedPriceNumber = (tenant as any).beds?.bed_price ? Number((tenant as any).beds.bed_price) : 0;
-        const daysInPeriod = getInclusiveDays(start, end);
-        const daysInMonth = new Date(Date.UTC(start.getUTCFullYear(), start.getUTCMonth() + 1, 0)).getUTCDate();
-        const legacy = bedPriceNumber > 0 ? (bedPriceNumber / daysInMonth) * daysInPeriod : 0;
-        return sum + legacy;
-      }, 0),
-    );
+    const cycleSummaryById = new Map<number, any>();
+    (rentSummary.payment_cycle_summaries || []).forEach((s: any) => {
+      if (s?.cycle_id) cycleSummaryById.set(Number(s.cycle_id), s);
+    });
 
-    const rentDueAmount = moneyRound2(dynamicPartialDue + pendingDueAmount);
+    const enrichedRentPayments = (tenant as any).rent_payments?.map((p: any) => {
+      const cycleSummary = p?.cycle_id ? cycleSummaryById.get(Number(p.cycle_id)) : null;
+      const remaining = cycleSummary ? Number(cycleSummary.remainingDue || 0) : null;
+      return {
+        ...p,
+        cycle_status: cycleSummary?.status ?? null,
+        cycle_due: cycleSummary?.due ?? null,
+        cycle_total_paid: cycleSummary?.totalPaid ?? null,
+        cycle_remaining_due: remaining,
+        is_cycle_settled: remaining !== null ? remaining <= 0 : null,
+      };
+    });
 
     return ResponseUtil.success(
       {
         ...enrichedTenant,
-        rent_due_amount: rentDueAmount,
-        partial_due_amount: dynamicPartialDue,
-        pending_due_amount: pendingDueAmount,
+        is_rent_paid: rentFlags.is_rent_paid,
+        is_rent_partial: rentFlags.is_rent_partial,
+        rent_due_amount: rentSummary.rent_due_amount,
+        partial_due_amount: rentSummary.partial_due_amount,
+        pending_due_amount: rentSummary.pending_due_amount,
+        rent_payments: enrichedRentPayments,
         unpaid_months: unpaidMonths,
-        payment_cycle_summaries: cycleSummaries,
+        payment_status: paymentStatus,
+        payment_cycle_summaries: rentSummary.payment_cycle_summaries,
+        transfer_difference_due_cycle: transferDifferenceDueCycle,
       },
       'Tenant fetched successfully',
     );
@@ -1218,7 +976,7 @@ export class TenantService {
 
     if (isCheckInChanging || isRoomChanging || isBedChanging) {
       const [hasRentPayments, hasAdvance, hasRefund, hasBills] = await Promise.all([
-        this.prisma.tenant_payments.count({ where: { tenant_id: id, is_deleted: false } }),
+        this.prisma.rent_payments.count({ where: { tenant_id: id, is_deleted: false } }),
         this.prisma.advance_payments.count({ where: { tenant_id: id, is_deleted: false } }),
         this.prisma.refund_payments.count({ where: { tenant_id: id, is_deleted: false } }),
         this.prisma.current_bills.count({ where: { tenant_id: id, is_deleted: false } }),
@@ -1408,219 +1166,6 @@ export class TenantService {
     return `${prefix}${timestamp}${random}`;
   }
 
-  /**
-   * Calculate rent cycle dates for a tenant based on PG's rent cycle type
-   * Supports both CALENDAR and MIDMONTH cycles
-   */
-  async calculateTenantRentCycleDates(tenantId: number, referenceDate?: string) {
-    // Get tenant with PG location details
-    const tenant = await this.prisma.tenants.findUnique({
-      where: { s_no: tenantId },
-      include: {
-        pg_locations: {
-          select: {
-            s_no: true,
-            location_name: true,
-            rent_cycle_type: true,
-          },
-        },
-        tenant_payments: {
-          orderBy: { end_date: 'desc' },
-          take: 1,
-          select: {
-            end_date: true,
-          },
-        },
-      },
-    });
-
-    if (!tenant) {
-      throw new NotFoundException(`Tenant with ID ${tenantId} not found`);
-    }
-
-    if (!tenant.pg_locations) {
-      throw new BadRequestException('Tenant PG location not found');
-    }
-
-    const pgRentCycleType = tenant.pg_locations.rent_cycle_type as 'CALENDAR' | 'MIDMONTH';
-    const dateToUse = referenceDate || tenant.check_in_date.toISOString().split('T')[0];
-
-    let rentCycleDates: { start: string; end: string };
-
-    if (pgRentCycleType === 'CALENDAR') {
-      // For CALENDAR: 1st to last day of month
-      rentCycleDates = this.rentCycleCalculatorService.getCalendarMonthDates(dateToUse);
-    } else {
-      // For MIDMONTH: same day to same day next month - 1
-      rentCycleDates = this.rentCycleCalculatorService.getMidmonthDates(dateToUse);
-    }
-
-    // Validate the calculated dates
-    const validation = this.rentCycleCalculatorService.validateRentPeriod(
-      rentCycleDates.start,
-      rentCycleDates.end,
-      pgRentCycleType,
-    );
-
-    const daysInPeriod = this.rentCycleCalculatorService.calculateDaysInPeriod(
-      rentCycleDates.start,
-      rentCycleDates.end,
-    );
-
-    return ResponseUtil.success({
-      tenant_id: tenant.s_no,
-      tenant_name: tenant.name,
-      pg_name: tenant.pg_locations.location_name,
-      rent_cycle_type: pgRentCycleType,
-      cycle_description: this.rentCycleCalculatorService.getCycleTypeDescription(pgRentCycleType),
-      current_cycle: {
-        start_date: rentCycleDates.start,
-        end_date: rentCycleDates.end,
-        days: daysInPeriod,
-        is_valid: validation.isValid,
-        validation_error: validation.error,
-      },
-      has_previous_payments: tenant.tenant_payments.length > 0,
-      last_payment_end_date: tenant.tenant_payments[0]?.end_date?.toISOString().split('T')[0] || null,
-    }, 'Rent cycle dates calculated successfully');
-  }
-
-  /**
-   * Get next rent cycle dates for a tenant
-   * Calculates the next rent period based on the last payment end date
-   */
-  async getNextRentCycleDates(tenantId: number) {
-    // Get tenant with PG location and last payment details
-    const tenant = await this.prisma.tenants.findUnique({
-      where: { s_no: tenantId },
-      include: {
-        pg_locations: {
-          select: {
-            s_no: true,
-            location_name: true,
-            rent_cycle_type: true,
-          },
-        },
-        tenant_payments: {
-          orderBy: { end_date: 'desc' },
-          take: 1,
-          select: {
-            end_date: true,
-          },
-        },
-      },
-    });
-
-    if (!tenant) {
-      throw new NotFoundException(`Tenant with ID ${tenantId} not found`);
-    }
-
-    if (!tenant.pg_locations) {
-      throw new BadRequestException('Tenant PG location not found');
-    }
-
-    if (tenant.tenant_payments.length === 0) {
-      throw new BadRequestException('No previous payments found. Use calculateTenantRentCycleDates instead.');
-    }
-
-    const pgRentCycleType = tenant.pg_locations.rent_cycle_type as 'CALENDAR' | 'MIDMONTH';
-    const lastPaymentEndDate = tenant.tenant_payments[0].end_date.toISOString().split('T')[0];
-
-    // Calculate next cycle dates
-    const nextCycleDates = this.rentCycleCalculatorService.getNextRentCycleDates(
-      lastPaymentEndDate,
-      pgRentCycleType,
-    );
-
-    // Validate the calculated dates
-    const validation = this.rentCycleCalculatorService.validateRentPeriod(
-      nextCycleDates.startDate,
-      nextCycleDates.endDate,
-      pgRentCycleType,
-    );
-
-    const daysInPeriod = this.rentCycleCalculatorService.calculateDaysInPeriod(
-      nextCycleDates.startDate,
-      nextCycleDates.endDate,
-    );
-
-    return ResponseUtil.success({
-      tenant_id: tenant.s_no,
-      tenant_name: tenant.name,
-      pg_name: tenant.pg_locations.location_name,
-      rent_cycle_type: pgRentCycleType,
-      cycle_description: this.rentCycleCalculatorService.getCycleTypeDescription(pgRentCycleType),
-      last_payment_end_date: lastPaymentEndDate,
-      next_cycle: {
-        start_date: nextCycleDates.startDate,
-        end_date: nextCycleDates.endDate,
-        days: daysInPeriod,
-        is_valid: validation.isValid,
-        validation_error: validation.error,
-      },
-    }, 'Next rent cycle dates calculated successfully');
-  }
-
-  /**
-   * Validate rent period dates for a tenant
-   * Ensures dates match the PG's rent cycle pattern
-   */
-  async validateTenantRentPeriod(
-    tenantId: number,
-    startDate: string,
-    endDate: string,
-  ) {
-    // Get tenant with PG location details
-    const tenant = await this.prisma.tenants.findUnique({
-      where: { s_no: tenantId },
-      include: {
-        pg_locations: {
-          select: {
-            s_no: true,
-            location_name: true,
-            rent_cycle_type: true,
-          },
-        },
-      },
-    });
-
-    if (!tenant) {
-      throw new NotFoundException(`Tenant with ID ${tenantId} not found`);
-    }
-
-    if (!tenant.pg_locations) {
-      throw new BadRequestException('Tenant PG location not found');
-    }
-
-    const pgRentCycleType = tenant.pg_locations.rent_cycle_type as 'CALENDAR' | 'MIDMONTH';
-
-    // Validate the dates
-    const validation = this.rentCycleCalculatorService.validateRentPeriod(
-      startDate,
-      endDate,
-      pgRentCycleType,
-    );
-
-    const daysInPeriod = this.rentCycleCalculatorService.calculateDaysInPeriod(
-      startDate,
-      endDate,
-    );
-
-    return ResponseUtil.success({
-      tenant_id: tenant.s_no,
-      tenant_name: tenant.name,
-      pg_name: tenant.pg_locations.location_name,
-      rent_cycle_type: pgRentCycleType,
-      cycle_description: this.rentCycleCalculatorService.getCycleTypeDescription(pgRentCycleType),
-      validation_result: {
-        start_date: startDate,
-        end_date: endDate,
-        days: daysInPeriod,
-        is_valid: validation.isValid,
-        error: validation.error,
-      },
-    }, 'Rent period validation completed');
-  }
 
   /**
    * Get unpaid months using cycle start/end dates
@@ -1642,8 +1187,8 @@ export class TenantService {
   private getUnpaidMonthsWithCycleDates(
     checkInDate: Date,
     checkOutDate: Date | null,
-    tenantPayments: any[],
-    cycleType: 'CALENDAR' | 'MIDMONTH'
+    tenantCycles: any[],
+    rentPayments: any[],
   ): any[] {
     const formatDateOnly = (d: Date): string => {
       const year = d.getFullYear();
@@ -1660,95 +1205,44 @@ export class TenantService {
 
     const unpaidMonths: any[] = [];
 
-    // Parse check-in date to avoid timezone issues (same as detectPaymentGaps)
-    const checkInDateStr = new Date(checkInDate).toISOString().split('T')[0];
-    let currentCycleStart = new Date(checkInDateStr + 'T00:00:00.000Z');
+    const endCutoff = endDate;
+    const cycles = (tenantCycles || [])
+      .map((c: any) => ({
+        ...c,
+        cycle_start: new Date(c.cycle_start),
+        cycle_end: new Date(c.cycle_end),
+      }))
+      .filter((c: any) => c.cycle_start <= endCutoff)
+      .sort((a: any, b: any) => a.cycle_start.getTime() - b.cycle_start.getTime());
 
-    // Sort payments by start_date to process in order
-    const sortedPayments = [...tenantPayments].sort(
-      (a, b) => new Date(a.start_date).getTime() - new Date(b.start_date).getTime(),
-    );
-    
-    // Generate cycles from check-in date onwards
-    // Include all unpaid cycles up to the latest payment end date or today, whichever is later
-    let maxIterations = 100; // Safety limit to prevent infinite loops
-    let iterations = 0;
-    
-    // Find the latest payment end date to determine how far to check
-    let latestPaymentEnd = endDate;
-    if (sortedPayments.length > 0) {
-      const lastPayment = sortedPayments[sortedPayments.length - 1];
-      const lastPaymentEnd = new Date(lastPayment.end_date);
-      lastPaymentEnd.setHours(0, 0, 0, 0);
-      if (lastPaymentEnd > latestPaymentEnd) {
-        latestPaymentEnd = lastPaymentEnd;
-      }
-    }
-    
-    let isFirstCycle = true;
+    const paidByCycle = new Map<number, number>();
+    rentPayments.forEach((p: any) => {
+      if (!p.cycle_id) return;
+      const isPaying = p.status === 'PAID' || p.status === 'PARTIAL';
+      if (!isPaying) return;
+      const prev = paidByCycle.get(p.cycle_id) || 0;
+      paidByCycle.set(p.cycle_id, prev + Number(p.amount_paid || 0));
+    });
 
-    while (iterations < maxIterations) {
-      iterations++;
-      let cyclePeriod: any;
-      
-      if (cycleType === 'CALENDAR') {
-        // CALENDAR: 1st to last day of month
-        cyclePeriod = this.getCalendarCyclePeriod(currentCycleStart);
-      } else {
-        // MIDMONTH: day X to day (X-1) of next month
-        cyclePeriod = this.getMidmonthCyclePeriod(currentCycleStart);
-      }
-      
-      // Stop if cycle start date is after the latest payment end date
-      if (cyclePeriod.start > latestPaymentEnd) {
-        break;
-      }
-      
-      const cycleStartStr = formatDateOnly(cyclePeriod.start);
-      const cycleEndStr = formatDateOnly(cyclePeriod.end);
+    cycles.forEach((c: any) => {
+      const startStr = formatDateOnly(c.cycle_start);
+      const endStr = formatDateOnly(c.cycle_end);
+      const totalPaid = paidByCycle.get(c.s_no) || 0;
 
-      // Match detectPaymentGaps logic:
-      // - MIDMONTH: coverage only if payment has EXACT same start/end period (installments)
-      // - CALENDAR: same exact match; for check-in partial month allow legacy full-month payments
-      const hasPayment = sortedPayments.some((payment: any) => {
-        const isPaying = payment.status === 'PAID' || payment.status === 'PARTIAL';
-        if (!isPaying) return false;
-
-        const pStartStr = new Date(payment.start_date).toISOString().split('T')[0];
-        const pEndStr = new Date(payment.end_date).toISOString().split('T')[0];
-
-        if (pStartStr === cycleStartStr && pEndStr === cycleEndStr) return true;
-
-        if (cycleType === 'CALENDAR' && isFirstCycle) {
-          const pStart = new Date(payment.start_date);
-          const pEnd = new Date(payment.end_date);
-          return pStart <= cyclePeriod.start && pEnd >= cyclePeriod.end;
-        }
-
-        return false;
-      });
-      
-      // If no payment found for this cycle, add to unpaid months
-      if (!hasPayment) {
+      if (totalPaid <= 0) {
         unpaidMonths.push({
-          cycle_start: cycleStartStr,
-          cycle_end: cycleEndStr,
-          month: cyclePeriod.monthKey,
-          month_name: cyclePeriod.monthName,
-          year: cyclePeriod.year,
-          month_number: cyclePeriod.monthNumber,
-          cycle_type: cycleType,
+          cycle_id: c.s_no,
+          cycle_start: startStr,
+          cycle_end: endStr,
+          month: `${c.cycle_start.getFullYear()}-${String(c.cycle_start.getMonth() + 1).padStart(2, '0')}`,
+          month_name: c.cycle_start.toLocaleString('default', { month: 'long', year: 'numeric' }),
+          year: c.cycle_start.getFullYear(),
+          month_number: c.cycle_start.getMonth() + 1,
+          cycle_type: c.cycle_type,
         });
       }
-      
-      // Move to next cycle
-      currentCycleStart = new Date(cyclePeriod.end);
-      currentCycleStart.setDate(currentCycleStart.getDate() + 1);
-      currentCycleStart.setHours(0, 0, 0, 0); // Reset to start of day
+    });
 
-      isFirstCycle = false;
-    }
-    
     return unpaidMonths;
   }
 

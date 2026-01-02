@@ -62,15 +62,10 @@ export class CreateTenantPaymentDto {
   @IsEnum(PaymentStatus)
   status: PaymentStatus;
 
-  @ApiProperty({ description: 'Start date of payment period' })
-  @IsNotEmpty()
-  @IsDateString()
-  start_date: string;
-
-  @ApiProperty({ description: 'End date of payment period' })
-  @IsNotEmpty()
-  @IsDateString()
-  end_date: string;
+  @ApiProperty({ description: 'Rent cycle ID (preferred)', required: false })
+  @IsOptional()
+  @IsNumber()
+  cycle_id?: number;
 
   @ApiProperty({ description: 'Current bill amount', required: false })
   @IsOptional()

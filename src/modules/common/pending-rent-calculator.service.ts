@@ -415,7 +415,7 @@ export class PendingRentCalculatorService {
       const pendingDetails = this.calculatePendingRentDetails(
         tenant.check_in_date,
         Number(tenant.rooms?.rent_price || 0),
-        tenant.tenant_payments || [],
+        tenant.rent_payments || [],
         tenant.advance_payments || []
       );
 

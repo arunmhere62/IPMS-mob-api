@@ -18,7 +18,7 @@ export class CheckoutService {
         is_deleted: false,
       },
       include: {
-        tenant_payments: {
+        rent_payments: {
           where: {
             is_deleted: false,
           },
@@ -59,7 +59,7 @@ export class CheckoutService {
     }
 
     // Check for PARTIAL status payments first (strict validation)
-    const partialRentPayments = tenant.tenant_payments.filter(
+    const partialRentPayments = tenant.rent_payments.filter(
       (payment) => payment.status === 'PARTIAL'
     );
     const partialAdvancePayments = tenant.advance_payments.filter(
@@ -94,7 +94,7 @@ export class CheckoutService {
     }
 
     // Check if all remaining payments are paid (excluding PARTIAL which we already checked)
-    const unpaidRentPayments = tenant.tenant_payments.filter(
+    const unpaidRentPayments = tenant.rent_payments.filter(
       (payment) => payment.status !== 'PAID' && payment.status !== 'PARTIAL'
     );
     const unpaidAdvancePayments = tenant.advance_payments.filter(
@@ -169,7 +169,7 @@ export class CheckoutService {
         is_deleted: false,
       },
       include: {
-        tenant_payments: {
+        rent_payments: {
           where: { is_deleted: false },
           select: { status: true },
         },
@@ -200,7 +200,7 @@ export class CheckoutService {
       // Validate before updating checkout date (only if setting a new checkout date)
       // Check for PARTIAL payments
       const partialPayments = [
-        ...tenant.tenant_payments.filter(p => p.status === 'PARTIAL'),
+        ...tenant.rent_payments.filter(p => p.status === 'PARTIAL'),
         ...tenant.advance_payments.filter(p => p.status === 'PARTIAL'),
         ...tenant.refund_payments.filter(p => p.status === 'PARTIAL'),
       ];
@@ -213,7 +213,7 @@ export class CheckoutService {
 
       // Check for other unpaid payments
       const unpaidPayments = [
-        ...tenant.tenant_payments.filter(p => p.status !== 'PAID' && p.status !== 'PARTIAL'),
+        ...tenant.rent_payments.filter(p => p.status !== 'PAID' && p.status !== 'PARTIAL'),
         ...tenant.advance_payments.filter(p => p.status !== 'PAID' && p.status !== 'PARTIAL'),
         ...tenant.refund_payments.filter(p => p.status !== 'PAID' && p.status !== 'PARTIAL'),
       ];

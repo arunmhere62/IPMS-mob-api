@@ -222,7 +222,7 @@ export class PgLocationService {
       updatePgLocationDto.rentCycleType &&
       updatePgLocationDto.rentCycleType !== existingPg.rent_cycle_type
     ) {
-      const rentPaymentCount = await this.prisma.tenant_payments.count({
+      const rentPaymentCount = await this.prisma.rent_payments.count({
         where: {
           pg_id: id,
           is_deleted : false
@@ -407,7 +407,7 @@ export class PgLocationService {
                       check_out_date: true,
                     },
                   },
-                  tenant_payments: {
+                  rent_payments: {
                     where: {
                       is_deleted: false,
                       status: 'PAID',
@@ -416,9 +416,13 @@ export class PgLocationService {
                       s_no: true,
                       amount_paid: true,
                       payment_date: true,
-                      start_date: true,
-                      end_date: true,
                       actual_rent_amount: true,
+                      tenant_rent_cycles: {
+                        select: {
+                          cycle_start: true,
+                          cycle_end: true,
+                        },
+                      },
                     },
                     orderBy: {
                       created_at: 'desc',
@@ -451,8 +455,8 @@ export class PgLocationService {
       }
 
       // Calculate room and bed statistics
-      const rooms = pgLocation.rooms || [];
-      const tenants = pgLocation.tenants || [];
+      const rooms = (pgLocation as any).rooms || [];
+      const tenants = (pgLocation as any).tenants || [];
       const totalRooms = rooms.length;
       
       let totalBeds = 0;
@@ -476,7 +480,7 @@ export class PgLocationService {
         
         // Calculate room revenue from latest payments
         const roomRevenue = beds.reduce((sum, bed) => {
-          const latestPayment = bed.tenant_payments && bed.tenant_payments[0];
+          const latestPayment = bed.rent_payments && bed.rent_payments[0];
           return sum + Number(latestPayment?.actual_rent_amount || 0);
         }, 0);
         totalRevenue += roomRevenue;
@@ -499,12 +503,12 @@ export class PgLocationService {
               check_in_date: bed.tenants[0].check_in_date,
               check_out_date: bed.tenants[0].check_out_date,
             } : null,
-            latest_payment: bed.tenant_payments && bed.tenant_payments.length > 0 ? {
-              amount_paid: bed.tenant_payments[0].amount_paid,
-              payment_date: bed.tenant_payments[0].payment_date,
-              start_date: bed.tenant_payments[0].start_date,
-              end_date: bed.tenant_payments[0].end_date,
-              actual_rent_amount: bed.tenant_payments[0].actual_rent_amount,
+            latest_payment: bed.rent_payments && bed.rent_payments.length > 0 ? {
+              amount_paid: bed.rent_payments[0].amount_paid,
+              payment_date: bed.rent_payments[0].payment_date,
+              start_date: bed.rent_payments[0].tenant_rent_cycles?.cycle_start,
+              end_date: bed.rent_payments[0].tenant_rent_cycles?.cycle_end,
+              actual_rent_amount: bed.rent_payments[0].actual_rent_amount,
             } : null,
           })),
         };

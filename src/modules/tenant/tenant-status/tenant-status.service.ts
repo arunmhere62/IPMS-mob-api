@@ -6,8 +6,6 @@ import { Injectable } from '@nestjs/common';
  */
 
 interface TenantPayment {
-  start_date: string | Date;
-  end_date: string | Date;
   status: 'PAID' | 'PENDING' | 'FAILED' | 'PARTIAL';
   actual_rent_amount: string | number;
   amount_paid: string | number;
@@ -22,7 +20,7 @@ interface RefundPayment {
 }
 
 interface TenantData {
-  tenant_payments?: TenantPayment[];
+  rent_payments?: TenantPayment[];
   advance_payments?: AdvancePayment[];
   refund_payments?: RefundPayment[];
   check_in_date?: string | Date;
@@ -43,15 +41,54 @@ export interface TenantStatusResult {
   pending_months: number;
 }
 
+export type CycleSummaryLike = {
+  start_date: string;
+  end_date: string;
+  status?: string;
+};
+
 @Injectable()
 export class TenantStatusService {
+  selectRelevantCycle(params: {
+    cycleSummaries: CycleSummaryLike[];
+    referenceDateOnlyUtc: Date;
+  }): CycleSummaryLike | null {
+    const { cycleSummaries, referenceDateOnlyUtc } = params;
+    if (!cycleSummaries || cycleSummaries.length === 0) return null;
+
+    const inCurrent = cycleSummaries.find((c) => {
+      const start = new Date(String(c.start_date) + 'T00:00:00.000Z');
+      const end = new Date(String(c.end_date) + 'T00:00:00.000Z');
+      return start <= referenceDateOnlyUtc && referenceDateOnlyUtc <= end;
+    });
+    if (inCurrent) return inCurrent;
+
+    const mostRecentStarted = cycleSummaries.find((c) => {
+      const start = new Date(String(c.start_date) + 'T00:00:00.000Z');
+      return start <= referenceDateOnlyUtc;
+    });
+    return mostRecentStarted || null;
+  }
+
+  deriveRentFlags(params: {
+    paymentStatus: string;
+    unpaidMonthsCount: number;
+    partialDueAmount: number;
+  }): { is_rent_paid: boolean; is_rent_partial: boolean } {
+    const isRentPaidBase = params.paymentStatus === 'PAID';
+    const isRentPartialBase = params.paymentStatus === 'PARTIAL' && params.partialDueAmount > 0;
+    const is_rent_paid = params.unpaidMonthsCount === 0 && isRentPaidBase;
+    const is_rent_partial = !is_rent_paid && isRentPartialBase;
+    return { is_rent_paid, is_rent_partial };
+  }
+
   /**
    * Calculate pending months for a tenant
    * Checks for PENDING/PARTIAL/FAILED payments or missing rent periods
    */
   private calculatePendingMonths(tenant: TenantData): number {
     // If no rent records, check time since check-in date
-    if (!tenant.tenant_payments || tenant.tenant_payments.length === 0) {
+    if (!tenant.rent_payments || tenant.rent_payments.length === 0) {
       if (!tenant.check_in_date) return 0;
 
       const now = new Date();
@@ -78,79 +115,11 @@ export class TenantStatusService {
     // PARTIAL payments should NOT be counted as pending months (they're tracked separately)
     let pendingCount = 0;
 
-    tenant.tenant_payments.forEach((payment) => {
+    tenant.rent_payments.forEach((payment) => {
       if (payment.status === 'PENDING' || payment.status === 'FAILED') {
         pendingCount++;
       }
     });
-
-    // If no pending payments found, check if current date is covered by a PAID or PARTIAL rent
-    if (pendingCount === 0) {
-      const now = new Date();
-      now.setHours(0, 0, 0, 0);
-
-      const isCoveredByPayment = tenant.tenant_payments.some((payment) => {
-        // Both PAID and PARTIAL cover the period (PARTIAL just has remaining balance)
-        if (payment.status !== 'PAID' && payment.status !== 'PARTIAL')
-          return false;
-
-        const startDate = new Date(payment.start_date);
-        const endDate = new Date(payment.end_date);
-        startDate.setHours(0, 0, 0, 0);
-        endDate.setHours(0, 0, 0, 0);
-
-        // Check if current date falls within this payment period
-        return now >= startDate && now <= endDate;
-      });
-
-      // If current date is NOT covered by any payment, calculate months from last payment
-      if (!isCoveredByPayment) {
-        // Find the latest PAID payment by end date
-        const paidPayments = tenant.tenant_payments.filter(
-          (p) => p.status === 'PAID'
-        );
-
-        if (paidPayments.length > 0) {
-          const latestPaidPayment = paidPayments.sort(
-            (a, b) =>
-              new Date(b.end_date).getTime() - new Date(a.end_date).getTime()
-          )[0];
-
-          const lastPaidEndDate = new Date(latestPaidPayment.end_date);
-          lastPaidEndDate.setHours(0, 0, 0, 0);
-
-          // Calculate months between last paid end date and now
-          let yearDiff = now.getFullYear() - lastPaidEndDate.getFullYear();
-          let monthDiff = now.getMonth() - lastPaidEndDate.getMonth();
-          
-          // Adjust for day of month - if current day is after last paid end day, add 1 month
-          if (now.getDate() > lastPaidEndDate.getDate()) {
-            monthDiff++;
-          }
-          
-          pendingCount = Math.max(1, yearDiff * 12 + monthDiff);
-        } else {
-          // No PAID payments at all, calculate from check-in date
-          if (tenant.check_in_date) {
-            const checkInDate = new Date(tenant.check_in_date);
-            checkInDate.setHours(0, 0, 0, 0);
-
-            let yearDiff = now.getFullYear() - checkInDate.getFullYear();
-            let monthDiff = now.getMonth() - checkInDate.getMonth();
-            
-            // Adjust for day of month - if current day is on or after check-in day, add 1 month
-            // (meaning the full month has passed)
-            if (now.getDate() >= checkInDate.getDate()) {
-              monthDiff++;
-            }
-            
-            pendingCount = Math.max(1, yearDiff * 12 + monthDiff);
-          } else {
-            pendingCount = 1;
-          }
-        }
-      }
-    }
 
     return pendingCount;
   }
@@ -166,41 +135,9 @@ export class TenantStatusService {
     const is_refund_paid =
       tenant.refund_payments?.some((p) => p.status === 'PAID') || false;
 
-    // Current date for calculations
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
-
     // Check for rent payment issues
     const hasPartialPayment =
-      tenant.tenant_payments?.some((p) => p.status === 'PARTIAL') || false;
-    const hasPendingPayment =
-      tenant.tenant_payments?.some(
-        (p) => p.status === 'PENDING' || p.status === 'FAILED'
-      ) || false;
-
-    // Check for rent period gap (current date not covered by any PAID rent period)
-    let hasRentGap = false;
-
-    if (tenant.tenant_payments && tenant.tenant_payments.length > 0) {
-      // Check if current date is covered by any PAID rent period
-      const isCoveredByPaidRent = tenant.tenant_payments.some((payment) => {
-        if (payment.status !== 'PAID') return false;
-
-        const startDate = new Date(payment.start_date);
-        const endDate = new Date(payment.end_date);
-        startDate.setHours(0, 0, 0, 0);
-        endDate.setHours(0, 0, 0, 0);
-
-        // Check if current date falls within this PAID rent period
-        return now >= startDate && now <= endDate;
-      });
-
-      // If current date is NOT covered by any PAID rent period, there's a gap
-      hasRentGap = !isCoveredByPaidRent;
-    } else if (tenant.check_in_date) {
-      // If no payments but has check-in date, always has gap
-      hasRentGap = new Date(tenant.check_in_date) < now;
-    }
+      tenant.rent_payments?.some((p) => p.status === 'PARTIAL') || false;
 
     // Calculate pending months
     const pendingMonths = this.calculatePendingMonths(tenant);
@@ -213,9 +150,9 @@ export class TenantStatusService {
     let pending_due_amount = 0;
     const rentPrice = Number(tenant.rooms?.rent_price || 0);
 
-    if (tenant.tenant_payments && tenant.tenant_payments.length > 0) {
+    if (tenant.rent_payments && tenant.rent_payments.length > 0) {
       // Sum due amounts from PARTIAL and PENDING payments separately
-      tenant.tenant_payments.forEach((p) => {
+      tenant.rent_payments.forEach((p) => {
         if (p.status === 'PARTIAL') {
           const expected = Number(p.actual_rent_amount || 0);
           const paid = Number(p.amount_paid || 0);
@@ -224,13 +161,6 @@ export class TenantStatusService {
           pending_due_amount += Number(p.actual_rent_amount || 0);
         }
       });
-
-      // If there's a rent gap and no explicit pending payments,
-      // calculate due amount based on pending months
-      // (This can happen even if there are partial payments for other months)
-      if (hasRentGap && pending_due_amount === 0 && pendingMonths > 0) {
-        pending_due_amount = rentPrice * pendingMonths;
-      }
     } else if (pendingMonths > 0) {
       // No payments but pending months (based on check-in date)
       pending_due_amount = rentPrice * pendingMonths;
@@ -281,30 +211,16 @@ export class TenantStatusService {
       if (tenant.status !== 'ACTIVE') return false;
 
       // Include tenant if they have any pending/failed payments
-      const hasPendingOrFailed = tenant.tenant_payments?.some(
+      const hasPendingOrFailed = tenant.rent_payments?.some(
         (p: any) => p.status === 'PENDING' || p.status === 'FAILED'
       );
 
       // Include tenant if they have pending months (even if they also have partial payments)
       const hasPendingMonths = tenant.pending_months > 0;
 
-      // Debug logging
-      const shouldInclude = hasPendingOrFailed || hasPendingMonths;
-      if (shouldInclude) {
-        console.log(`Including tenant ${tenant.name} in pending filter:`, {
-          hasPendingOrFailed,
-          hasPendingMonths,
-          pending_months: tenant.pending_months,
-          is_rent_partial: tenant.is_rent_partial,
-          payments: tenant.tenant_payments?.map(p => ({ status: p.status, amount: p.amount_paid }))
-        });
-      }
-
       // Include if they have pending/failed payments OR pending months
-      return shouldInclude;
+      return hasPendingOrFailed || hasPendingMonths;
     });
-
-    console.log(`Pending rent filter: ${filteredTenants.length} tenants found out of ${enrichedTenants.length} total`);
     return filteredTenants;
   }
 
@@ -331,55 +247,11 @@ export class TenantStatusService {
   }
 
   /**
-   * Get active tenants with paid rent
-   * Returns tenants with all rents fully paid
-   */
-  getTenantsWithPaidRent(tenants: any[]): any[] {
-    const enrichedTenants = this.enrichTenantsWithStatus(tenants);
-    return enrichedTenants.filter(
-      (tenant) => tenant.status === 'ACTIVE' && tenant.is_rent_paid
-    );
-  }
-
-  /**
-   * Get tenant statistics for active tenants
-   * Simplified version
-   */
-  getTenantStatistics(tenants: any[]): {
-    total: number;
-    active: number;
-    with_pending_rent: number;
-    with_partial_rent: number;
-    with_paid_rent: number;
-    without_advance: number;
-    total_due_amount: number;
-  } {
-    const enrichedTenants = this.enrichTenantsWithStatus(tenants);
-    const activeTenants = enrichedTenants.filter((t) => t.status === 'ACTIVE');
-
-    // Calculate actual statistics
-    return {
-      total: tenants.length,
-      active: activeTenants.length,
-      with_pending_rent: this.getTenantsWithPendingRent(tenants).length,
-      with_partial_rent: this.getTenantsWithPartialRent(tenants).length,
-      with_paid_rent: this.getTenantsWithPaidRent(tenants).length,
-      without_advance: this.getTenantsWithoutAdvance(tenants).length,
-      total_due_amount: activeTenants.reduce(
-        (sum, t) => sum + (t.rent_due_amount || 0),
-        0
-      ),
-    };
-  }
-
-  /**
    * Map database tenant object to TenantData interface
    */
   private mapTenantData(tenant: any): TenantData {
     return {
-      tenant_payments: tenant.tenant_payments?.map((p: any) => ({
-        start_date: p.start_date,
-        end_date: p.end_date,
+      rent_payments: tenant.rent_payments?.map((p: any) => ({
         status: p.status,
         actual_rent_amount: p.actual_rent_amount,
         amount_paid: p.amount_paid,

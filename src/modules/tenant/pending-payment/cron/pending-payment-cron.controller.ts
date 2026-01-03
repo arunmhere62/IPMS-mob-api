@@ -1,6 +1,5 @@
-import { Controller, Param, ParseIntPipe, Post, UseGuards } from '@nestjs/common';
+import { Controller, Param, ParseIntPipe, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { JwtAuthGuard } from '../../../auth/guards/jwt-auth.guard';
 import { ResponseUtil } from '../../../../common/utils/response.util';
 import { PendingPaymentCronService } from './pending-payment-cron.service';
 

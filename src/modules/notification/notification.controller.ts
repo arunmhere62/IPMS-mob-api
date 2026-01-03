@@ -10,7 +10,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
-import { NotificationService, RegisterTokenDto, SendNotificationDto } from './notification.service';
+import { NotificationService, RegisterTokenDto } from './notification.service';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders, type ValidatedHeaders as ValidatedHeadersType } from '../../common/decorators/validated-headers.decorator';
@@ -135,7 +135,7 @@ export class NotificationController {
    * POST /notifications/test-static
    */
   @Post('test-static')
-  async sendStaticTestNotification(@Body() body: { title: string; body: string; data?: any }) {
+  async sendStaticTestNotification(@Body() body: { title: string; body: string; data?: Record<string, unknown> }) {
     console.log(`[TEST-STATIC] 🧪 Static test notification endpoint called`);
     console.log(`[TEST-STATIC] Payload:`, body);
     
@@ -180,7 +180,7 @@ export class NotificationController {
       title: string;
       message: string;
       type?: string;
-      data?: any;
+      data?: Record<string, unknown>;
     },
   ) {
     return await this.notificationService.sendToExpoToken(body.to, {

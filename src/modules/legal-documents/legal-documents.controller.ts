@@ -21,7 +21,7 @@ import {
 } from '@nestjs/swagger';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
-import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
+import { ValidatedHeaders, type ValidatedHeaders as ValidatedHeadersType } from '../../common/decorators/validated-headers.decorator';
 import { LegalDocumentsService } from './legal-documents.service';
 import { CreateLegalDocumentDto } from './dto/create-legal-document.dto';
 import { LegalDocumentQueryDto } from './dto/legal-document-query.dto';
@@ -45,7 +45,7 @@ export class LegalDocumentsController {
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Duplicate type+version' })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Invalid headers/body' })
   async create(
-    @ValidatedHeaders() headers: any,
+    @ValidatedHeaders() headers: ValidatedHeadersType,
     @Body() dto: CreateLegalDocumentDto,
   ) {
     return this.legalDocumentsService.create(headers, dto);
@@ -85,7 +85,7 @@ export class LegalDocumentsController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Legal document not found' })
   @ApiResponse({ status: HttpStatus.CONFLICT, description: 'Duplicate type+version' })
   async update(
-    @ValidatedHeaders() headers: any,
+    @ValidatedHeaders() headers: ValidatedHeadersType,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateLegalDocumentDto,
   ) {
@@ -101,7 +101,7 @@ export class LegalDocumentsController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Legal document status updated successfully' })
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Legal document not found' })
   async setActive(
-    @ValidatedHeaders() headers: any,
+    @ValidatedHeaders() headers: ValidatedHeadersType,
     @Param('id', ParseIntPipe) id: number,
     @Query('value', ParseBoolPipe) value: boolean,
   ) {
@@ -119,7 +119,7 @@ export class LegalDocumentsController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Active legal document not found' })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Missing headers or invalid org/document' })
   async accept(
-    @ValidatedHeaders() headers: any,
+    @ValidatedHeaders() headers: ValidatedHeadersType,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: AcceptLegalDocumentDto,
   ) {
@@ -136,7 +136,7 @@ export class LegalDocumentsController {
   @ApiResponse({ status: HttpStatus.NOT_FOUND, description: 'Acceptance record not found' })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Missing headers/body' })
   async revoke(
-    @ValidatedHeaders() headers: any,
+    @ValidatedHeaders() headers: ValidatedHeadersType,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: RevokeLegalAcceptanceDto,
   ) {
@@ -154,7 +154,7 @@ export class LegalDocumentsController {
   @ApiResponse({ status: HttpStatus.OK, description: 'Legal acceptance status fetched successfully' })
   @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Missing x-user-id' })
   async requiredStatus(
-    @ValidatedHeaders() headers: any,
+    @ValidatedHeaders() headers: ValidatedHeadersType,
     @Query('context') context?: string,
     @Query('type') type?: string,
   ) {

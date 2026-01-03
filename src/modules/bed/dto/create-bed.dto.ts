@@ -1,4 +1,5 @@
 import { IsString, IsInt, IsOptional, IsNumber, Min } from 'class-validator';
+import { Prisma } from '@prisma/client';
 
 export class CreateBedDto {
   @IsInt()
@@ -12,7 +13,7 @@ export class CreateBedDto {
   pg_id?: number;
 
   @IsOptional()
-  images?: any;
+  images?: Prisma.InputJsonValue;
 
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0.01)

@@ -105,9 +105,11 @@ export class TenantPaymentController {
   @ApiResponse({ status: 200, description: 'Tenant payment updated successfully' })
   @ApiResponse({ status: 404, description: 'Tenant payment not found' })
   update(
-    @Param('id', ParseIntPipe) id: number,
-    @Body() updateTenantPaymentDto: UpdateTenantPaymentDto,
+    @Param('id', ParseIntPipe) _id: number,
+    @Body() _updateTenantPaymentDto: UpdateTenantPaymentDto,
   ) {
+    void _id;
+    void _updateTenantPaymentDto;
     throw new MethodNotAllowedException(
       'Tenant payments are immutable. Create a new payment entry instead of editing an existing one.',
     );

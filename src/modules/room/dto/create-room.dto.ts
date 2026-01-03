@@ -1,4 +1,5 @@
 import { IsString, IsInt, IsOptional, IsNumber } from 'class-validator';
+import { Prisma } from '@prisma/client';
 
 export class CreateRoomDto {
   @IsInt()
@@ -12,5 +13,5 @@ export class CreateRoomDto {
   rent_price?: number;
 
   @IsOptional()
-  images?: any;
+  images?: Prisma.InputJsonValue;
 }

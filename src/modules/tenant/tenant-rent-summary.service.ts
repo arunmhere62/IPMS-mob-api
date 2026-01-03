@@ -1,16 +1,55 @@
 import { Injectable } from '@nestjs/common';
 
+type PaymentCycleSummary = {
+  start_date: string;
+  end_date: string;
+  status: string;
+  remainingDue: number;
+  payments: unknown[];
+};
+
+type UnpaidMonth = { cycle_start: string; cycle_end: string };
+
+type TenantAllocation = { effective_from: Date; effective_to: Date | null; bed_price_snapshot: unknown };
+type TenantRentCycle = { s_no: number; cycle_start: Date; cycle_end: Date; cycle_type?: string };
+type RentPayment = { cycle_id?: number | null; status?: string | null; amount_paid?: unknown; actual_rent_amount?: unknown };
+
+type TenantForSummary = {
+  check_in_date: Date;
+  check_out_date: Date | null;
+  pg_locations?: { rent_cycle_type?: 'CALENDAR' | 'MIDMONTH' | null } | null;
+  beds?: { bed_price?: unknown } | null;
+  tenant_allocations?: TenantAllocation[];
+  tenant_rent_cycles?: TenantRentCycle[];
+  rent_payments?: RentPayment[];
+};
+
+type AllocationOverlap = { from: Date; to: Date | null; price: number };
+
+type CycleSummaryRow = {
+  cycle_id: number;
+  start_date: string;
+  end_date: string;
+  payments: RentPayment[];
+  totalPaid: number;
+  due: number;
+  remainingDue: number;
+  status: 'NO_PAYMENT' | 'PAID' | 'PARTIAL' | 'PENDING' | 'FAILED';
+  expected_from_allocations: number;
+  due_from_payments: number;
+};
+
 @Injectable()
 export class TenantRentSummaryService {
   buildRentSummary(params: {
-    tenant: any;
+    tenant: TenantForSummary;
   }): {
-    payment_cycle_summaries: any[];
-    rent_cycle: any;
+    payment_cycle_summaries: PaymentCycleSummary[];
+    rent_cycle: unknown;
     payment_status: string;
-    partial_payments: any[];
+    partial_payments: unknown[];
     total_partial_due: number;
-    unpaid_months: any[];
+    unpaid_months: UnpaidMonth[];
     partial_due_amount: number;
     pending_due_amount: number;
     rent_due_amount: number;
@@ -42,28 +81,28 @@ export class TenantRentSummaryService {
     };
 
     const computeExpectedDueFromAllocations = (periodStart: Date, periodEnd: Date): number => {
-      const allocations = (tenant as any).tenant_allocations || [];
+      const allocations = tenant.tenant_allocations || [];
       if (!allocations || allocations.length === 0) return 0;
 
       const start = toDateOnlyUtc(periodStart);
       const end = toDateOnlyUtc(periodEnd);
 
       const overlaps = allocations
-        .map((a: any) => ({
+        .map((a: TenantAllocation) => ({
           from: toDateOnlyUtc(new Date(a.effective_from)),
           to: a.effective_to ? toDateOnlyUtc(new Date(a.effective_to)) : null,
           price: a.bed_price_snapshot ? Number(a.bed_price_snapshot) : 0,
         }))
-        .filter((a: any) => {
+        .filter((a: { from: Date; to: Date | null; price: number }) => {
           const aTo = a.to ?? end;
           return a.from <= end && aTo >= start;
         })
-        .sort((a: any, b: any) => a.from.getTime() - b.from.getTime());
+        .sort((a: { from: Date }, b: { from: Date }) => a.from.getTime() - b.from.getTime());
 
       if (overlaps.length === 0) return 0;
 
       let total = 0;
-      overlaps.forEach((a: any) => {
+      overlaps.forEach((a: AllocationOverlap) => {
         const segStart = a.from > start ? a.from : start;
         const segEnd = (a.to ?? end) < end ? (a.to ?? end) : end;
         if (segStart > segEnd) return;
@@ -91,22 +130,22 @@ export class TenantRentSummaryService {
     };
 
     const computeCycleSummaries = () => {
-      const cycles = (tenant as any).tenant_rent_cycles || [];
-      const payments = (tenant as any).rent_payments || [];
+      const cycles = tenant.tenant_rent_cycles || [];
+      const payments = tenant.rent_payments || [];
 
-      const paymentsByCycleId = new Map<number, any[]>();
-      payments.forEach((p: any) => {
+      const paymentsByCycleId = new Map<number, RentPayment[]>();
+      payments.forEach((p: RentPayment) => {
         if (!p.cycle_id) return;
         if (!paymentsByCycleId.has(p.cycle_id)) paymentsByCycleId.set(p.cycle_id, []);
         paymentsByCycleId.get(p.cycle_id)!.push(p);
       });
 
-      const summaries = cycles
-        .map((c: any) => {
+      const summaries: CycleSummaryRow[] = cycles
+        .map((c: TenantRentCycle) => {
           const ps = paymentsByCycleId.get(c.s_no) || [];
-          const payingRows = ps.filter((p: any) => p.status === 'PAID' || p.status === 'PARTIAL');
-          const totalPaid = moneyRound2(payingRows.reduce((sum: number, p: any) => sum + Number(p.amount_paid || 0), 0));
-          const dueFromPayments = moneyRound2(ps.reduce((max: number, p: any) => Math.max(max, Number(p.actual_rent_amount || 0)), 0));
+          const payingRows = ps.filter((p: RentPayment) => p.status === 'PAID' || p.status === 'PARTIAL');
+          const totalPaid = moneyRound2(payingRows.reduce((sum: number, p: RentPayment) => sum + Number(p.amount_paid || 0), 0));
+          const dueFromPayments = moneyRound2(ps.reduce((max: number, p: RentPayment) => Math.max(max, Number(p.actual_rent_amount || 0)), 0));
 
           const expectedFromAllocations = computeExpectedDueFromAllocations(
             new Date(c.cycle_start),
@@ -141,12 +180,21 @@ export class TenantRentSummaryService {
             due_from_payments: dueFromPayments,
           };
         })
-        .sort((a: any, b: any) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime());
+        .sort((a: CycleSummaryRow, b: CycleSummaryRow) => new Date(b.end_date).getTime() - new Date(a.end_date).getTime());
 
       return summaries;
     };
 
-    const getUnpaidMonthsWithCycleDates = (): any[] => {
+    const getUnpaidMonthsWithCycleDates = (): Array<{
+      cycle_id: number;
+      cycle_start: string;
+      cycle_end: string;
+      month: string;
+      month_name: string;
+      year: number;
+      month_number: number;
+      cycle_type?: string;
+    }> => {
       const formatDateOnly = (d: Date): string => {
         const year = d.getFullYear();
         const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -163,17 +211,17 @@ export class TenantRentSummaryService {
       endDate.setHours(0, 0, 0, 0);
 
       const endCutoff = endDate;
-      const cycles = ((tenant as any).tenant_rent_cycles || [])
-        .map((c: any) => ({
+      const cycles = (tenant.tenant_rent_cycles || [])
+        .map((c: TenantRentCycle) => ({
           ...c,
           cycle_start: new Date(c.cycle_start),
           cycle_end: new Date(c.cycle_end),
         }))
-        .filter((c: any) => c.cycle_start <= endCutoff)
-        .sort((a: any, b: any) => a.cycle_start.getTime() - b.cycle_start.getTime());
+        .filter((c: TenantRentCycle) => c.cycle_start <= endCutoff)
+        .sort((a: TenantRentCycle, b: TenantRentCycle) => a.cycle_start.getTime() - b.cycle_start.getTime());
 
       const paidByCycle = new Map<number, number>();
-      ((tenant as any).rent_payments || []).forEach((p: any) => {
+      (tenant.rent_payments || []).forEach((p: RentPayment) => {
         if (!p.cycle_id) return;
         const isPaying = p.status === 'PAID' || p.status === 'PARTIAL';
         if (!isPaying) return;
@@ -181,8 +229,18 @@ export class TenantRentSummaryService {
         paidByCycle.set(p.cycle_id, prev + Number(p.amount_paid || 0));
       });
 
-      const unpaidMonths: any[] = [];
-      cycles.forEach((c: any) => {
+      const unpaidMonths: Array<{
+        cycle_id: number;
+        cycle_start: string;
+        cycle_end: string;
+        month: string;
+        month_name: string;
+        year: number;
+        month_number: number;
+        cycle_type?: string;
+      }> = [];
+
+      cycles.forEach((c: TenantRentCycle) => {
         const totalPaid = paidByCycle.get(c.s_no) || 0;
         if (totalPaid <= 0) {
           unpaidMonths.push({
@@ -263,27 +321,27 @@ export class TenantRentSummaryService {
 
     const todayDateOnlyUtc = new Date(new Date().toISOString().split('T')[0] + 'T00:00:00.000Z');
     const relevantCycle =
-      cycleSummaries.find((c: any) => {
+      (cycleSummaries as PaymentCycleSummary[]).find((c: PaymentCycleSummary) => {
         const start = new Date(String(c.start_date) + 'T00:00:00.000Z');
         const end = new Date(String(c.end_date) + 'T00:00:00.000Z');
         return start <= todayDateOnlyUtc && todayDateOnlyUtc <= end;
       }) ||
-      cycleSummaries.find((c: any) => {
+      (cycleSummaries as PaymentCycleSummary[]).find((c: PaymentCycleSummary) => {
         const start = new Date(String(c.start_date) + 'T00:00:00.000Z');
         return start <= todayDateOnlyUtc;
       }) ||
       null;
 
-    const payment_status = (relevantCycle as any)?.status || 'NO_PAYMENT';
+    const payment_status = (relevantCycle as PaymentCycleSummary | null)?.status || 'NO_PAYMENT';
 
-    const underpaidCycles = cycleSummaries.filter((s) => s.status === 'PARTIAL' && s.remainingDue > 0);
-    const partial_payments = underpaidCycles.flatMap((s) => s.payments);
-    const total_partial_due = moneyRound2(underpaidCycles.reduce((sum: number, s) => sum + Number(s.remainingDue || 0), 0));
+    const underpaidCycles = (cycleSummaries as PaymentCycleSummary[]).filter((s: PaymentCycleSummary) => s.status === 'PARTIAL' && s.remainingDue > 0);
+    const partial_payments = underpaidCycles.flatMap((s: PaymentCycleSummary) => s.payments);
+    const total_partial_due = moneyRound2(underpaidCycles.reduce((sum: number, s: PaymentCycleSummary) => sum + Number(s.remainingDue || 0), 0));
 
     const bedPriceNumber = tenant.beds?.bed_price ? Number(tenant.beds.bed_price) : 0;
 
     const pending_due_amount = moneyRound2(
-      unpaidMonths.reduce((sum: number, m: any) => {
+      (unpaidMonths as UnpaidMonth[]).reduce((sum: number, m: UnpaidMonth) => {
         const start = new Date(`${m.cycle_start}T00:00:00.000Z`);
         const end = new Date(`${m.cycle_end}T00:00:00.000Z`);
 

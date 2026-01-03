@@ -530,7 +530,6 @@ model rooms {
   tenants            tenants[]
   visitors           visitors[]
 
-  @@unique([pg_id, room_no], map: "unique_pg_room")
   @@unique([pg_id, room_no, is_deleted], map: "unique_pg_room_active")
 }
 

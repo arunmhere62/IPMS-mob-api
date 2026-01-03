@@ -45,7 +45,7 @@ export class ExpenseService {
 
     const skip = (page - 1) * limit;
 
-    const whereClause: any = {
+    const whereClause: Record<string, unknown> = {
       pg_id: pgId,
       is_deleted: false,
       pg_locations: {
@@ -189,7 +189,7 @@ export class ExpenseService {
    * Get expense statistics for a PG location
    */
   async getStats(pgId: number, startDate?: string, endDate?: string) {
-    const whereClause: any = {
+    const whereClause: Record<string, unknown> = {
       pg_id: pgId,
       is_deleted: false,
     };

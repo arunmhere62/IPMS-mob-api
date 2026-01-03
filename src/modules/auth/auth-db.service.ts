@@ -252,7 +252,7 @@ export class AuthDbService {
     });
 
     // Build user response object
-    const userResponse: any = {
+    const userResponse: Record<string, unknown> = {
       s_no: user.s_no,
       name: user.name,
       email: user.email,
@@ -283,13 +283,6 @@ export class AuthDbService {
 
     // Generate JWT tokens
     const tokens = await this.jwtTokenService.generateTokens(user, ipAddress);
-
-    const response = {
-      success: true,
-      message: 'Login successful',
-      user: userResponse,
-      ...tokens, // Spread tokens (access_token, refresh_token, token_type, expires_in)
-    };
 
     console.log('📤 Login response user object:', {
       s_no: userResponse.s_no,
@@ -353,8 +346,9 @@ export class AuthDbService {
     return ResponseUtil.success(tokens, 'Token refreshed successfully');
   }
 
-  async logout(user: any) {
-    const userId = user?.sub;
+  async logout(user: unknown) {
+    const u = (user as { sub?: unknown } | null) ?? null;
+    const userId = Number(u?.sub);
     if (!userId) {
       throw new UnauthorizedException('Invalid user context');
     }
@@ -572,7 +566,7 @@ export class AuthDbService {
             name: organizationName,
             description: `Organization for ${organizationName}`,
             is_deleted: false,
-            status: 'ACTIVE' as any, // 
+            status: 'ACTIVE',
           },
         });
         const role = await prisma.roles.findFirst({
@@ -616,7 +610,7 @@ export class AuthDbService {
         // Validate rent_cycle_type enum value
         const validRentCycleTypes = ['CALENDAR', 'MIDMONTH'];
         const rentCycleTypeValue = rentCycleType && validRentCycleTypes.includes(rentCycleType.toUpperCase())
-          ? (rentCycleType.toUpperCase() as any)
+          ? (rentCycleType.toUpperCase() as 'CALENDAR' | 'MIDMONTH')
           : 'CALENDAR';
 
         const pgLocation = await prisma.pg_locations.create({
@@ -664,14 +658,14 @@ export class AuthDbService {
       });
 
       return ResponseUtil.success(result, 'Account created successfully. Please login.');
-    } catch (error: any) {
+    } catch (error) {
       console.error('Signup error:', error);
       // Re-throw BadRequestException with original message if it's a validation error
       if (error instanceof BadRequestException) {
         throw error;
       }
       // Provide more specific error message for database/transaction errors
-      const message = error?.message || 'Failed to create account. Please try again.';
+      const message = (error as { message?: string } | null)?.message || 'Failed to create account. Please try again.';
       throw new BadRequestException(message);
     }
   }
@@ -891,6 +885,7 @@ export class AuthDbService {
    * Get user profile by ID
    */
   async getProfileById(userId: number, organizationId?: number, pgId?: number) {
+    void pgId;
     // Check if user exists
     const user = await this.prisma.users.findUnique({
       where: { 

@@ -3,38 +3,38 @@
  * All API responses follow this structure for consistency
  */
 
-export interface ApiResponse<T = any> {
+export interface ApiResponse<T = unknown> {
   success: boolean;
   statusCode: number;
   message: string;
   error?: {
     code: string;
-    details?: any;
+    details?: unknown;
   };
   timestamp: string;
   path?: string;
-  [key: string]: any; // Allow spreading data properties directly
+  [key: string]: unknown; // Allow spreading data properties directly
 }
 
-export class ApiResponseDto<T = any> implements ApiResponse<T> {
+export class ApiResponseDto<T = unknown> implements ApiResponse<T> {
   success: boolean;
   statusCode: number;
   message: string;
   error?: {
     code: string;
-    details?: any;
+    details?: unknown;
   };
   timestamp: string;
   path?: string;
-  [key: string]: any;
+  [key: string]: unknown;
 
   constructor(
     statusCode: number,
     message: string,
     data?: T,
-    error?: { code: string; details?: any },
+    error?: { code: string; details?: unknown },
     path?: string,
-    meta?: any,
+    meta?: unknown,
   ) {
     this.statusCode = statusCode;
     this.message = message;

@@ -6,7 +6,7 @@ import { runWithPerfStore, getPerfStore, getApiMs } from '../utils/performance-c
 
 @Injectable()
 export class PerformanceInterceptor implements NestInterceptor {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest();
 
     return defer(() =>

@@ -1,7 +1,86 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
-import { ResponseUtil } from '../../../common/utils/response.util';
 import { TenantStatusService } from '../tenant-status/tenant-status.service';
+import { Prisma } from '@prisma/client';
+
+type TenantWithPendingPaymentData = Prisma.tenantsGetPayload<{
+  include: {
+    rooms: { select: { room_no: true } };
+    beds: { select: { bed_price: true } };
+    tenant_allocations: {
+      orderBy: { effective_from: 'asc' };
+      select: {
+        effective_from: true;
+        effective_to: true;
+        bed_price_snapshot: true;
+      };
+    };
+    rent_payments: {
+      where: { is_deleted: false };
+      orderBy: { payment_date: 'desc' };
+      select: {
+        payment_date: true;
+        amount_paid: true;
+        actual_rent_amount: true;
+        tenant_rent_cycles: { select: { cycle_start: true; cycle_end: true } };
+      };
+    };
+  };
+}>;
+
+type TenantForPendingPaymentsList = Prisma.tenantsGetPayload<{
+  include: {
+    pg_locations: {
+      select: {
+        s_no: true;
+        location_name: true;
+        address: true;
+      };
+    };
+    rooms: { select: { s_no: true; room_no: true } };
+    beds: { select: { s_no: true; bed_no: true; bed_price: true } };
+    rent_payments: {
+      where: { is_deleted: false };
+      orderBy: { payment_date: 'desc' };
+      select: {
+        s_no: true;
+        payment_date: true;
+        amount_paid: true;
+        actual_rent_amount: true;
+        payment_method: true;
+        status: true;
+        remarks: true;
+        tenant_rent_cycles: { select: { cycle_start: true; cycle_end: true } };
+      };
+    };
+    advance_payments: {
+      where: { is_deleted: false };
+      orderBy: { payment_date: 'desc' };
+      select: {
+        s_no: true;
+        payment_date: true;
+        amount_paid: true;
+        actual_rent_amount: true;
+        payment_method: true;
+        status: true;
+        remarks: true;
+      };
+    };
+    refund_payments: {
+      where: { is_deleted: false };
+      orderBy: { payment_date: 'desc' };
+      select: {
+        s_no: true;
+        amount_paid: true;
+        payment_method: true;
+        payment_date: true;
+        status: true;
+        remarks: true;
+        actual_rent_amount: true;
+      };
+    };
+  };
+}>;
 
 export interface PendingPaymentDetails {
   tenant_id: number;
@@ -43,7 +122,7 @@ export class PendingPaymentService {
     tenantId: number,
   ): Promise<PendingPaymentDetails> {
     // Get tenant details with room and payments
-    const tenant: any = await (this.prisma as any).tenants.findUnique({
+    const tenant: TenantWithPendingPaymentData | null = await this.prisma.tenants.findUnique({
       where: { s_no: tenantId },
       include: {
         rooms: {
@@ -71,7 +150,7 @@ export class PendingPaymentService {
             is_deleted: false,
           },
           orderBy: {
-            end_date: 'desc',
+            payment_date: 'desc',
           },
           select: {
             payment_date: true,
@@ -127,28 +206,36 @@ export class PendingPaymentService {
     };
 
     const computeProratedDueFromAllocations = (periodStart: Date, periodEnd: Date): number => {
-      const allocations = (tenant as any).tenant_allocations || [];
+      const allocations: Array<{
+        effective_from: Date;
+        effective_to: Date | null;
+        bed_price_snapshot: unknown;
+      }> = (tenant?.tenant_allocations as Array<{
+        effective_from: Date;
+        effective_to: Date | null;
+        bed_price_snapshot: unknown;
+      }> | undefined) ?? [];
       if (!allocations || allocations.length === 0) return 0;
 
       const start = toDateOnlyUtc(periodStart);
       const end = toDateOnlyUtc(periodEnd);
 
       const overlaps = allocations
-        .map((a: any) => ({
+        .map((a) => ({
           from: toDateOnlyUtc(new Date(a.effective_from)),
           to: a.effective_to ? toDateOnlyUtc(new Date(a.effective_to)) : null,
           price: a.bed_price_snapshot ? Number(a.bed_price_snapshot) : 0,
         }))
-        .filter((a: any) => {
+        .filter((a) => {
           const aTo = a.to ?? end;
           return a.from <= end && aTo >= start;
         })
-        .sort((a: any, b: any) => a.from.getTime() - b.from.getTime());
+        .sort((a, b) => a.from.getTime() - b.from.getTime());
 
       if (overlaps.length === 0) return 0;
 
       let total = 0;
-      overlaps.forEach((a: any) => {
+      overlaps.forEach((a) => {
         const segStart = a.from > start ? a.from : start;
         const segEnd = (a.to ?? end) < end ? (a.to ?? end) : end;
         if (segStart > segEnd) return;
@@ -352,7 +439,7 @@ export class PendingPaymentService {
    * Uses the same logic as tenant findAll method with TenantStatusService
    */
   async getAllPendingPayments(pgId?: number): Promise<PendingPaymentDetails[]> {
-    const where: any = {
+    const where: Record<string, unknown> = {
       is_deleted: false,
       status: 'ACTIVE',
     };
@@ -362,7 +449,7 @@ export class PendingPaymentService {
     }
 
     // Get tenants with all payment data (same as tenant findAll method)
-    const tenants = await this.prisma.tenants.findMany({
+    const tenants: Array<TenantForPendingPaymentsList> = await this.prisma.tenants.findMany({
       where,
       include: {
         pg_locations: {
@@ -449,7 +536,9 @@ export class PendingPaymentService {
     });
 
     // Use the same filtering logic as tenant findAll method
-    const tenantsWithPendingRent = this.tenantStatusService.getTenantsWithPendingRent(tenants);
+    const tenantsWithPendingRent = this.tenantStatusService.getTenantsWithPendingRent(
+      tenants,
+    ) as Array<TenantForPendingPaymentsList>;
 
     // Convert filtered tenants to PendingPaymentDetails format
     const pendingPayments = await Promise.all(
@@ -482,7 +571,7 @@ export class PendingPaymentService {
     tomorrow.setDate(tomorrow.getDate() + 1);
     tomorrow.setHours(0, 0, 0, 0);
 
-    const where: any = {
+    const where: Record<string, unknown> = {
       is_deleted: false,
       status: 'ACTIVE',
     };

@@ -4,6 +4,10 @@ import { AuthDbService } from '../auth-db.service';
 import { RefreshTokenDto } from '../dto/refresh-token.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
+type RequestWithUser = {
+  user?: unknown;
+};
+
 @ApiTags('auth')
 @Controller('auth')
 export class TokensController {
@@ -22,7 +26,7 @@ export class TokensController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Logout user and revoke tokens' })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
-  async logout(@Req() req: any) {
+  async logout(@Req() req: RequestWithUser) {
     return this.authService.logout(req.user);
   }
 }

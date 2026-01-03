@@ -455,8 +455,9 @@ export class PgLocationService {
       }
 
       // Calculate room and bed statistics
-      const rooms = (pgLocation as any).rooms || [];
-      const tenants = (pgLocation as any).tenants || [];
+      const pg = pgLocation as unknown as Record<string, unknown>;
+      const rooms = (pg.rooms as unknown[] | undefined) || [];
+      const tenants = (pg.tenants as unknown[] | undefined) || [];
       const totalRooms = rooms.length;
       
       let totalBeds = 0;
@@ -465,13 +466,25 @@ export class PgLocationService {
       let totalRevenue = 0;
       
       // Calculate tenant statistics
-      const activeTenants = tenants.filter(tenant => tenant.status === 'ACTIVE').length;
-      const inactiveTenants = tenants.filter(tenant => tenant.status === 'INACTIVE').length;
+      const activeTenants = tenants.filter((tenant) => (tenant as { status?: string | null })?.status === 'ACTIVE').length;
+      const inactiveTenants = tenants.filter((tenant) => (tenant as { status?: string | null })?.status === 'INACTIVE').length;
       
-      const roomDetails = rooms.map(room => {
-        const beds = room.beds || [];
+      const roomDetails = rooms.map((room) => {
+        const rr = room as { s_no: number; room_no: string | null; beds?: unknown[] };
+        const beds = (rr.beds || []) as Array<{
+          s_no: number;
+          bed_no: string | null;
+          bed_price?: unknown;
+          tenants?: Array<{ name: string; phone_no: string | null; check_in_date: Date; check_out_date: Date | null }>;
+          rent_payments?: Array<{
+            amount_paid?: unknown;
+            payment_date?: Date | null;
+            actual_rent_amount?: unknown;
+            tenant_rent_cycles?: { cycle_start?: Date | null; cycle_end?: Date | null } | null;
+          }>;
+        }>;
         const roomTotalBeds = beds.length;
-        const roomOccupiedBeds = beds.filter(bed => bed.tenants && bed.tenants.length > 0).length;
+        const roomOccupiedBeds = beds.filter((bed) => bed.tenants && bed.tenants.length > 0).length;
         const roomAvailableBeds = roomTotalBeds - roomOccupiedBeds;
         
         totalBeds += roomTotalBeds;
@@ -479,20 +492,20 @@ export class PgLocationService {
         availableBeds += roomAvailableBeds;
         
         // Calculate room revenue from latest payments
-        const roomRevenue = beds.reduce((sum, bed) => {
+        const roomRevenue = beds.reduce((sum: number, bed) => {
           const latestPayment = bed.rent_payments && bed.rent_payments[0];
           return sum + Number(latestPayment?.actual_rent_amount || 0);
         }, 0);
         totalRevenue += roomRevenue;
         
         return {
-          s_no: room.s_no,
-          room_no: room.room_no,
+          s_no: rr.s_no,
+          room_no: rr.room_no,
           total_beds: roomTotalBeds,
           occupied_beds: roomOccupiedBeds,
           available_beds: roomAvailableBeds,
           occupancy_rate: roomTotalBeds > 0 ? (roomOccupiedBeds / roomTotalBeds) * 100 : 0,
-          beds: beds.map(bed => ({
+          beds: beds.map((bed) => ({
             s_no: bed.s_no,
             bed_no: bed.bed_no,
             price: bed.bed_price,
@@ -532,7 +545,7 @@ export class PgLocationService {
           occupancy_rate: totalBeds > 0 ? (activeTenants / totalBeds) * 100 : 0,
         },
         room_details: roomDetails,
-        tenant_details: tenants.map(tenant => ({
+        tenant_details: tenants.map((tenant: { s_no: number; name: string; phone_no: string | null; status: string | null; check_in_date: Date; check_out_date: Date | null; created_at: Date | null }) => ({
           s_no: tenant.s_no,
           name: tenant.name,
           phone_no: tenant.phone_no,

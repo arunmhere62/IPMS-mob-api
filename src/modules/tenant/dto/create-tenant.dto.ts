@@ -1,10 +1,5 @@
 import { IsString, IsEmail, IsOptional, IsInt, IsDateString, IsEnum } from 'class-validator';
-
-export enum TenantStatus {
-  ACTIVE = 'ACTIVE',
-  INACTIVE = 'INACTIVE',
-  CHECKED_OUT = 'CHECKED_OUT',
-}
+import { tenants_status, Prisma } from '@prisma/client';
 
 export class CreateTenantDto {
   @IsString()
@@ -41,8 +36,8 @@ export class CreateTenantDto {
   check_out_date?: string;
 
   @IsOptional()
-  @IsEnum(TenantStatus)
-  status?: TenantStatus;
+  @IsEnum(tenants_status)
+  status?: tenants_status;
 
   @IsOptional()
   @IsString()
@@ -61,8 +56,8 @@ export class CreateTenantDto {
   state_id?: number;
 
   @IsOptional()
-  images?: any;
+  images?: Prisma.InputJsonValue;
 
   @IsOptional()
-  proof_documents?: any;
+  proof_documents?: Prisma.InputJsonValue;
 }

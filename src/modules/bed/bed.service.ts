@@ -86,9 +86,10 @@ export class BedService {
     search?: string;
   }) {
     const { page = 1, limit = 10, room_id, pg_id, search, only_unoccupied } = params;
+    void pg_id;
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where: Record<string, unknown> = {
       is_deleted: false,
       rooms: {
         pg_id: params.pg_id,
@@ -99,7 +100,7 @@ export class BedService {
       where.room_id = room_id;
     }
     if (params.pg_id) {
-      where.rooms.pg_id = params.pg_id; // ✅ filter beds by PG ID through room
+      (where.rooms as Record<string, unknown>).pg_id = params.pg_id; // ✅ filter beds by PG ID through room
     }
     if (search) {
       where.bed_no = { contains: search, mode: 'insensitive' };
@@ -367,7 +368,11 @@ export class BedService {
 
     await this.prisma.beds.update({
       where: { s_no: id },
-      data: { is_deleted: true },
+      data: {
+        bed_no: existingBed.bed_no ? `${existingBed.bed_no}__DELETED__${id}` : `__DELETED__${id}`,
+        is_deleted: true,
+        updated_at: new Date(),
+      },
     });
 
     return ResponseUtil.noContent('Bed deleted successfully');

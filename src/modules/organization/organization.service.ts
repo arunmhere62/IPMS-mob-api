@@ -18,7 +18,7 @@ export class OrganizationService {
     const { page, limit } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where: Record<string, unknown> = {
       is_deleted: false,
     };
 

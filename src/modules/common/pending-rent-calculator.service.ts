@@ -177,7 +177,7 @@ export class PendingRentCalculatorService {
     currentDate: Date, 
     rentAmount: number
   ): Array<{ month: string; monthName: string; startDate: Date; endDate: Date; expectedAmount: number }> {
-    const months = [];
+    const months: Array<{ month: string; monthName: string; startDate: Date; endDate: Date; expectedAmount: number }> = [];
     const current = new Date(checkInDate);
     
     while (current <= currentDate) {
@@ -212,7 +212,7 @@ export class PendingRentCalculatorService {
   }
 
   private calculatePendingMonths(
-    expectedMonths: any[],
+    expectedMonths: Array<{ month: string; monthName: string; startDate: Date; endDate: Date; expectedAmount: number }>,
     payments: TenantPayment[],
     currentDate: Date
   ): PendingMonth[] {
@@ -366,9 +366,10 @@ export class PendingRentCalculatorService {
 
   private generateRecommendation(
     pendingMonths: PendingMonth[],
-    summary: any,
-    paymentHistory: any
+    summary: ReturnType<PendingRentCalculatorService['calculateSummaryTotals']>,
+    paymentHistory: ReturnType<PendingRentCalculatorService['analyzePaymentHistory']>
   ): { action: 'NO_ACTION' | 'FOLLOW_UP' | 'URGENT_FOLLOW_UP' | 'NOTICE' | 'EVICTION_WARNING'; reason: string } {
+    void paymentHistory;
     // No pending amounts
     if (summary.totalPendingAmount === 0) {
       return {
@@ -410,17 +411,18 @@ export class PendingRentCalculatorService {
   /**
    * Get pending rent summary for multiple tenants
    */
-  getBulkPendingRentSummary(tenants: any[]): any[] {
-    return tenants.map(tenant => {
+  getBulkPendingRentSummary(tenants: unknown[]): Array<Record<string, unknown>> {
+    return tenants.map((tenant) => {
+      const t = tenant as Record<string, unknown>;
       const pendingDetails = this.calculatePendingRentDetails(
-        tenant.check_in_date,
-        Number(tenant.rooms?.rent_price || 0),
-        tenant.rent_payments || [],
-        tenant.advance_payments || []
+        String(t.check_in_date ?? ''),
+        Number((t.rooms as { rent_price?: unknown } | undefined)?.rent_price || 0),
+        (t.rent_payments as TenantPayment[] | undefined) || [],
+        (t.advance_payments as AdvancePayment[] | undefined) || []
       );
 
       return {
-        ...tenant,
+        ...t,
         pending_rent_details: pendingDetails,
         // Add quick access fields
         total_pending_amount: pendingDetails.totalPendingAmount,
@@ -435,16 +437,21 @@ export class PendingRentCalculatorService {
    * Get tenants with specific pending rent criteria
    */
   filterTenantsByPendingRent(
-    tenants: any[],
+    tenants: unknown[],
     criteria: {
       minPendingAmount?: number;
       maxPendingMonths?: number;
       includeOverdue?: boolean;
       includePartial?: boolean;
     }
-  ): any[] {
-    return this.getBulkPendingRentSummary(tenants).filter(tenant => {
-      const details = tenant.pending_rent_details;
+  ): Array<Record<string, unknown>> {
+    return this.getBulkPendingRentSummary(tenants).filter((tenant) => {
+      const details = tenant.pending_rent_details as {
+        totalPendingAmount: number;
+        totalPendingMonths: number;
+        hasOverduePayments: boolean;
+        hasPartialPayments: boolean;
+      };
       
       if (criteria.minPendingAmount && details.totalPendingAmount < criteria.minPendingAmount) {
         return false;

@@ -3,6 +3,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { CreateVisitorDto } from './dto/create-visitor.dto';
 import { UpdateVisitorDto } from './dto/update-visitor.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class VisitorService {
@@ -37,7 +38,7 @@ export class VisitorService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where: Prisma.visitorsWhereInput = {
       is_deleted: false,
     };
 
@@ -47,9 +48,9 @@ export class VisitorService {
 
     if (search) {
       where.OR = [
-        { visitor_name: { contains: search, mode: 'insensitive' } },
+        { visitor_name: { contains: search } },
         { phone_no: { contains: search } },
-        { purpose: { contains: search, mode: 'insensitive' } },
+        { purpose: { contains: search } },
       ];
     }
 
@@ -156,7 +157,7 @@ export class VisitorService {
   }
 
   async getStats(pgId?: number) {
-    const where: any = {
+    const where: Prisma.visitorsWhereInput = {
       is_deleted: false,
     };
 

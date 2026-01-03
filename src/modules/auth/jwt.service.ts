@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService as NestJwtService } from '@nestjs/jwt';
+import type { JwtSignOptions } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 
@@ -10,6 +11,14 @@ interface TokenPayload {
   role_id: number;
   organization_id: number;
 }
+
+type UserForToken = {
+  s_no: number;
+  phone: string;
+  email: string;
+  role_id: number;
+  organization_id: number;
+};
 
 @Injectable()
 export class JwtTokenService {
@@ -22,7 +31,7 @@ export class JwtTokenService {
   /**
    * Generate access and refresh tokens
    */
-  async generateTokens(user: any, ipAddress?: string, userAgent?: string) {
+  async generateTokens(user: UserForToken, ipAddress?: string, userAgent?: string) {
     const payload: TokenPayload = {
       sub: user.s_no,
       phone: user.phone,
@@ -35,27 +44,30 @@ export class JwtTokenService {
     const accessTokenExpiry = this.configService.get<string>('app.auth.jwtAccessTokenExpiry', '24h');
     const refreshTokenExpiry = this.configService.get<string>('app.auth.jwtRefreshTokenExpiry', '7d');
 
+    const accessSignExpiresIn = accessTokenExpiry as unknown as JwtSignOptions['expiresIn'];
+    const refreshSignExpiresIn = refreshTokenExpiry as unknown as JwtSignOptions['expiresIn'];
+
     // Generate access token
-    const accessToken = this.jwtService.sign(payload as any, {
+    const accessToken = this.jwtService.sign(payload, {
       secret: this.configService.get<string>('jwt.secret'),
-      expiresIn: accessTokenExpiry as any,
+      expiresIn: accessSignExpiresIn,
     });
 
     // Generate refresh token
     const refreshToken = this.jwtService.sign(
-      { sub: user.s_no } as any,
+      { sub: user.s_no },
       {
         secret: this.configService.get<string>('jwt.refreshSecret'),
-        expiresIn: refreshTokenExpiry as any,
+        expiresIn: refreshSignExpiresIn,
       },
     );
 
     // Calculate expiration times
     const expiresIn = accessTokenExpiry;
-    const refreshExpiresIn = refreshTokenExpiry;
+    const refreshExpiry = refreshTokenExpiry;
     
     const expiresAt = this.calculateExpiryDate(expiresIn);
-    const refreshExpiresAt = this.calculateExpiryDate(refreshExpiresIn);
+    const refreshExpiresAt = this.calculateExpiryDate(String(refreshExpiry));
 
     // Check if user already has a token record
     const existingToken = await this.prisma.tokens.findFirst({

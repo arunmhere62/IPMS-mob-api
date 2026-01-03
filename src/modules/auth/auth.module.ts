@@ -14,6 +14,7 @@ import { TokensController } from './controllers/tokens.controller';
 import { SignupController } from './controllers/signup.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UsersController } from './controllers/users.controller';
+import type { JwtSignOptions } from '@nestjs/jwt';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { UsersController } from './controllers/users.controller';
       useFactory: async (configService: ConfigService) => ({
         secret: configService.get<string>('jwt.secret'),
         signOptions: {
-          expiresIn: configService.get<string>('app.auth.jwtAccessTokenExpiry', '24h') as any,
+          expiresIn: configService.get<string>('app.auth.jwtAccessTokenExpiry', '24h') as unknown as JwtSignOptions['expiresIn'],
         },
       }),
       inject: [ConfigService],

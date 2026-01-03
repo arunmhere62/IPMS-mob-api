@@ -1,8 +1,22 @@
-import { Controller, Get, Post, Req, Body, UseGuards, Query } from '@nestjs/common';
+import { Controller, Get, Post, Req, Body, Query } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SubscriptionService } from './subscription.service';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ResponseUtil } from '../../common/utils/response.util';
+
+type RequestWithHeaders = {
+  headers: Record<string, string | string[] | undefined>;
+  user?: Record<string, unknown>;
+};
+
+const headerToString = (v: string | string[] | undefined): string => {
+  if (Array.isArray(v)) return v[0] ?? '';
+  return v ?? '';
+};
+
+const toIntOrNaN = (v: unknown): number => {
+  const n = typeof v === 'number' ? v : parseInt(String(v || ''), 10);
+  return Number.isFinite(n) ? n : Number.NaN;
+};
 
 @ApiTags('subscription')
 @Controller('subscription')
@@ -25,9 +39,9 @@ export class SubscriptionController {
   @Get('current')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get current organization active subscription' })
-  async getCurrentSubscription(@Req() req: any) {
-    const userId = parseInt(req.headers['x-user-id']);
-    const organizationId = parseInt(req.headers['x-organization-id']);
+  async getCurrentSubscription(@Req() req: RequestWithHeaders) {
+    const userId = parseInt(headerToString(req.headers['x-user-id']), 10);
+    const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
 
     const subscription = await this.subscriptionService.getCurrentSubscription(
       userId,
@@ -43,9 +57,11 @@ export class SubscriptionController {
   @Get('status')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Check if organization has active subscription' })
-  async checkStatus(@Req() req: any) {
-    const userId = parseInt(req.headers['x-user-id']) || req.user?.userId;
-    const organizationId = parseInt(req.headers['x-organization-id']) || req.user?.organizationId;
+  async checkStatus(@Req() req: RequestWithHeaders) {
+    const headerUserId = parseInt(headerToString(req.headers['x-user-id']), 10);
+    const headerOrgId = parseInt(headerToString(req.headers['x-organization-id']), 10);
+    const userId = Number.isFinite(headerUserId) ? headerUserId : toIntOrNaN(req.user?.userId);
+    const organizationId = Number.isFinite(headerOrgId) ? headerOrgId : toIntOrNaN(req.user?.organizationId);
 
     if (!userId || !organizationId) {
       console.log('⚠️ Missing user info - userId:', userId, 'orgId:', organizationId);
@@ -72,10 +88,10 @@ export class SubscriptionController {
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get organization subscription history' })
   async getHistory(
-    @Req() req: any,
+    @Req() req: RequestWithHeaders,
   ) {
-    const userId = parseInt(req.headers['x-user-id']);
-    const organizationId = parseInt(req.headers['x-organization-id']);
+    const userId = parseInt(headerToString(req.headers['x-user-id']), 10);
+    const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
 
     return this.subscriptionService.getUserSubscriptionsAll(userId, organizationId);
   }
@@ -86,9 +102,9 @@ export class SubscriptionController {
   @Post('subscribe')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Subscribe to a plan' })
-  async subscribe(@Req() req: any, @Body() body: { plan_id: number }) {
-    const userId = parseInt(req.headers['x-user-id']);
-    const organizationId = parseInt(req.headers['x-organization-id']);
+  async subscribe(@Req() req: RequestWithHeaders, @Body() body: { plan_id: number }) {
+    const userId = parseInt(headerToString(req.headers['x-user-id']), 10);
+    const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
     const { plan_id } = body;
 
     console.log('📦 Subscribe request:', { userId, organizationId, plan_id });
@@ -132,7 +148,8 @@ export class SubscriptionController {
    */
   @Post('payment/callback')
   @ApiOperation({ summary: 'CCAvenue payment callback' })
-  async paymentCallback(@Body() body: any, @Req() req: any) {
+  async paymentCallback(@Body() body: Record<string, unknown>, @Req() _req: unknown) {
+    void _req;
     console.log('💳 Payment callback received:', body);
     
     try {
@@ -194,7 +211,7 @@ export class SubscriptionController {
    */
   @Get('payment/callback')
   @ApiOperation({ summary: 'CCAvenue payment callback (GET)' })
-  async paymentCallbackGet(@Query() query: any) {
+  async paymentCallbackGet(@Query() query: Record<string, unknown>) {
     console.log('💳 Payment callback GET received:', query);
     return this.paymentCallback({ encResp: query.encResp }, null);
   }
@@ -204,7 +221,7 @@ export class SubscriptionController {
    */
   @Post('payment/cancel')
   @ApiOperation({ summary: 'CCAvenue payment cancel' })
-  async paymentCancel(@Body() body: any) {
+  async paymentCancel(@Body() body: Record<string, unknown>) {
     console.log('🚫 Payment cancelled:', body);
     
     return `

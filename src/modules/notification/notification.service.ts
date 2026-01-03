@@ -1,7 +1,8 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import * as admin from 'firebase-admin';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
+import { Prisma } from '@prisma/client';
 
 // Initialize Firebase Admin SDK
 let firebaseApp: admin.app.App;
@@ -40,7 +41,7 @@ export interface SendNotificationDto {
   title: string;
   body: string;
   type: string;
-  data?: any;
+  data?: Record<string, unknown>;
 }
 
 export interface RegisterTokenDto {
@@ -55,42 +56,55 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
   private expo: Expo;
 
+  private isExpoReceipt(value: unknown): value is { status?: string; message?: string; details?: Record<string, unknown> } {
+    if (!value || typeof value !== 'object') return false;
+    return true;
+  }
+
+  private getExpoTicketId(ticket: unknown): string | null {
+    if (!ticket || typeof ticket !== 'object') return null;
+    const t = ticket as Record<string, unknown>;
+    return typeof t.id === 'string' && t.id.length > 0 ? t.id : null;
+  }
+
   private async fetchExpoReceipts(ticketIdToToken: Record<string, string>) {
     const ticketIds = Object.keys(ticketIdToToken);
     if (ticketIds.length === 0) {
-      return { receiptErrors: [] as any[], receiptOkCount: 0, receiptErrorCount: 0 };
+      return { receiptErrors: [] as Array<{ message?: string }>, receiptOkCount: 0, receiptErrorCount: 0 };
     }
 
     try {
       const receiptIdChunks = this.expo.chunkPushNotificationReceiptIds(ticketIds);
       let receiptOkCount = 0;
       let receiptErrorCount = 0;
-      const receiptErrors: Array<{ receiptId: string; token: string; message?: string; details?: any }> = [];
+      const receiptErrors: Array<{ receiptId: string; token: string; message?: string; details?: Record<string, unknown> }> = [];
 
       for (const receiptIdChunk of receiptIdChunks) {
         const receipts = await this.expo.getPushNotificationReceiptsAsync(receiptIdChunk);
         for (const receiptId of Object.keys(receipts)) {
-          const receipt: any = (receipts as any)[receiptId];
+          const receipt = (receipts as Record<string, unknown>)[receiptId];
           if (!receipt) continue;
-          if (receipt.status === 'ok') {
+          if (this.isExpoReceipt(receipt) && receipt.status === 'ok') {
             receiptOkCount++;
             continue;
           }
 
           receiptErrorCount++;
           const token = ticketIdToToken[receiptId];
+          const message = this.isExpoReceipt(receipt) ? receipt.message : undefined;
+          const details = this.isExpoReceipt(receipt) ? receipt.details : undefined;
           receiptErrors.push({
             receiptId,
             token,
-            message: receipt.message,
-            details: receipt.details,
+            message,
+            details,
           });
 
           this.logger.warn(
-            `❌ Expo receipt error receiptId=${receiptId} token=${this.maskToken(token)} message=${receipt.message} details=${JSON.stringify(receipt.details ?? {})}`,
+            `❌ Expo receipt error receiptId=${receiptId} token=${this.maskToken(token)} message=${String(message ?? '')} details=${JSON.stringify(details ?? {})}`,
           );
 
-          if (receipt.details?.error === 'DeviceNotRegistered') {
+          if ((details as Record<string, unknown> | undefined)?.error === 'DeviceNotRegistered') {
             await this.markTokenInactive(token);
           }
         }
@@ -335,7 +349,7 @@ export class NotificationService {
             if (ticket.status === 'ok') {
               successCount++;
 
-              const ticketId = (ticket as any).id;
+              const ticketId = this.getExpoTicketId(ticket);
               if (ticketId) {
                 ticketIds.push(ticketId);
                 const token = chunk[index]?.to ? String(chunk[index].to) : tokens[index];
@@ -470,7 +484,7 @@ export class NotificationService {
           title: notification.title,
           body: notification.body,
           type: notification.type,
-          data: notification.data || null,
+          data: (notification.data ?? null) as unknown as Prisma.InputJsonValue | null,
           is_read: false,
         },
       });
@@ -612,7 +626,7 @@ export class NotificationService {
   async sendRentReminders() {
     try {
       // Get tenants with upcoming payments (due in 3 days)
-      const upcomingPayments: any[] = await this.prisma.$queryRaw`
+      const upcomingPayments: Array<{ tenant_id: number; user_id: number | null; tenant_name: string; pending_amount: unknown; due_date: unknown }> = await this.prisma.$queryRaw`
         SELECT 
           t.s_no as tenant_id,
           t.user_id,
@@ -630,13 +644,13 @@ export class NotificationService {
 
       for (const payment of upcomingPayments) {
         if (payment.user_id) {
-          await this.sendToUser(payment.user_id, {
+          await this.sendToUser(Number(payment.user_id), {
             title: '💰 Rent Payment Reminder',
-            body: `Hi ${payment.tenant_name}, your rent of ₹${payment.pending_amount} is due in 3 days`,
+            body: `Hi ${payment.tenant_name}, your rent of ₹${Number(payment.pending_amount || 0)} is due in 3 days`,
             type: 'RENT_REMINDER',
             data: {
               tenant_id: payment.tenant_id,
-              amount: payment.pending_amount,
+              amount: Number(payment.pending_amount || 0),
               due_date: payment.due_date,
             },
           });
@@ -656,7 +670,7 @@ export class NotificationService {
   async sendOverdueAlerts() {
     try {
       // Get tenants with overdue payments
-      const overduePayments: any[] = await this.prisma.$queryRaw`
+      const overduePayments: Array<{ tenant_id: number; user_id: number | null; tenant_name: string; overdue_amount: unknown; overdue_months: unknown; overdue_days: unknown }> = await this.prisma.$queryRaw`
         SELECT 
           t.s_no as tenant_id,
           t.user_id,
@@ -675,15 +689,15 @@ export class NotificationService {
 
       for (const payment of overduePayments) {
         if (payment.user_id) {
-          await this.sendToUser(payment.user_id, {
+          await this.sendToUser(Number(payment.user_id), {
             title: '⚠️ Overdue Payment Alert',
-            body: `Your rent payment of ₹${payment.overdue_amount} is ${payment.overdue_days} days overdue`,
+            body: `Your rent payment of ₹${Number(payment.overdue_amount || 0)} is ${Number(payment.overdue_days || 0)} days overdue`,
             type: 'OVERDUE_ALERT',
             data: {
               tenant_id: payment.tenant_id,
-              amount: payment.overdue_amount,
-              overdue_days: payment.overdue_days,
-              overdue_months: payment.overdue_months,
+              amount: Number(payment.overdue_amount || 0),
+              overdue_days: Number(payment.overdue_days || 0),
+              overdue_months: Number(payment.overdue_months || 0),
             },
           });
         }
@@ -699,10 +713,11 @@ export class NotificationService {
   /**
    * Send payment confirmation
    */
-  async sendPaymentConfirmation(userId: number, paymentData: any) {
+  async sendPaymentConfirmation(userId: number, paymentData: Record<string, unknown>) {
+    const amount = Number(paymentData.amount || 0);
     return await this.sendToUser(userId, {
       title: '✅ Payment Received',
-      body: `Payment of ₹${paymentData.amount} received successfully`,
+      body: `Payment of ₹${amount} received successfully`,
       type: 'PAYMENT_CONFIRMATION',
       data: paymentData,
     });
@@ -711,10 +726,12 @@ export class NotificationService {
   /**
    * Send tenant check-in notification to admin
    */
-  async sendTenantCheckinAlert(adminUserId: number, tenantData: any) {
+  async sendTenantCheckinAlert(adminUserId: number, tenantData: Record<string, unknown>) {
+    const name = String(tenantData.name ?? '');
+    const roomNo = String(tenantData.room_no ?? '');
     return await this.sendToUser(adminUserId, {
       title: '🏠 New Tenant Check-in',
-      body: `${tenantData.name} checked into Room ${tenantData.room_no}`,
+      body: `${name} checked into Room ${roomNo}`,
       type: 'TENANT_CHECKIN',
       data: tenantData,
     });
@@ -835,7 +852,7 @@ export class NotificationService {
   async sendPendingPaymentNotifications() {
     try {
       // Get all tenants with pending payments
-      const pendingPayments: any[] = await this.prisma.$queryRaw`
+      const pendingPayments: Array<{ tenant_id: number; user_id: number; tenant_name: string; payment_id: number; amount: unknown; due_date: unknown; payment_status: string }> = await this.prisma.$queryRaw`
         SELECT 
           t.s_no as tenant_id,
           t.user_id,
@@ -856,10 +873,10 @@ export class NotificationService {
       let sent = 0;
       for (const payment of pendingPayments) {
         try {
-          await this.sendPendingPaymentReminder(payment.user_id, {
+          await this.sendPendingPaymentReminder(Number(payment.user_id), {
             tenant_name: payment.tenant_name,
-            amount: payment.amount,
-            due_date: payment.due_date,
+            amount: Number(payment.amount || 0),
+            due_date: String(payment.due_date ?? ''),
             tenant_id: payment.tenant_id,
           });
           sent++;
@@ -880,7 +897,7 @@ export class NotificationService {
    */
   async sendPaymentDueSoonNotifications() {
     try {
-      const dueSoonPayments: any[] = await this.prisma.$queryRaw`
+      const dueSoonPayments: Array<{ tenant_id: number; user_id: number; tenant_name: string; amount: unknown; due_date: unknown; days_remaining: unknown }> = await this.prisma.$queryRaw`
         SELECT 
           t.s_no as tenant_id,
           t.user_id,
@@ -901,12 +918,12 @@ export class NotificationService {
       let sent = 0;
       for (const payment of dueSoonPayments) {
         try {
-          await this.sendPaymentDueSoonAlert(payment.user_id, {
+          await this.sendPaymentDueSoonAlert(Number(payment.user_id), {
             tenant_name: payment.tenant_name,
-            amount: payment.amount,
-            due_date: payment.due_date,
+            amount: Number(payment.amount || 0),
+            due_date: String(payment.due_date ?? ''),
             tenant_id: payment.tenant_id,
-            days_remaining: payment.days_remaining,
+            days_remaining: Number(payment.days_remaining || 0),
           });
           sent++;
         } catch (error) {
@@ -926,7 +943,7 @@ export class NotificationService {
    */
   async sendOverduePaymentNotifications() {
     try {
-      const overduePayments: any[] = await this.prisma.$queryRaw`
+      const overduePayments: Array<{ tenant_id: number; user_id: number; tenant_name: string; amount: unknown; overdue_days: unknown }> = await this.prisma.$queryRaw`
         SELECT 
           t.s_no as tenant_id,
           t.user_id,
@@ -946,10 +963,10 @@ export class NotificationService {
       let sent = 0;
       for (const payment of overduePayments) {
         try {
-          await this.sendOverduePaymentAlert(payment.user_id, {
+          await this.sendOverduePaymentAlert(Number(payment.user_id), {
             tenant_name: payment.tenant_name,
-            amount: payment.amount,
-            overdue_days: payment.overdue_days,
+            amount: Number(payment.amount || 0),
+            overdue_days: Number(payment.overdue_days || 0),
             tenant_id: payment.tenant_id,
           });
           sent++;

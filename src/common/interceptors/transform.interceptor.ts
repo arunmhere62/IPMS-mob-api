@@ -10,8 +10,8 @@ import { ApiResponseDto } from '../dto/response.dto';
 import { getApiMs, getPerfStore, shouldIncludePerf } from '../utils/performance-context';
 
 @Injectable()
-export class TransformInterceptor<T> implements NestInterceptor<T, any> {
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+export class TransformInterceptor<T> implements NestInterceptor<T, ApiResponseDto<T> | ApiResponseDto<unknown>> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<ApiResponseDto<T> | ApiResponseDto<unknown>> {
     const request = context.switchToHttp().getRequest();
     const response = context.switchToHttp().getResponse();
 
@@ -33,7 +33,7 @@ export class TransformInterceptor<T> implements NestInterceptor<T, any> {
 
         // If data is already an ApiResponseDto, return it as is
         if (data instanceof ApiResponseDto) {
-          if (meta) (data as any).meta = meta;
+          if (meta) (data as unknown as { meta?: unknown }).meta = meta;
           return data;
         }
 

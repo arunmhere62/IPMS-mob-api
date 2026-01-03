@@ -63,7 +63,7 @@ export class LegalDocumentsService {
 
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
     if (type) where.type = type;
     if (is_active !== undefined) where.is_active = is_active;
     if (required_only) where.is_required = true;
@@ -277,7 +277,7 @@ export class LegalDocumentsService {
               ],
             }
           : {}),
-      } as any,
+      } as Record<string, unknown>,
       orderBy: {
         effective_date: 'desc',
       },

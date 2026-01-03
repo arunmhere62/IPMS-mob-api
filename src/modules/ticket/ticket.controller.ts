@@ -12,6 +12,7 @@ import {
   Request,
   UseGuards,
 } from '@nestjs/common';
+import { Request as ExpressRequest } from 'express';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { TicketService } from './ticket.service';
 import { CreateTicketDto } from './dto/create-ticket.dto';
@@ -19,7 +20,13 @@ import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/common-headers.decorator';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+
+type AuthedRequest = ExpressRequest & {
+  user?: {
+    s_no?: number;
+    role_name?: string;
+  };
+};
 
 @ApiTags('tickets')
 @Controller('tickets')
@@ -34,7 +41,7 @@ export class TicketController {
   create(
     @Body() createDto: CreateTicketDto,
     @CommonHeadersDecorator() headers: CommonHeaders,
-    @Request() req: any,
+    @Request() req: AuthedRequest,
   ) {
     const userId = headers.user_id || req.user?.s_no;
     return this.ticketService.create(createDto, userId, headers.organization_id);
@@ -60,7 +67,7 @@ export class TicketController {
     @Query('my_tickets') myTickets?: string,
     @Query('search') search?: string,
     @CommonHeadersDecorator() headers?: CommonHeaders,
-    @Request() req?: any,
+    @Request() req?: AuthedRequest,
   ) {
     const page = pageParam ? parseInt(pageParam, 10) : 1;
     const limit = limitParam ? parseInt(limitParam, 10) : 20;
@@ -96,7 +103,7 @@ export class TicketController {
   findOne(
     @Param('id') id: string,
     @CommonHeadersDecorator() headers?: CommonHeaders,
-    @Request() req?: any,
+    @Request() req?: AuthedRequest,
   ) {
     const userId = headers?.user_id || req?.user?.s_no;
     return this.ticketService.findOne(+id, userId);
@@ -111,7 +118,7 @@ export class TicketController {
     @Param('id') id: string,
     @Body() updateDto: UpdateTicketDto,
     @CommonHeadersDecorator() headers: CommonHeaders,
-    @Request() req: any,
+    @Request() req: AuthedRequest,
   ) {
     console.log('=== TICKET UPDATE CONTROLLER ===');
     console.log('Headers:', headers);
@@ -135,7 +142,7 @@ export class TicketController {
   remove(
     @Param('id') id: string,
     @CommonHeadersDecorator() headers: CommonHeaders,
-    @Request() req: any,
+    @Request() req: AuthedRequest,
   ) {
     const userId = headers.user_id || req.user?.s_no;
     const isSuperAdmin = req.user?.role_name === 'SUPER_ADMIN';
@@ -150,7 +157,7 @@ export class TicketController {
     @Param('id') id: string,
     @Body() commentDto: AddCommentDto,
     @CommonHeadersDecorator() headers: CommonHeaders,
-    @Request() req: any,
+    @Request() req: AuthedRequest,
   ) {
     const userId = headers.user_id || req.user?.s_no;
     return this.ticketService.addComment(+id, commentDto, userId);

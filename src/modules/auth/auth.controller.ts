@@ -11,6 +11,10 @@ import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/c
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
+type RequestWithUser = {
+  user?: unknown;
+};
+
 @ApiTags('auth')
 @Controller('auth')
 export class AuthController {
@@ -68,7 +72,7 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Logout user and revoke tokens' })
-  async logout(@Req() req: any) {
+  async logout(@Req() req: RequestWithUser) {
     return this.authService.logout(req.user);
   }
 

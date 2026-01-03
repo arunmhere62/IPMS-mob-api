@@ -10,6 +10,63 @@ import { ResponseUtil } from '../../common/utils/response.util';
 import { TenantStatusService } from './tenant-status/tenant-status.service';
 import { SubscriptionRestrictionService } from '../subscription/subscription-restriction.service';
 import { TenantRentSummaryService } from './tenant-rent-summary.service';
+import { Prisma, tenants_status } from '@prisma/client';
+
+type TenantAllocationSummary = {
+  effective_from: Date;
+  effective_to: Date | null;
+  bed_price_snapshot: Prisma.Decimal;
+};
+
+type TenantRentCycleSummary = {
+  s_no: number;
+  cycle_type: string;
+  cycle_start: Date;
+  cycle_end: Date;
+};
+
+type RentPaymentSummary = {
+  cycle_id?: number | null;
+  payment_date?: Date | string | null;
+  status?: string | null;
+  amount_paid?: Prisma.Decimal | number | string | null;
+};
+
+type PaymentCycleSummary = {
+  cycle_id?: number | null;
+  start_date: string;
+  end_date: string;
+  remainingDue?: number | string | null;
+  status?: string | null;
+  due?: number | string | null;
+  totalPaid?: number | string | null;
+};
+
+type UnpaidMonth = {
+  cycle_id: number;
+  cycle_start: string;
+  cycle_end: string;
+  month: string;
+  month_name: string;
+  year: number;
+  month_number: number;
+  cycle_type: string;
+};
+
+type CyclePeriod = {
+  start: Date;
+  end: Date;
+  startStr: string;
+  endStr: string;
+  monthKey: string;
+  monthName: string;
+  year: number;
+  monthNumber: number;
+};
+
+const isTenantsStatus = (value: string): value is tenants_status => {
+  return (Object.values(tenants_status) as string[]).includes(value);
+};
 
 @Injectable()
 export class TenantService {
@@ -104,7 +161,7 @@ export class TenantService {
     }
 
     // Block multiple transfers in the same rent cycle (based on tenant's current PG rent cycle settings)
-    const tenantPg: any = tenant.pg_locations;
+    const tenantPg = tenant.pg_locations;
     const cycleType: 'CALENDAR' | 'MIDMONTH' = tenantPg?.rent_cycle_type || 'CALENDAR';
     const cycleStartDay: number | null | undefined = tenantPg?.rent_cycle_start ?? null;
 
@@ -114,7 +171,7 @@ export class TenantService {
       referenceDateOnly: effectiveFromDateOnly,
     });
 
-    const existingTransferInCycle = await (this.prisma as any).tenant_allocations.findFirst({
+    const existingTransferInCycle = await this.prisma.tenant_allocations.findFirst({
       where: {
         tenant_id: tenantId,
         effective_from: {
@@ -182,8 +239,8 @@ export class TenantService {
     const dayBefore = new Date(effectiveFromDateOnly);
     dayBefore.setUTCDate(dayBefore.getUTCDate() - 1);
 
-    const updatedTenant = await this.prisma.$transaction(async (tx) => {
-      const lastAllocation = await (tx as any).tenant_allocations.findFirst({
+    const updatedTenant = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const lastAllocation = await tx.tenant_allocations.findFirst({
         where: {
           tenant_id: tenantId,
           OR: [{ effective_to: null }, { effective_to: { gte: effectiveFromDateOnly } }],
@@ -198,7 +255,7 @@ export class TenantService {
           );
         }
 
-        await (tx as any).tenant_allocations.update({
+        await tx.tenant_allocations.update({
           where: { s_no: lastAllocation.s_no },
           data: {
             effective_to: dayBefore,
@@ -207,7 +264,7 @@ export class TenantService {
         });
       }
 
-      await (tx as any).tenant_allocations.create({
+      await tx.tenant_allocations.create({
         data: {
           tenant_id: tenantId,
           pg_id: dto.to_pg_id,
@@ -268,7 +325,7 @@ export class TenantService {
     }
 
     // Verify bed exists if provided
-    let bedForAllocation: { s_no: number; room_id: number | null; pg_id: number | null; bed_price: any } | null = null;
+    let bedForAllocation: { s_no: number; room_id: number | null; pg_id: number | null; bed_price: Prisma.Decimal | null } | null = null;
     if (createTenantDto.bed_id) {
       const bed = await this.prisma.beds.findUnique({
         where: { s_no: createTenantDto.bed_id },
@@ -301,7 +358,7 @@ export class TenantService {
     }
 
     // Create tenant
-    const tenant = await this.prisma.$transaction(async (tx) => {
+    const tenant = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
       const checkInDate = new Date(createTenantDto.check_in_date);
       const checkInDateOnly = new Date(checkInDate.toISOString().split('T')[0] + 'T00:00:00.000Z');
 
@@ -320,7 +377,7 @@ export class TenantService {
           bed_id: createTenantDto.bed_id,
           check_in_date: checkInDate,
           check_out_date: createTenantDto.check_out_date ? new Date(createTenantDto.check_out_date) : null,
-          status: (createTenantDto.status as any) || 'ACTIVE',
+          status: createTenantDto.status || 'ACTIVE',
           occupation: createTenantDto.occupation,
           tenant_address: createTenantDto.tenant_address,
           city_id: createTenantDto.city_id,
@@ -363,7 +420,7 @@ export class TenantService {
       });
 
       if (createTenantDto.bed_id && bedForAllocation && createdTenant.pg_id && createdTenant.room_id && createdTenant.bed_id) {
-        await (tx as any).tenant_allocations.create({
+        await tx.tenant_allocations.create({
           data: {
             tenant_id: createdTenant.s_no,
             pg_id: createdTenant.pg_id,
@@ -400,7 +457,7 @@ export class TenantService {
     const skip = (page - 1) * limit;
 
     // Build where clause
-    const where: any = {
+    const where: Prisma.tenantsWhereInput = {
       is_deleted: false,
     };
 
@@ -412,7 +469,7 @@ export class TenantService {
       where.room_id = room_id;
     }
 
-    if (status) {
+    if (status && isTenantsStatus(status)) {
       where.status = status;
     }
 
@@ -424,7 +481,7 @@ export class TenantService {
     const total = await this.prisma.tenants.count({ where });
 
     // Get tenants with all related data including rent cycle type
-    const tenants: any[] = await (this.prisma as any).tenants.findMany({
+    const tenants = await this.prisma.tenants.findMany({
       where,
       skip,
       take: limit,
@@ -543,8 +600,8 @@ export class TenantService {
     });
 
     // Enrich tenants with status calculations and rent cycle information
-    const enrichedTenants = tenants.map((tenant: any) => {
-      const statusEnriched = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0];
+    const enrichedTenants = tenants.map((tenant) => {
+      const statusEnriched = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0] as Record<string, unknown>;
       const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
       const rentFlags = this.tenantStatusService.deriveRentFlags({
         paymentStatus: rentSummary.payment_status,
@@ -572,20 +629,27 @@ export class TenantService {
     });
 
     // Filter by pending rent if requested
-    let filteredTenants = enrichedTenants;
+    type EnrichedTenant = (typeof enrichedTenants)[number];
+    let filteredTenants: EnrichedTenant[] = enrichedTenants;
     
     if (pending_rent) {
-      filteredTenants = this.tenantStatusService.getTenantsWithPendingRent(filteredTenants);
+      filteredTenants = this.tenantStatusService.getTenantsWithPendingRent(
+        filteredTenants as unknown[],
+      ) as EnrichedTenant[];
     }
 
     // Filter by pending advance if requested
     if (pending_advance) {
-      filteredTenants = this.tenantStatusService.getTenantsWithoutAdvance(filteredTenants);
+      filteredTenants = this.tenantStatusService.getTenantsWithoutAdvance(
+        filteredTenants as unknown[],
+      ) as EnrichedTenant[];
     }
 
     // Filter by partial rent if requested
     if (partial_rent) {
-      filteredTenants = this.tenantStatusService.getTenantsWithPartialRent(filteredTenants);
+      filteredTenants = this.tenantStatusService.getTenantsWithPartialRent(
+        filteredTenants as unknown[],
+      ) as EnrichedTenant[];
     }
 
     // Recalculate pagination based on filtered results
@@ -838,17 +902,17 @@ export class TenantService {
     }
 
     // Enrich tenant with status calculations using TenantStatusService
-    const enrichedTenant = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0];
+    const enrichedTenant = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0] as Record<string, unknown>;
 
     const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
     const paymentStatus = rentSummary.payment_status || 'NO_PAYMENT';
 
     const transferDifferenceDueCycle = (() => {
-      const allocations = (tenant as any).tenant_allocations || [];
+      const allocations = ((tenant as { tenant_allocations?: TenantAllocationSummary[] }).tenant_allocations || []) as TenantAllocationSummary[];
       if (!allocations || allocations.length <= 1) return null;
 
-      const toDateOnlyUtcLocal = (input: any): Date => {
-        const d = input instanceof Date ? input : new Date(input);
+      const toDateOnlyUtcLocal = (input: unknown): Date => {
+        const d = input instanceof Date ? input : new Date(String(input));
         if (Number.isNaN(d.getTime())) return new Date(NaN);
         return new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
       };
@@ -856,18 +920,20 @@ export class TenantService {
       // Identify most recent transfer allocation (exclude initial check-in allocation)
       const checkInDateOnly = toDateOnlyUtcLocal(tenant.check_in_date);
       const transferAllocations = allocations
-        .filter((a: any) => {
+        .filter((a: TenantAllocationSummary) => {
           const ef = toDateOnlyUtcLocal(a.effective_from);
           if (Number.isNaN(ef.getTime())) return false;
           return ef.getTime() !== checkInDateOnly.getTime();
         })
-        .sort((a: any, b: any) => new Date(b.effective_from).getTime() - new Date(a.effective_from).getTime());
+        .sort((a: TenantAllocationSummary, b: TenantAllocationSummary) =>
+          new Date(b.effective_from).getTime() - new Date(a.effective_from).getTime(),
+        );
 
       if (transferAllocations.length === 0) return null;
       const transferDate = toDateOnlyUtcLocal(transferAllocations[0].effective_from);
       if (Number.isNaN(transferDate.getTime())) return null;
 
-      const candidate = rentSummary.payment_cycle_summaries.find((c: any) => {
+      const candidate = (rentSummary.payment_cycle_summaries as PaymentCycleSummary[]).find((c: PaymentCycleSummary) => {
         const start = toDateOnlyUtcLocal(String(c.start_date));
         const end = toDateOnlyUtcLocal(String(c.end_date));
         if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
@@ -890,8 +956,8 @@ export class TenantService {
     const unpaidMonths = this.getUnpaidMonthsWithCycleDates(
       tenant.check_in_date,
       tenant.check_out_date,
-      (tenant as any).tenant_rent_cycles || [],
-      (tenant as any).rent_payments || [],
+      ((tenant as { tenant_rent_cycles?: TenantRentCycleSummary[] }).tenant_rent_cycles || []) as TenantRentCycleSummary[],
+      ((tenant as { rent_payments?: RentPaymentSummary[] }).rent_payments || []) as RentPaymentSummary[],
     );
 
     const rentFlags = this.tenantStatusService.deriveRentFlags({
@@ -900,16 +966,42 @@ export class TenantService {
       partialDueAmount: rentSummary.partial_due_amount || 0,
     });
 
-    const cycleSummaryById = new Map<number, any>();
-    (rentSummary.payment_cycle_summaries || []).forEach((s: any) => {
+    const cycleSummaryById = new Map<number, PaymentCycleSummary>();
+    (rentSummary.payment_cycle_summaries as PaymentCycleSummary[] | undefined || []).forEach((s: PaymentCycleSummary) => {
       if (s?.cycle_id) cycleSummaryById.set(Number(s.cycle_id), s);
     });
 
-    const enrichedRentPayments = (tenant as any).rent_payments?.map((p: any) => {
+    const toDateOnlyUtcLocal = (input: unknown): Date => {
+      const d = input instanceof Date ? input : new Date(String(input));
+      if (Number.isNaN(d.getTime())) return new Date(NaN);
+      return new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
+    };
+
+    const allocationsForSnapshot = ((tenant as { tenant_allocations?: TenantAllocationSummary[] }).tenant_allocations || []) as TenantAllocationSummary[];
+    const allocationSnapshotForDate = (paymentDate: unknown): number | null => {
+      const p = toDateOnlyUtcLocal(paymentDate);
+      if (Number.isNaN(p.getTime())) return null;
+
+      const effective = allocationsForSnapshot.find((a: TenantAllocationSummary) => {
+        const ef = toDateOnlyUtcLocal(a?.effective_from);
+        if (Number.isNaN(ef.getTime())) return false;
+        const et = a?.effective_to ? toDateOnlyUtcLocal(a.effective_to) : null;
+        if (et && !Number.isNaN(et.getTime()) && et.getTime() < p.getTime()) return false;
+        return ef.getTime() <= p.getTime();
+      });
+
+      const snap = effective?.bed_price_snapshot;
+      if (snap === undefined || snap === null) return null;
+      const n = Number(snap);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const enrichedRentPayments = ((tenant as { rent_payments?: RentPaymentSummary[] }).rent_payments || []).map((p: RentPaymentSummary) => {
       const cycleSummary = p?.cycle_id ? cycleSummaryById.get(Number(p.cycle_id)) : null;
       const remaining = cycleSummary ? Number(cycleSummary.remainingDue || 0) : null;
       return {
         ...p,
+        bed_rent_amount_snapshot: allocationSnapshotForDate(p?.payment_date),
         cycle_status: cycleSummary?.status ?? null,
         cycle_due: cycleSummary?.due ?? null,
         cycle_total_paid: cycleSummary?.totalPaid ?? null,
@@ -952,10 +1044,10 @@ export class TenantService {
       throw new NotFoundException(`Tenant with ID ${id} not found`);
     }
 
-    const toDateOnly = (d: any): string => {
+    const toDateOnly = (d: unknown): string => {
       if (!d) return '';
       try {
-        const dt = d instanceof Date ? d : new Date(d);
+        const dt = d instanceof Date ? d : new Date(String(d));
         return Number.isNaN(dt.getTime()) ? '' : dt.toISOString().split('T')[0];
       } catch {
         return '';
@@ -1094,7 +1186,7 @@ export class TenantService {
         bed_id: updateTenantDto.bed_id,
         check_in_date: updateTenantDto.check_in_date ? new Date(updateTenantDto.check_in_date) : undefined,
         check_out_date: updateTenantDto.check_out_date ? new Date(updateTenantDto.check_out_date) : undefined,
-        status: updateTenantDto.status as any,
+        status: updateTenantDto.status,
         occupation: updateTenantDto.occupation,
         tenant_address: updateTenantDto.tenant_address,
         city_id: updateTenantDto.city_id,
@@ -1187,9 +1279,9 @@ export class TenantService {
   private getUnpaidMonthsWithCycleDates(
     checkInDate: Date,
     checkOutDate: Date | null,
-    tenantCycles: any[],
-    rentPayments: any[],
-  ): any[] {
+    tenantCycles: TenantRentCycleSummary[],
+    rentPayments: RentPaymentSummary[],
+  ): UnpaidMonth[] {
     const formatDateOnly = (d: Date): string => {
       const year = d.getFullYear();
       const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -1203,20 +1295,20 @@ export class TenantService {
     const endDate = checkOutDate && new Date(checkOutDate) < now ? new Date(checkOutDate) : now;
     endDate.setHours(0, 0, 0, 0);
 
-    const unpaidMonths: any[] = [];
+    const unpaidMonths: UnpaidMonth[] = [];
 
     const endCutoff = endDate;
     const cycles = (tenantCycles || [])
-      .map((c: any) => ({
+      .map((c: TenantRentCycleSummary) => ({
         ...c,
         cycle_start: new Date(c.cycle_start),
         cycle_end: new Date(c.cycle_end),
       }))
-      .filter((c: any) => c.cycle_start <= endCutoff)
-      .sort((a: any, b: any) => a.cycle_start.getTime() - b.cycle_start.getTime());
+      .filter((c: TenantRentCycleSummary) => c.cycle_start <= endCutoff)
+      .sort((a: TenantRentCycleSummary, b: TenantRentCycleSummary) => a.cycle_start.getTime() - b.cycle_start.getTime());
 
     const paidByCycle = new Map<number, number>();
-    rentPayments.forEach((p: any) => {
+    rentPayments.forEach((p: RentPaymentSummary) => {
       if (!p.cycle_id) return;
       const isPaying = p.status === 'PAID' || p.status === 'PARTIAL';
       if (!isPaying) return;
@@ -1224,7 +1316,7 @@ export class TenantService {
       paidByCycle.set(p.cycle_id, prev + Number(p.amount_paid || 0));
     });
 
-    cycles.forEach((c: any) => {
+    cycles.forEach((c: TenantRentCycleSummary) => {
       const startStr = formatDateOnly(c.cycle_start);
       const endStr = formatDateOnly(c.cycle_end);
       const totalPaid = paidByCycle.get(c.s_no) || 0;
@@ -1250,7 +1342,7 @@ export class TenantService {
    * Get CALENDAR cycle period (1st to last day of month)
    * Returns both Date objects and formatted strings
    */
-  private getCalendarCyclePeriod(startDate: Date): any {
+  private getCalendarCyclePeriod(startDate: Date): CyclePeriod {
     const year = startDate.getFullYear();
     const month = startDate.getMonth();
 
@@ -1269,7 +1361,7 @@ export class TenantService {
     const monthKey = `${year}-${String(month + 1).padStart(2, '0')}`;
     const monthName = cycleStart.toLocaleString('default', { month: 'long', year: 'numeric' });
     
-    return {
+    const out: CyclePeriod = {
       start: cycleStart,
       end: cycleEnd,
       startStr: formatDateOnly(cycleStart),
@@ -1279,6 +1371,7 @@ export class TenantService {
       year,
       monthNumber: month + 1,
     };
+    return out;
   }
 
   /**
@@ -1293,7 +1386,7 @@ export class TenantService {
    * Cycle 1: 10 Dec 2025 - 09 Jan 2026
    * Cycle 2: 10 Jan 2026 - 09 Feb 2026
    */
-  private getMidmonthCyclePeriod(startDate: Date): any {
+  private getMidmonthCyclePeriod(startDate: Date): CyclePeriod {
     const year = startDate.getFullYear();
     const month = startDate.getMonth();
     const day = startDate.getDate();
@@ -1318,7 +1411,7 @@ export class TenantService {
     const monthKey = `${cycleStart.getFullYear()}-${String(cycleStart.getMonth() + 1).padStart(2, '0')}`;
     const monthName = cycleStart.toLocaleString('default', { month: 'long', year: 'numeric' });
     
-    return {
+    const out: CyclePeriod = {
       start: cycleStart,
       end: cycleEnd,
       startStr: formatDateOnly(cycleStart),
@@ -1328,6 +1421,7 @@ export class TenantService {
       year: cycleStart.getFullYear(),
       monthNumber: cycleStart.getMonth() + 1,
     };
+    return out;
   }
 
 }

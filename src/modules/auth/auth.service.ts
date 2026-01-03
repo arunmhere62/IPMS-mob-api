@@ -165,7 +165,7 @@ export class AuthService {
                          user.roles.role_name.toLowerCase() === 'superadmin';
 
     // Build user response object
-    const userResponse: any = {
+    const userResponse: Record<string, unknown> = {
       s_no: user.s_no,
       name: user.name,
       email: user.email,

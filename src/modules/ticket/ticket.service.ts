@@ -4,6 +4,7 @@ import { ResponseUtil } from '../../common/utils/response.util';
 import { CreateTicketDto } from './dto/create-ticket.dto';
 import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class TicketService {
@@ -65,7 +66,7 @@ export class TicketService {
   ) {
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where: Prisma.issue_ticketsWhereInput = {
       is_deleted: false,
     };
 
@@ -91,8 +92,8 @@ export class TicketService {
 
     if (search) {
       where.OR = [
-        { title: { contains: search, mode: 'insensitive' } },
-        { description: { contains: search, mode: 'insensitive' } },
+        { title: { contains: search } },
+        { description: { contains: search } },
         { ticket_number: { contains: search } },
       ];
     }
@@ -145,6 +146,7 @@ export class TicketService {
   }
 
   async findOne(id: number, userId?: number) {
+    void userId;
     const ticket = await this.prisma.issue_tickets.findFirst({
       where: {
         s_no: id,
@@ -244,7 +246,7 @@ export class TicketService {
 
     console.log('Permission granted - proceeding with update');
 
-    const updateData: any = {
+    const updateData: Prisma.issue_ticketsUpdateInput = {
       ...updateDto,
       updated_at: new Date().toISOString(),
     };
@@ -369,7 +371,7 @@ export class TicketService {
   }
 
   async getStats(organizationId?: number) {
-    const where: any = {
+    const where: Prisma.issue_ticketsWhereInput = {
       is_deleted: false,
     };
 
@@ -403,12 +405,12 @@ export class TicketService {
         resolved,
         closed,
       },
-      byCategory: byCategory.reduce((acc, item) => {
-        acc[item.category] = item._count;
+      byCategory: byCategory.reduce<Record<string, number>>((acc, item) => {
+        acc[String(item.category)] = item._count;
         return acc;
       }, {}),
-      byPriority: byPriority.reduce((acc, item) => {
-        acc[item.priority] = item._count;
+      byPriority: byPriority.reduce<Record<string, number>>((acc, item) => {
+        acc[String(item.priority)] = item._count;
         return acc;
       }, {}),
     }, 'Ticket statistics fetched successfully');

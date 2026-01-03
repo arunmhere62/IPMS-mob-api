@@ -76,7 +76,7 @@ export class RoomService {
     const { page = 1, limit = 10, pg_id, search } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where: Record<string, unknown> = {
       is_deleted: false,
     };
 
@@ -131,16 +131,21 @@ export class RoomService {
     ]);
 
     // Add bed count for each room
+    type BedWithTenants = Record<string, unknown> & { tenants?: Array<{ s_no: number }> };
     const roomsWithBedCount = rooms.map((room) => {
       const total_beds = room.beds.length;
-      const occupied_beds = room.beds.filter((b) => (b as any)?.tenants?.length > 0).length;
+      const occupied_beds = room.beds.filter((b) => {
+        const bb = b as unknown as BedWithTenants;
+        return (bb.tenants || []).length > 0;
+      }).length;
       const available_beds = Math.max(total_beds - occupied_beds, 0);
 
       return {
         ...room,
         beds: room.beds.map((b) => {
           // Strip tenants from list response to keep payload small
-          const { tenants, ...rest } = b as any;
+          const { tenants: _tenants, ...rest } = b as unknown as BedWithTenants;
+          void _tenants;
           return rest;
         }),
         total_beds,
@@ -308,17 +313,15 @@ export class RoomService {
       );
     }
 
-    // Soft delete room
-    await this.prisma.$transaction([
-      this.prisma.rooms.update({
-        where: { s_no: id },
-        data: { is_deleted: true },
-      }),
-      this.prisma.beds.updateMany({
-        where: { room_id: id },
-        data: { is_deleted: true },
-      }),
-    ]);
+    // Soft delete room (Prisma-safe): rename to preserve uniqueness among deleted records
+    await this.prisma.rooms.update({
+      where: { s_no: id },
+      data: {
+        room_no: existingRoom.room_no ? `${existingRoom.room_no}__DELETED__${id}` : `__DELETED__${id}`,
+        is_deleted: true,
+        updated_at: new Date(),
+      },
+    });
 
     return ResponseUtil.noContent('Room deleted successfully');
   }

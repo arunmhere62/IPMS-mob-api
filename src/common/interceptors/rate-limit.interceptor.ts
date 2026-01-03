@@ -8,7 +8,7 @@ export class RateLimitInterceptor implements NestInterceptor {
   private readonly maxRequests = 100; // Max requests per minute per IP
   private readonly windowMs = 60000; // 1 minute window
 
-  intercept(context: ExecutionContext, next: CallHandler): Observable<any> {
+  intercept(context: ExecutionContext, next: CallHandler): Observable<unknown> {
     const request = context.switchToHttp().getRequest();
     const clientIP = request.ip || request.connection.remoteAddress;
     

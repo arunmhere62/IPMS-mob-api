@@ -1,9 +1,10 @@
-import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleQueryDto } from './dto/role-query.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class RolesService {
@@ -28,7 +29,7 @@ export class RolesService {
     const role = await this.prisma.roles.create({
       data: {
         role_name: createRoleDto.role_name,
-        permissions: createRoleDto.permissions || {},
+        permissions: (createRoleDto.permissions ?? {}) as Prisma.InputJsonValue,
         status: createRoleDto.status || 'ACTIVE',
       },
       include: {
@@ -50,7 +51,7 @@ export class RolesService {
     const { page = 1, limit = 10, status, search, include_deleted = false } = query;
     const skip = (page - 1) * limit;
 
-    const where: any = {
+    const where: Record<string, unknown> = {
       is_deleted: include_deleted ? undefined : false,
     };
 
@@ -207,7 +208,7 @@ export class RolesService {
   /**
    * Update role permissions
    */
-  async updatePermissions(id: number, permissions: Record<string, any>) {
+  async updatePermissions(id: number, permissions: Prisma.InputJsonValue) {
     const role = await this.prisma.roles.findUnique({
       where: { s_no: id },
     });

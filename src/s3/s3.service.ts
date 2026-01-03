@@ -1,5 +1,17 @@
 import { Injectable } from '@nestjs/common';
-import { S3Client, PutObjectCommand, DeleteObjectCommand, DeleteObjectsCommand, HeadObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  PutObjectCommand,
+  DeleteObjectCommand,
+  DeleteObjectsCommand,
+  HeadObjectCommand,
+  DeleteObjectCommandOutput,
+  DeleteObjectsCommandOutput,
+} from '@aws-sdk/client-s3';
+
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null;
+};
 
 @Injectable()
 export class S3Service {
@@ -33,7 +45,7 @@ export class S3Service {
     isPublic: boolean;
     bucket: string;
   }): Promise<{ Location: string; ETag?: string; Bucket: string; Key: string }> {
-    const { key, contentType, fileData, isPublic, bucket } = uploadData;
+    const { key, contentType, fileData, bucket } = uploadData;
 
     // Convert base64 to buffer
     const buffer = Buffer.from(fileData, 'base64');
@@ -62,7 +74,7 @@ export class S3Service {
   async deleteFile(deleteData: {
     key: string;
     bucket: string;
-  }): Promise<any> {
+  }): Promise<DeleteObjectCommandOutput> {
     const { key, bucket } = deleteData;
 
     const command = new DeleteObjectCommand({
@@ -80,11 +92,14 @@ export class S3Service {
         key 
       });
       return response;
-    } catch (error) {
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      const code = isRecord(error) ? (error as Record<string, unknown>).code : undefined;
+      const meta = isRecord(error) ? (error as Record<string, unknown>).$metadata : undefined;
       console.error('S3 delete failed with error:', {
-        message: error.message,
-        code: error.code,
-        statusCode: error.$metadata?.httpStatusCode,
+        message,
+        code,
+        statusCode: isRecord(meta) ? (meta as Record<string, unknown>).httpStatusCode : undefined,
         key,
         bucket
       });
@@ -95,7 +110,7 @@ export class S3Service {
   async deleteMultipleFiles(deleteData: {
     keys: string[];
     bucket: string;
-  }): Promise<any> {
+  }): Promise<DeleteObjectsCommandOutput> {
     const { keys, bucket } = deleteData;
 
     const command = new DeleteObjectsCommand({

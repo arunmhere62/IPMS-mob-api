@@ -64,16 +64,23 @@ export class ResponseUtil {
     page: number,
     limit: number,
     message: string = 'Success',
-  ): ApiResponseDto<any> {
-    return new ApiResponseDto(HttpStatus.OK, message, {
-      data,
-      pagination: {
-        total,
-        page,
-        limit,
-        totalPages: Math.ceil(total / limit),
+  ): ApiResponseDto<{ data: T[]; pagination: { total: number; page: number; limit: number; totalPages: number } }> {
+    return new ApiResponseDto(
+      HttpStatus.OK,
+      message,
+      {
+        data,
+        pagination: {
+          total,
+          page,
+          limit,
+          totalPages: Math.ceil(total / limit),
+        },
       },
-      }, undefined, undefined, this.getPerfMeta());
+      undefined,
+      undefined,
+      this.getPerfMeta(),
+    );
   }
 
   /**

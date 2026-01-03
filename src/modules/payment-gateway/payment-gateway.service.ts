@@ -2,6 +2,8 @@ import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { CCAvenuePaymentResponse } from './ccavenue.service';
+import { Prisma } from '@prisma/client';
+import { ApiResponseDto } from '../../common/dto/response.dto';
 
 export interface CreatePaymentRecordDto {
   orderId: string;
@@ -12,7 +14,7 @@ export interface CreatePaymentRecordDto {
   currency: string;
   paymentType: 'NEW_SUBSCRIPTION' | 'RENEWAL' | 'UPGRADE';
   status: 'INITIATED' | 'SUCCESS' | 'FAILURE' | 'ABORTED' | 'PENDING';
-  metadata?: any;
+  metadata?: Prisma.InputJsonValue;
 }
 
 export interface UpdatePaymentRecordDto {
@@ -23,8 +25,14 @@ export interface UpdatePaymentRecordDto {
   statusCode?: string;
   statusMessage?: string;
   failureMessage?: string;
-  responseData?: any;
+  responseData?: Prisma.InputJsonValue;
 }
+
+type SubscriptionPaymentRow = {
+  user_id: number;
+  organization_id: number;
+  plan_id: number;
+};
 
 @Injectable()
 export class PaymentGatewayService {
@@ -108,7 +116,8 @@ export class PaymentGatewayService {
 
     try {
       // Get payment record
-      const payment = await this.getPaymentByOrderId(paymentResponse.orderId);
+      const paymentEnvelope = await this.getPaymentByOrderId(paymentResponse.orderId);
+      const payment = paymentEnvelope.data as SubscriptionPaymentRow;
 
       // Get plan details
       const plan = await this.prisma.subscription_plans.findUnique({
@@ -200,7 +209,7 @@ export class PaymentGatewayService {
    */
   async hasActiveSubscriptionForOrganization(organizationId: number): Promise<boolean> {
     const result = await this.getActiveSubscriptionForOrganization(organizationId);
-    return !!(result as any)?.data;
+    return Boolean((result as ApiResponseDto<unknown> | null | undefined)?.data);
   }
 
   /**

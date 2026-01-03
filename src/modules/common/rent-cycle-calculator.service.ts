@@ -170,6 +170,7 @@ export class RentCycleCalculatorService {
     cycleType: 'CALENDAR' | 'MIDMONTH',
     numCycles: number = 1,
   ): { startDate: string; endDate: string } {
+    void numCycles;
     try {
       const lastEnd = this.parseDate(lastEndDate);
 
@@ -259,9 +260,12 @@ export class RentCycleCalculatorService {
         const endDay = end.getDate();
         const endMonth = end.getMonth();
         const endYear = end.getFullYear();
+        void endDay;
+        void endMonth;
+        void endYear;
 
         // Calculate expected end date
-        let expectedEndDate = new Date(startYear, startMonth + 1, startDay);
+        const expectedEndDate = new Date(startYear, startMonth + 1, startDay);
         expectedEndDate.setDate(expectedEndDate.getDate() - 1);
 
         // Check if end date matches expected (with 1 day tolerance)

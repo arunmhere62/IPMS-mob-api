@@ -4,6 +4,65 @@ import { ResponseUtil } from '../../../common/utils/response.util';
 import { CheckoutTenantDto } from './dto/checkout-tenant.dto';
 import { UpdateCheckoutDateDto } from '../dto/update-checkout-date.dto';
 import { TenantRentSummaryService } from '../tenant-rent-summary.service';
+import { Prisma } from '@prisma/client';
+
+type TenantForCheckout = Prisma.tenantsGetPayload<{
+  include: {
+    pg_locations: { select: { rent_cycle_type: true } };
+    tenant_allocations: {
+      orderBy: { effective_from: 'asc' };
+      select: {
+        s_no: true;
+        effective_from: true;
+        effective_to: true;
+        bed_price_snapshot: true;
+      };
+    };
+    tenant_rent_cycles: {
+      orderBy: { cycle_start: 'asc' };
+      select: { s_no: true; cycle_start: true; cycle_end: true };
+    };
+    rent_payments: {
+      where: { is_deleted: false };
+      select: {
+        s_no: true;
+        status: true;
+        amount_paid: true;
+        payment_date: true;
+        actual_rent_amount: true;
+        cycle_id: true;
+      };
+    };
+    advance_payments: {
+      where: { is_deleted: false };
+      select: { s_no: true; status: true; amount_paid: true; payment_date: true };
+    };
+  };
+}>;
+
+type TenantAfterCheckout = Prisma.tenantsGetPayload<{
+  include: {
+    pg_locations: true;
+    rooms: true;
+    beds: true;
+    tenant_allocations: {
+      orderBy: { effective_from: 'asc' };
+      select: { effective_from: true; effective_to: true; bed_price_snapshot: true };
+    };
+    tenant_rent_cycles: {
+      orderBy: { cycle_start: 'asc' };
+      select: { s_no: true; cycle_start: true; cycle_end: true };
+    };
+    rent_payments: {
+      where: { is_deleted: false };
+      select: { s_no: true; status: true; amount_paid: true; payment_date: true; actual_rent_amount: true; cycle_id: true };
+    };
+    advance_payments: {
+      where: { is_deleted: false };
+      select: { s_no: true; status: true; amount_paid: true; payment_date: true };
+    };
+  };
+}>;
 
 @Injectable()
 export class CheckoutService {
@@ -72,8 +131,8 @@ export class CheckoutService {
       throw new BadRequestException('Checkout date is invalid. Please provide a valid checkout date.');
     }
 
-    const result = await this.prisma.$transaction(async (tx) => {
-      const tenant = await tx.tenants.findFirst({
+    const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      const tenant: TenantForCheckout | null = await tx.tenants.findFirst({
         where: {
           s_no: id,
           is_deleted: false,
@@ -147,9 +206,9 @@ export class CheckoutService {
         },
       });
 
-      const activeAllocation = (tenant as any).tenant_allocations?.find((a: any) => !a.effective_to);
+      const activeAllocation = tenant.tenant_allocations?.find((a) => !a.effective_to);
       if (activeAllocation) {
-        await (tx as any).tenant_allocations.update({
+        await tx.tenant_allocations.update({
           where: { s_no: activeAllocation.s_no },
           data: {
             effective_to: checkoutDate,
@@ -158,7 +217,7 @@ export class CheckoutService {
         });
       }
 
-      const cycleType = ((tenant as any)?.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+      const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
       const checkInUtc = this.toDateOnlyUtc(new Date(tenant.check_in_date));
       const checkoutUtc = this.toDateOnlyUtc(new Date(checkoutDate));
 
@@ -177,7 +236,7 @@ export class CheckoutService {
 
         const endClamped = computed.cycleEnd > checkoutUtc ? checkoutUtc : computed.cycleEnd;
 
-        await (tx as any).tenant_rent_cycles.upsert({
+        await tx.tenant_rent_cycles.upsert({
           where: {
             tenant_id_cycle_start: {
               tenant_id: id,
@@ -207,7 +266,7 @@ export class CheckoutService {
         cursor = next;
       }
 
-      const tenantAfter = await tx.tenants.findFirst({
+      const tenantAfter: TenantAfterCheckout | null = await tx.tenants.findFirst({
         where: {
           s_no: id,
           is_deleted: false,
@@ -266,10 +325,10 @@ export class CheckoutService {
       const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant: tenantAfter });
       const rentDueAmount = Number(rentSummary?.rent_due_amount || 0);
 
-      const advances = (tenantAfter as any).advance_payments || [];
+      const advances = tenantAfter.advance_payments || [];
       const hasAnyAdvance = advances.length > 0;
-      const hasPaidAdvance = advances.some((p: any) => p.status === 'PAID');
-      const hasNonPaidAdvance = advances.some((p: any) => p.status && p.status !== 'PAID');
+      const hasPaidAdvance = advances.some((p) => p.status === 'PAID');
+      const hasNonPaidAdvance = advances.some((p) => p.status && p.status !== 'PAID');
       const hasAdvancePending = !hasPaidAdvance || hasNonPaidAdvance || !hasAnyAdvance;
 
       if (rentDueAmount > 0 || hasAdvancePending) {
@@ -342,7 +401,7 @@ export class CheckoutService {
       },
     });
 
-    let updateData: any = {};
+    let updateData: Record<string, unknown> = {};
 
     if (updateCheckoutDateDto.clear_checkout) {
       // Clear checkout date and reactivate tenant (no validation needed for clearing)
@@ -354,10 +413,10 @@ export class CheckoutService {
       const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
       const rentDueAmount = Number(rentSummary?.rent_due_amount || 0);
 
-      const advances = (tenant as any).advance_payments || [];
+      const advances = tenant.advance_payments || [];
       const hasAnyAdvance = advances.length > 0;
-      const hasPaidAdvance = advances.some((p: any) => p.status === 'PAID');
-      const hasNonPaidAdvance = advances.some((p: any) => p.status && p.status !== 'PAID');
+      const hasPaidAdvance = advances.some((p) => p.status === 'PAID');
+      const hasNonPaidAdvance = advances.some((p) => p.status && p.status !== 'PAID');
       const hasAdvancePending = !hasPaidAdvance || hasNonPaidAdvance || !hasAnyAdvance;
 
       if (rentDueAmount > 0 || hasAdvancePending) {

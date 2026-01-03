@@ -8,7 +8,7 @@ export class AuthResponseDto {
   message: string;
 
   @ApiProperty({ required: false })
-  data?: any;
+  data?: Record<string, unknown>;
 }
 
 export class LoginResponseDto {

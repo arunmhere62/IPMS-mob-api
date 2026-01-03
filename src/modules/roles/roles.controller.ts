@@ -15,6 +15,7 @@ import { RolesService } from './roles.service';
 import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleQueryDto } from './dto/role-query.dto';
+import { Prisma } from '@prisma/client';
 
 @ApiTags('roles')
 @Controller('roles')
@@ -125,7 +126,7 @@ export class RolesController {
   })
   async updatePermissions(
     @Param('id', ParseIntPipe) id: number,
-    @Body() permissions: Record<string, any>,
+    @Body() permissions: Prisma.InputJsonValue,
   ) {
     return this.rolesService.updatePermissions(id, permissions);
   }

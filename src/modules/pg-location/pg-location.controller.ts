@@ -11,7 +11,7 @@ import {
   HttpStatus,
   UseGuards,
 } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiResponse, ApiParam, ApiBearerAuth } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiResponse, ApiParam } from '@nestjs/swagger';
 import { PgLocationService } from './pg-location.service';
 import { CreatePgLocationDto } from './dto/create-pg-location.dto';
 import { UpdatePgLocationDto } from './dto/update-pg-location.dto';

@@ -132,6 +132,7 @@ export class EmployeeService {
 
     // Remove password from response
     const { password, ...employeeWithoutPassword } = employee;
+    void password;
 
     return ResponseUtil.success(employeeWithoutPassword, 'Employee created successfully');
   }
@@ -151,7 +152,7 @@ export class EmployeeService {
   ) {
     const skip = (page - 1) * limit;
 
-    const whereClause: any = {
+    const whereClause: Record<string, unknown> = {
       organization_id: organizationId,
       is_deleted: false,
       s_no: {
@@ -551,7 +552,7 @@ export class EmployeeService {
    * Get employee statistics
    */
   async getStats(organizationId: number, pgId?: number) {
-    const whereClause: any = {
+    const whereClause: Record<string, unknown> = {
       organization_id: organizationId,
       is_deleted: false,
     };

@@ -1,5 +1,6 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, IsBoolean } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional } from 'class-validator';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { Prisma } from '@prisma/client';
 
 export class CreateRoleDto {
   @ApiProperty({
@@ -21,7 +22,7 @@ export class CreateRoleDto {
     },
   })
   @IsOptional()
-  permissions?: Record<string, any>;
+  permissions?: Prisma.InputJsonValue;
 
 
   @ApiPropertyOptional({

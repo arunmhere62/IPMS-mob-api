@@ -107,9 +107,9 @@ export class SubscriptionService {
   async checkSubscriptionStatus(userId: number, organizationId: number) {
     const subscription = await this.findCurrentActiveSubscription(userId, organizationId);
 
-    let normalizedSubscription: any = null;
+    let normalizedSubscription: Record<string, unknown> | null = null;
     if (subscription) {
-      const { subscription_plans, ...rest } = subscription as any;
+      const { subscription_plans, ...rest } = subscription as unknown as Record<string, unknown>;
       normalizedSubscription = {
         ...rest,
         plan: subscription_plans || null,
@@ -170,8 +170,8 @@ export class SubscriptionService {
       },
     });
 
-    const normalizedSubscriptions = (subscriptions || []).map((sub: any) => {
-      const { subscription_plans, ...rest } = sub;
+    const normalizedSubscriptions = (subscriptions || []).map((sub) => {
+      const { subscription_plans, ...rest } = sub as unknown as Record<string, unknown>;
       return {
         ...rest,
         plan: subscription_plans || null,
@@ -399,10 +399,10 @@ export class SubscriptionService {
   /**
    * Handle payment callback from CCAvenue
    */
-  async handlePaymentCallback(body: any) {
+  async handlePaymentCallback(body: Record<string, unknown>) {
     try {
       // Decrypt the response
-      const encResponse = body.encResp;
+      const encResponse = typeof body.encResp === 'string' ? body.encResp : '';
       if (!encResponse) {
         throw new Error('No encrypted response received');
       }

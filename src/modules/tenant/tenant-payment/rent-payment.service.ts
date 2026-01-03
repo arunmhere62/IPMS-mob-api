@@ -1,8 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, MethodNotAllowedException } from '@nestjs/common';
 
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseUtil } from '../../../common/utils/response.util';
-import { CreateTenantPaymentDto, UpdateTenantPaymentDto } from './dto';
+import { CreateTenantPaymentDto, UpdateTenantPaymentDto, VoidTenantPaymentDto } from './dto';
 
  type TenantUnavailableReason = 'NOT_FOUND' | 'DELETED' | 'CHECKED_OUT' | 'INACTIVE' | null;
 
@@ -370,6 +370,10 @@ export class TenantPaymentService {
       is_deleted: false,
     };
 
+    // By default, do not include voided payments in normal listings.
+    // If a caller explicitly requests status=VOIDED, it will override this.
+    where.status = { not: 'VOIDED' };
+
     if (pg_id) {
       where.pg_id = pg_id;
     }
@@ -642,10 +646,41 @@ export class TenantPaymentService {
   }
 
   async remove(id: number) {
+    void id;
+    throw new MethodNotAllowedException(
+      'Rent payments cannot be deleted. Use voidPayment to cancel with audit trail.',
+    );
+  }
+
+  async voidPayment(id: number, body: VoidTenantPaymentDto, voidedByUserId: number) {
+    if (!body?.voided_reason || !String(body.voided_reason).trim()) {
+      throw new BadRequestException('voided_reason is required');
+    }
+
     const existingPayment = await this.prismaDelegates.rent_payments.findFirst({
       where: {
         s_no: id,
         is_deleted: false,
+      },
+      select: {
+        s_no: true,
+        tenant_id: true,
+        status: true,
+        voided_at: true,
+        payment_date: true,
+        tenants: {
+          select: {
+            status: true,
+            check_out_date: true,
+            is_deleted: true,
+          },
+        },
+        tenant_rent_cycles: {
+          select: {
+            cycle_start: true,
+            cycle_end: true,
+          },
+        },
       },
     });
 
@@ -653,15 +688,68 @@ export class TenantPaymentService {
       throw new NotFoundException(`Tenant payment with ID ${id} not found`);
     }
 
-    await this.prismaDelegates.rent_payments.update({
+    const tenantInfo = (existingPayment as unknown as PaymentWithTenant).tenants;
+    const tenantStatus = String(tenantInfo?.status ?? '').toUpperCase();
+    const tenantCheckedOut = !!tenantInfo?.check_out_date || tenantStatus === 'CHECKED_OUT';
+    if (tenantCheckedOut) {
+      throw new BadRequestException('Cannot void rent payment for a checked-out tenant');
+    }
+
+    const existing = existingPayment as Record<string, unknown>;
+    const existingStatus = String(existing.status ?? '').toUpperCase();
+    const existingVoidedAt = existing.voided_at;
+    if (existingStatus === 'VOIDED' || existingVoidedAt) {
+      throw new BadRequestException('Payment is already voided');
+    }
+
+    const payment = await this.prismaDelegates.rent_payments.update({
       where: { s_no: id },
       data: {
-        is_deleted: true,
+        status: 'VOIDED',
+        voided_at: new Date(),
+        voided_by: voidedByUserId,
+        voided_reason: String(body.voided_reason).trim(),
         updated_at: new Date(),
+      },
+      include: {
+        tenant_rent_cycles: {
+          select: {
+            s_no: true,
+            cycle_type: true,
+            cycle_start: true,
+            cycle_end: true,
+          },
+        },
+        tenants: {
+          select: {
+            s_no: true,
+            tenant_id: true,
+            name: true,
+            phone_no: true,
+          },
+        },
+        rooms: {
+          select: {
+            s_no: true,
+            room_no: true,
+          },
+        },
+        beds: {
+          select: {
+            s_no: true,
+            bed_no: true,
+          },
+        },
+        pg_locations: {
+          select: {
+            s_no: true,
+            location_name: true,
+          },
+        },
       },
     });
 
-    return ResponseUtil.noContent('Tenant payment deleted successfully');
+    return ResponseUtil.success(payment, 'Tenant payment voided successfully');
   }
 
   async getPaymentsByTenant(tenant_id: number) {
@@ -669,6 +757,7 @@ export class TenantPaymentService {
       where: {
         tenant_id,
         is_deleted: false,
+        status: { not: 'VOIDED' },
       },
       orderBy: {
         payment_date: 'desc',
@@ -706,6 +795,7 @@ export class TenantPaymentService {
       where: {
         s_no: id,
         is_deleted: false,
+        status: { not: 'VOIDED' },
       },
     });
 
@@ -806,6 +896,7 @@ export class TenantPaymentService {
       where: {
         tenant_id,
         is_deleted: false,
+        status: { not: 'VOIDED' },
       },
       select: {
         s_no: true,

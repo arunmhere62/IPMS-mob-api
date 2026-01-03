@@ -471,6 +471,11 @@ export class TenantService {
 
     if (status && isTenantsStatus(status)) {
       where.status = status;
+    } else {
+      // Default: do not include CHECKED_OUT tenants unless explicitly requested
+      where.status = {
+        in: ['ACTIVE', 'INACTIVE'],
+      };
     }
 
     if (search) {
@@ -534,6 +539,9 @@ export class TenantService {
         rent_payments: {
           where: {
             is_deleted: false,
+            status: {
+              not: 'VOIDED',
+            },
           },
           orderBy: {
             payment_date: 'desc',
@@ -552,6 +560,9 @@ export class TenantService {
         advance_payments: {
           where: {
             is_deleted: false,
+            status: {
+              not: 'VOIDED',
+            },
           },
           orderBy: {
             payment_date: 'desc',
@@ -727,6 +738,9 @@ export class TenantService {
         rent_payments: {
           where: {
             is_deleted: false,
+            status: {
+              not: 'VOIDED',
+            },
           },
           orderBy: {
             payment_date: 'desc',
@@ -774,6 +788,9 @@ export class TenantService {
         advance_payments: {
           where: {
             is_deleted: false,
+            status: {
+              not: 'VOIDED',
+            },
           },
           orderBy: {
             payment_date: 'desc',
@@ -1069,7 +1086,7 @@ export class TenantService {
     if (isCheckInChanging || isRoomChanging || isBedChanging) {
       const [hasRentPayments, hasAdvance, hasRefund, hasBills] = await Promise.all([
         this.prisma.rent_payments.count({ where: { tenant_id: id, is_deleted: false } }),
-        this.prisma.advance_payments.count({ where: { tenant_id: id, is_deleted: false } }),
+        this.prisma.advance_payments.count({ where: { tenant_id: id, is_deleted: false, status: { not: 'VOIDED' } } }),
         this.prisma.refund_payments.count({ where: { tenant_id: id, is_deleted: false } }),
         this.prisma.current_bills.count({ where: { tenant_id: id, is_deleted: false } }),
       ]);
@@ -1211,7 +1228,9 @@ export class TenantService {
   /**
    * Delete tenant (soft delete)
    */
-  async remove(id: number) {
+  async remove(id: number): Promise<unknown>;
+  async remove(id: number, deletedBy: number | null): Promise<unknown>;
+  async remove(id: number, deletedBy: number | null = null) {
     const tenant = await this.prisma.tenants.findFirst({
       where: {
         s_no: id,
@@ -1223,17 +1242,63 @@ export class TenantService {
       throw new NotFoundException(`Tenant with ID ${id} not found`);
     }
 
-    // Check if checkout date is in the future or today (not completed)
+    // Allow delete ONLY for tenants added by mistake (no history impact)
+    if (tenant.status !== 'ACTIVE') {
+      throw new BadRequestException('Cannot delete tenant. Only ACTIVE tenants can be deleted.');
+    }
+
+    // If checkout exists, tenant has stayed / history exists -> must checkout, not delete
     if (tenant.check_out_date) {
-      const now = new Date();
-      const checkoutDate = new Date(tenant.check_out_date);
-      
-      // Set checkout date to end of day (23:59:59)
-      checkoutDate.setHours(23, 59, 59, 999);
-      
-      if (checkoutDate > now) {
-        throw new BadRequestException('Cannot delete tenant. The bed will become available only after the checkout day is completely finished.');
-      }
+      throw new BadRequestException('Cannot delete tenant. Checked out tenants cannot be deleted.');
+    }
+
+    const [advancePaymentsCount, rentPaymentsCount, refundPaymentsCount, currentBillsCount] = await Promise.all([
+      this.prisma.advance_payments.count({
+        where: {
+          tenant_id: id,
+          is_deleted: false,
+          status: {
+            not: 'VOIDED',
+          },
+        },
+      }),
+      this.prisma.rent_payments.count({
+        where: {
+          tenant_id: id,
+          is_deleted: false,
+          status: {
+            not: 'VOIDED',
+          },
+        },
+      }),
+      this.prisma.refund_payments.count({
+        where: {
+          tenant_id: id,
+          is_deleted: false,
+        },
+      }),
+      this.prisma.current_bills.count({
+        where: {
+          tenant_id: id,
+          is_deleted: false,
+        },
+      }),
+    ]);
+
+    if (advancePaymentsCount > 0) {
+      throw new BadRequestException('Cannot delete tenant. Advance payment exists for this tenant.');
+    }
+
+    if (rentPaymentsCount > 0) {
+      throw new BadRequestException('Cannot delete tenant. Rent payment exists for this tenant.');
+    }
+
+    if (currentBillsCount > 0) {
+      throw new BadRequestException('Cannot delete tenant. Bills exist for this tenant.');
+    }
+
+    if (refundPaymentsCount > 0) {
+      throw new BadRequestException('Cannot delete tenant. Refund payment exists for this tenant.');
     }
 
     // Soft delete tenant
@@ -1241,7 +1306,12 @@ export class TenantService {
       where: { s_no: id },
       data: {
         is_deleted: true,
-        status : 'INACTIVE'
+        status: 'INACTIVE',
+        deleted_at: new Date(),
+        deleted_by: deletedBy,
+        deleted_reason: 'Deleted',
+        room_id: null,
+        bed_id: null,
       },
     });
 

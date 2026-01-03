@@ -111,7 +111,10 @@ export class BedService {
       where.tenants = {
         none: {
           status: 'ACTIVE',
-          is_deleted: false,
+          OR: [
+            { is_deleted: false },
+            { is_deleted: null },
+          ],
         },
       };
     }
@@ -357,7 +360,10 @@ export class BedService {
       where: {
         bed_id: id,
         status: 'ACTIVE',
-        is_deleted: false,
+        OR: [
+          { is_deleted: false },
+          { is_deleted: null },
+        ],
       },
       select: { s_no: true },
     });

@@ -202,7 +202,9 @@ export class CheckoutService {
         where: { s_no: id },
         data: {
           check_out_date: checkoutDate,
-          status: 'INACTIVE',
+          status: 'CHECKED_OUT',
+          room_id: null,
+          bed_id: null,
         },
       });
 
@@ -325,11 +327,11 @@ export class CheckoutService {
       const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant: tenantAfter });
       const rentDueAmount = Number(rentSummary?.rent_due_amount || 0);
 
-      const advances = tenantAfter.advance_payments || [];
+      const advances = (tenantAfter.advance_payments || []).filter((p) => p.status !== 'VOIDED');
       const hasAnyAdvance = advances.length > 0;
       const hasPaidAdvance = advances.some((p) => p.status === 'PAID');
       const hasNonPaidAdvance = advances.some((p) => p.status && p.status !== 'PAID');
-      const hasAdvancePending = !hasPaidAdvance || hasNonPaidAdvance || !hasAnyAdvance;
+      const hasAdvancePending = hasAnyAdvance && (!hasPaidAdvance || hasNonPaidAdvance);
 
       if (rentDueAmount > 0 || hasAdvancePending) {
         const parts: string[] = [];
@@ -413,11 +415,11 @@ export class CheckoutService {
       const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
       const rentDueAmount = Number(rentSummary?.rent_due_amount || 0);
 
-      const advances = tenant.advance_payments || [];
+      const advances = (tenant.advance_payments || []).filter((p) => p.status !== 'VOIDED');
       const hasAnyAdvance = advances.length > 0;
       const hasPaidAdvance = advances.some((p) => p.status === 'PAID');
       const hasNonPaidAdvance = advances.some((p) => p.status && p.status !== 'PAID');
-      const hasAdvancePending = !hasPaidAdvance || hasNonPaidAdvance || !hasAnyAdvance;
+      const hasAdvancePending = hasAnyAdvance && (!hasPaidAdvance || hasNonPaidAdvance);
 
       if (rentDueAmount > 0 || hasAdvancePending) {
         const parts: string[] = [];
@@ -440,6 +442,7 @@ export class CheckoutService {
 
       updateData = {
         check_out_date: checkoutDate,
+        status: 'CHECKED_OUT',
       };
     } else {
       throw new BadRequestException('Either provide check_out_date or set clear_checkout to true');

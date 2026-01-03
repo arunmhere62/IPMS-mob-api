@@ -1,11 +1,24 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  advance_payments_payment_method,
+  advance_payments_status,
+} from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseUtil } from '../../../common/utils/response.util';
-import { CreateAdvancePaymentDto, UpdateAdvancePaymentDto } from './dto';
+import { CreateAdvancePaymentDto, UpdateAdvancePaymentDto, VoidAdvancePaymentDto } from './dto';
 
 @Injectable()
 export class AdvancePaymentService {
   constructor(private prisma: PrismaService) {}
+
+  private get advancePayments() {
+    type AdvancePaymentsDelegate = {
+      findFirst<T = unknown>(args: unknown): Promise<T | null>;
+      update<T = unknown>(args: unknown): Promise<T>;
+    };
+
+    return this.prisma.advance_payments as unknown as AdvancePaymentsDelegate;
+  }
 
   /**
    * Create a new advance payment
@@ -26,10 +39,11 @@ export class AdvancePaymentService {
     }
 
     // Check if tenant already has an advance payment
-    const existingAdvancePayment = await this.prisma.advance_payments.findFirst({
+    const existingAdvancePayment = await this.advancePayments.findFirst({
       where: {
         tenant_id: createAdvancePaymentDto.tenant_id,
         is_deleted: false,
+        status: { not: 'VOIDED' },
       },
     });
 
@@ -79,8 +93,8 @@ export class AdvancePaymentService {
         payment_date: createAdvancePaymentDto.payment_date 
           ? new Date(createAdvancePaymentDto.payment_date)
           : new Date(),
-        payment_method: createAdvancePaymentDto.payment_method as any,
-        status: (createAdvancePaymentDto.status || 'PAID') as any,
+        payment_method: createAdvancePaymentDto.payment_method as unknown as advance_payments_payment_method,
+        status: (createAdvancePaymentDto.status || 'PAID') as unknown as advance_payments_status,
         remarks: createAdvancePaymentDto.remarks,
       },
       include: {
@@ -132,7 +146,7 @@ export class AdvancePaymentService {
     page: number = 1,
     limit: number = 10,
   ) {
-    const where: any = {
+    const where: Record<string, unknown> = {
       pg_id,
       is_deleted: false,
     };
@@ -366,7 +380,7 @@ export class AdvancePaymentService {
       throw new NotFoundException(`Advance payment with ID ${id} not found`);
     }
 
-    const updateData: any = {};
+    const updateData: Record<string, unknown> = {};
 
     if (updateAdvancePaymentDto.amount_paid !== undefined) {
       updateData.amount_paid = updateAdvancePaymentDto.amount_paid;
@@ -452,7 +466,7 @@ export class AdvancePaymentService {
       );
     }
 
-    const updateData: any = {
+    const updateData: Record<string, unknown> = {
       status,
       updated_at: new Date(),
     };
@@ -499,6 +513,76 @@ export class AdvancePaymentService {
     });
 
     return ResponseUtil.success(updatedAdvancePayment, 'Advance payment status updated successfully');
+  }
+
+  async voidPayment(id: number, body: VoidAdvancePaymentDto, voidedByUserId: number) {
+    if (!body?.voided_reason || !String(body.voided_reason).trim()) {
+      throw new BadRequestException('voided_reason is required');
+    }
+
+    const existingPayment = await this.advancePayments.findFirst({
+      where: {
+        s_no: id,
+        is_deleted: false,
+      },
+      select: {
+        s_no: true,
+        status: true,
+        voided_at: true,
+      },
+    });
+
+    if (!existingPayment) {
+      throw new NotFoundException(`Advance payment with ID ${id} not found`);
+    }
+
+    const existing = existingPayment as unknown as { status?: string | null; voided_at?: Date | null };
+    const status = String(existing.status ?? '').toUpperCase();
+    const voidedAt = existing.voided_at;
+    if (status === 'VOIDED' || voidedAt) {
+      throw new BadRequestException('Payment is already voided');
+    }
+
+    const payment = await this.advancePayments.update({
+      where: { s_no: id },
+      data: {
+        status: 'VOIDED',
+        voided_at: new Date(),
+        voided_by: voidedByUserId,
+        voided_reason: String(body.voided_reason).trim(),
+        updated_at: new Date(),
+      },
+      include: {
+        tenants: {
+          select: {
+            s_no: true,
+            tenant_id: true,
+            name: true,
+            phone_no: true,
+          },
+        },
+        rooms: {
+          select: {
+            s_no: true,
+            room_no: true,
+          },
+        },
+        beds: {
+          select: {
+            s_no: true,
+            bed_no: true,
+          },
+        },
+        pg_locations: {
+          select: {
+            s_no: true,
+            location_name: true,
+          },
+        },
+      },
+    });
+
+    return ResponseUtil.success(payment, 'Advance payment voided successfully');
   }
 
   /**

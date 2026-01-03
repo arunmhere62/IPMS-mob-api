@@ -135,15 +135,8 @@ export class TenantStatusService {
     const is_refund_paid =
       tenant.refund_payments?.some((p) => p.status === 'PAID') || false;
 
-    // Check for rent payment issues
-    const hasPartialPayment =
-      tenant.rent_payments?.some((p) => p.status === 'PARTIAL') || false;
-
     // Calculate pending months
     const pendingMonths = this.calculatePendingMonths(tenant);
-
-    // Rent is partial if there are partial payments
-    const is_rent_partial = hasPartialPayment;
 
     // Calculate due amounts (separate partial and pending)
     let partial_due_amount = 0;
@@ -165,6 +158,10 @@ export class TenantStatusService {
       // No payments but pending months (based on check-in date)
       pending_due_amount = rentPrice * pendingMonths;
     }
+
+    // Rent is partial only if there is still partial due remaining.
+    // This prevents the partial filter from including tenants who had PARTIAL payments historically but are fully settled now.
+    const is_rent_partial = partial_due_amount > 0;
 
     const rent_due_amount = partial_due_amount + pending_due_amount;
 
@@ -233,7 +230,7 @@ export class TenantStatusService {
     return enrichedTenants.filter(
       (tenant) => {
         const t = tenant as Record<string, unknown>;
-        return t.status === 'ACTIVE' && Boolean(t.is_rent_partial);
+        return t.status === 'ACTIVE' && Number(t.partial_due_amount || 0) > 0;
       }
     );
   }

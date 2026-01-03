@@ -23,6 +23,9 @@ model advance_payments {
   status             advance_payments_status         @default(PENDING)
   is_deleted         Boolean?                        @default(false)
   actual_rent_amount Decimal                         @default(0.00) @db.Decimal(10, 2)
+  voided_at          DateTime?                       @db.DateTime(0)
+  voided_by          Int?
+  voided_reason      String?                         @db.VarChar(255)
   tenants            tenants                         @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "advance_payments_ibfk_1")
   pg_locations       pg_locations                    @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "advance_payments_ibfk_2")
   rooms              rooms                           @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "advance_payments_ibfk_3")
@@ -471,6 +474,9 @@ model rent_payments {
   current_bill       Decimal?                     @db.Decimal(10, 2)
   actual_rent_amount Decimal                      @default(0.00) @db.Decimal(10, 2)
   current_bill_id    Int?
+  voided_at          DateTime?                    @db.Timestamp(0)
+  voided_by          Int?
+  voided_reason      String?                      @db.VarChar(255)
   current_bills      current_bills?               @relation(fields: [current_bill_id], references: [s_no], map: "fk_current_bill")
   beds               beds                         @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_bed")
   tenant_rent_cycles tenant_rent_cycles?          @relation(fields: [cycle_id], references: [s_no], onUpdate: Restrict, map: "fk_tenant_payment_cycle")
@@ -672,6 +678,9 @@ model tenants {
   tenant_address     String?              @db.VarChar(255)
   city_id            Int?
   state_id           Int?
+  deleted_at         DateTime?            @db.DateTime(0)
+  deleted_by         Int?
+  deleted_reason     String?              @db.VarChar(255)
   advance_payments   advance_payments[]
   current_bills      current_bills[]
   refund_payments    refund_payments[]
@@ -990,6 +999,7 @@ enum rent_payments_status {
   FAILED
   REFUNDED
   PARTIAL
+  VOIDED
 }
 
 enum subscription_payments_status {
@@ -1005,6 +1015,7 @@ enum advance_payments_status {
   PENDING
   FAILED
   PARTIAL
+  VOIDED
 }
 
 enum organization_status {
@@ -1019,11 +1030,6 @@ enum refund_payments_status {
   PARTIAL
 }
 
-enum tenants_status {
-  ACTIVE
-  INACTIVE
-}
-
 enum pg_locations_pg_type {
   COLIVING
   MENS
@@ -1033,4 +1039,10 @@ enum pg_locations_pg_type {
 enum users_gender {
   MALE
   FEMALE
+}
+
+enum tenants_status {
+  ACTIVE
+  INACTIVE
+  CHECKED_OUT
 }

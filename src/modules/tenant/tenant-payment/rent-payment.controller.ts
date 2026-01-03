@@ -13,7 +13,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { TenantPaymentService } from './rent-payment.service';
-import { CreateTenantPaymentDto, UpdateTenantPaymentDto } from './dto';
+import { CreateTenantPaymentDto, UpdateTenantPaymentDto, VoidTenantPaymentDto } from './dto';
 import { HeadersValidationGuard } from '../../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
@@ -128,13 +128,30 @@ export class TenantPaymentController {
     return this.tenantPaymentService.updateStatus(id, body.status, body.payment_date);
   }
 
+  @Patch(':id/void')
+  @RequireHeaders({ pg_id: true })
+  @ApiOperation({ summary: 'Void a tenant payment (audited cancel, does not delete history)' })
+  @ApiResponse({ status: 200, description: 'Tenant payment voided successfully' })
+  @ApiResponse({ status: 404, description: 'Tenant payment not found' })
+  @ApiResponse({ status: 400, description: 'Invalid void request' })
+  voidPayment(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: VoidTenantPaymentDto,
+    @ValidatedHeaders() headers: { pg_id: number; organization_id: number; user_id: number },
+  ) {
+    return this.tenantPaymentService.voidPayment(id, body, headers.user_id);
+  }
+
   @Delete(':id')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Delete a tenant payment (soft delete)' })
   @ApiResponse({ status: 200, description: 'Tenant payment deleted successfully' })
   @ApiResponse({ status: 404, description: 'Tenant payment not found' })
   remove(@Param('id', ParseIntPipe) id: number) {
-    return this.tenantPaymentService.remove(id);
+    void id;
+    throw new MethodNotAllowedException(
+      'Rent payments cannot be deleted. Use PATCH /rent-payments/:id/void to cancel a payment with audit trail.',
+    );
   }
 
   @Get('gaps/:tenant_id')

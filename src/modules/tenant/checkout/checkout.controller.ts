@@ -56,7 +56,7 @@ export class CheckoutController {
         data: {
           s_no: 1,
           name: 'John Doe',
-          status: 'INACTIVE',
+          status: 'CHECKED_OUT',
           check_out_date: '2025-10-25T00:00:00.000Z'
         }
       }

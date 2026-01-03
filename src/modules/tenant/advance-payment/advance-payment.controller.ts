@@ -12,7 +12,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { AdvancePaymentService } from './advance-payment.service';
-import { CreateAdvancePaymentDto, UpdateAdvancePaymentDto } from './dto';
+import { CreateAdvancePaymentDto, UpdateAdvancePaymentDto, VoidAdvancePaymentDto } from './dto';
 import { HeadersValidationGuard } from '../../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
@@ -121,6 +121,20 @@ export class AdvancePaymentController {
     @Body() body: { status: string; payment_date?: string },
   ) {
     return this.advancePaymentService.updateStatus(id, body.status, body.payment_date);
+  }
+
+  @Patch(':id/void')
+  @RequireHeaders({ pg_id: true })
+  @ApiOperation({ summary: 'Void an advance payment (audited cancel, does not delete history)' })
+  @ApiResponse({ status: 200, description: 'Advance payment voided successfully' })
+  @ApiResponse({ status: 404, description: 'Advance payment not found' })
+  @ApiResponse({ status: 400, description: 'Invalid void request' })
+  voidPayment(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: VoidAdvancePaymentDto,
+    @ValidatedHeaders() headers: { pg_id: number; organization_id: number; user_id: number },
+  ) {
+    return this.advancePaymentService.voidPayment(id, body, headers.user_id);
   }
 
   @Delete(':id')

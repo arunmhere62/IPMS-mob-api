@@ -150,7 +150,7 @@ export class TenantController {
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    return this.tenantService.remove(id);
+    return this.tenantService.remove(id, headers.user_id ?? null);
   }
 
   /**

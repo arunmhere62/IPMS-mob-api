@@ -11,7 +11,6 @@ import { RoomModule } from './modules/room/room.module';
 import { BedModule } from './modules/bed/bed.module';
 import { ExpenseModule } from './modules/expense/expense.module';
 import { EmployeeModule } from './modules/employee/employee.module';
-import { PayrollModule } from './modules/payroll/payroll.module';
 import { VisitorModule } from './modules/visitor/visitor.module';
 import { TicketModule } from './modules/ticket/ticket.module';
 import { NotificationModule } from './modules/notification/notification.module';
@@ -43,7 +42,6 @@ import configuration from './config';
     BedModule,
     ExpenseModule,
     EmployeeModule,
-    PayrollModule,
     VisitorModule,
     TicketModule,
     NotificationModule,

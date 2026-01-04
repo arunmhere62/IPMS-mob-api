@@ -1114,6 +1114,46 @@ export class TenantPaymentService {
     );
   }
 
+  async detectPaymentGapsBulk(
+    tenantIds: number[],
+    options?: { concurrency?: number },
+  ): Promise<Record<number, { hasGaps: boolean; gapCount: number; gaps: Gap[] }>> {
+    const uniqueIds = Array.from(
+      new Set((tenantIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)),
+    );
+
+    const result: Record<number, { hasGaps: boolean; gapCount: number; gaps: Gap[] }> = {};
+    if (uniqueIds.length === 0) return result;
+
+    const concurrency =
+      typeof options?.concurrency === 'number' && Number.isFinite(options.concurrency) && options.concurrency > 0
+        ? Math.floor(options.concurrency)
+        : 5;
+
+    let index = 0;
+    const worker = async () => {
+      while (index < uniqueIds.length) {
+        const current = uniqueIds[index];
+        index++;
+
+        try {
+          const r = await this.detectPaymentGaps(current);
+          const data = (r?.data ?? {}) as { hasGaps?: boolean; gapCount?: number; gaps?: Gap[] };
+          result[current] = {
+            hasGaps: !!data.hasGaps,
+            gapCount: typeof data.gapCount === 'number' ? data.gapCount : Array.isArray(data.gaps) ? data.gaps.length : 0,
+            gaps: Array.isArray(data.gaps) ? data.gaps : [],
+          };
+        } catch {
+          result[current] = { hasGaps: false, gapCount: 0, gaps: [] };
+        }
+      }
+    };
+
+    await Promise.all(Array.from({ length: Math.min(concurrency, uniqueIds.length) }, () => worker()));
+    return result;
+  }
+
   // ============================================================================
   // CALENDAR CYCLE - NEXT PAYMENT DATES
   // ============================================================================

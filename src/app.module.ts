@@ -21,6 +21,7 @@ import { LegalDocumentsModule } from './modules/legal-documents/legal-documents.
 import { RbacModule } from './modules/rbac/rbac.module';
 import { PgUsersModule } from './modules/pg-users/pg-users.module';
 import { S3Module } from './s3/s3.module';
+import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config';
@@ -52,6 +53,7 @@ import configuration from './config';
     RbacModule,
     PgUsersModule,
     S3Module,
+    DashboardModule,
   ],
   controllers: [AppController],
   providers: [AppService],

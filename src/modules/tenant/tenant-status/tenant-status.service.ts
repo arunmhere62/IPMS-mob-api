@@ -49,6 +49,25 @@ export type CycleSummaryLike = {
 
 @Injectable()
 export class TenantStatusService {
+  classifyGap(params: {
+    rentDue?: number | string | null;
+    totalPaid?: number | string | null;
+    remainingDue?: number | string | null;
+  }): 'PENDING' | 'PARTIAL' | 'NONE' {
+    const rentDue = Number(params.rentDue || 0);
+    const totalPaid = Number(params.totalPaid || 0);
+    const remainingDue = Number(params.remainingDue || 0);
+
+    // No due / nothing missing
+    if (!(remainingDue > 0) || !(rentDue > 0)) return 'NONE';
+
+    // If any payment was made for the cycle but there is still remaining due, it's a PARTIAL gap.
+    if (totalPaid > 0) return 'PARTIAL';
+
+    // Otherwise it's a pure missing payment cycle.
+    return 'PENDING';
+  }
+
   selectRelevantCycle(params: {
     cycleSummaries: CycleSummaryLike[];
     referenceDateOnlyUtc: Date;
@@ -76,9 +95,16 @@ export class TenantStatusService {
     partialDueAmount: number;
   }): { is_rent_paid: boolean; is_rent_partial: boolean } {
     const isRentPaidBase = params.paymentStatus === 'PAID';
-    const isRentPartialBase = params.paymentStatus === 'PARTIAL' && params.partialDueAmount > 0;
-    const is_rent_paid = params.unpaidMonthsCount === 0 && isRentPaidBase;
-    const is_rent_partial = !is_rent_paid && isRentPartialBase;
+    const hasPartialDue = Number(params.partialDueAmount || 0) > 0;
+
+    // Rent is considered fully paid only if:
+    // - the relevant/current cycle is PAID
+    // - there are no unpaid months
+    // - there is no outstanding partial due from any previous cycle
+    const is_rent_paid = params.unpaidMonthsCount === 0 && isRentPaidBase && !hasPartialDue;
+
+    // If there is any partial due (even from a previous cycle), mark as partial.
+    const is_rent_partial = hasPartialDue;
     return { is_rent_paid, is_rent_partial };
   }
 
@@ -208,6 +234,11 @@ export class TenantStatusService {
       const t = tenant as Record<string, unknown>;
       if (t.status !== 'ACTIVE') return false;
 
+      // Business rule: "Pending" should mean fully pending rent only.
+      // If a tenant has any partial due, they should appear under Partial, not Pending.
+      const partialDue = Number(t.partial_due_amount || 0);
+      if (partialDue > 0) return false;
+
       // Include tenant if they have any pending/failed payments
       const rentPayments = (t.rent_payments as Array<{ status?: string }> | undefined) || [];
       const hasPendingOrFailed = rentPayments.some((p: { status?: string }) => p.status === 'PENDING' || p.status === 'FAILED');
@@ -226,13 +257,15 @@ export class TenantStatusService {
    * Returns tenants with PARTIAL payments
    */
   getTenantsWithPartialRent(tenants: unknown[]): unknown[] {
-    const enrichedTenants = this.enrichTenantsWithStatus(tenants);
-    return enrichedTenants.filter(
-      (tenant) => {
-        const t = tenant as Record<string, unknown>;
-        return t.status === 'ACTIVE' && Number(t.partial_due_amount || 0) > 0;
-      }
-    );
+    // NOTE: In the tenant list API we already compute `partial_due_amount` using
+    // TenantRentSummaryService (cycle-based remaining due). Re-enriching here
+    // recalculates from raw payment statuses and can overwrite `partial_due_amount`
+    // (e.g. when payment rows are not marked PARTIAL but remaining due exists).
+    // So we filter using the existing enriched values.
+    return (tenants || []).filter((tenant) => {
+      const t = tenant as Record<string, unknown>;
+      return t.status === 'ACTIVE' && Number(t.partial_due_amount || 0) > 0;
+    });
   }
 
   /**

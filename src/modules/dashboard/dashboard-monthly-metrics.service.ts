@@ -8,8 +8,31 @@ type MonthlyMetrics = {
   month_end: string;
   cash_received: number;
   refunds_paid: number;
+  advance_paid: number;
+  expenses_paid: number;
   rent_earned: number;
   mrr_value: number;
+  rent_earned_breakdown: {
+    formula: string;
+    cycles: Array<{
+      tenant_id: number;
+      cycle_start: string;
+      cycle_end: string;
+      overlap_start: string;
+      overlap_end: string;
+      overlap_days: number;
+      total_cycle_days: number;
+      monthly_price: number;
+      segments?: Array<{
+        start: string;
+        end: string;
+        days: number;
+        price: number;
+        earned: number;
+      }>;
+      earned: number;
+    }>;
+  };
 };
 
 type AllocationForPricing = { effective_from: Date; effective_to: Date | null; bed_price_snapshot: unknown };
@@ -17,6 +40,7 @@ type AllocationForPricing = { effective_from: Date; effective_to: Date | null; b
 type CycleWithTenant = {
   cycle_start: Date;
   cycle_end: Date;
+  cycle_type?: 'CALENDAR' | 'MIDMONTH' | string;
   tenant_id: number;
   tenants: {
     tenant_allocations: AllocationForPricing[];
@@ -26,6 +50,10 @@ type CycleWithTenant = {
 @Injectable()
 export class DashboardMonthlyMetricsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  private toDateOnlyIso(d: Date): string {
+    return d.toISOString().split('T')[0];
+  }
 
   private toDateOnlyUtc(d: Date): Date {
     return new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
@@ -39,6 +67,11 @@ export class DashboardMonthlyMetricsService {
 
   private moneyRound2(n: number): number {
     return Math.round((n + Number.EPSILON) * 100) / 100;
+  }
+
+  private sumOrZero(agg: { _sum?: Record<string, unknown> } | null | undefined, key: string): number {
+    const n = Number(agg?._sum?.[key] ?? 0);
+    return this.moneyRound2(n);
   }
 
   private monthWindowForNow(now: Date): MonthWindow {
@@ -70,10 +103,48 @@ export class DashboardMonthlyMetricsService {
     return Number(matching.bed_price_snapshot || 0);
   }
 
+  private computeEarnedForOverlap(params: {
+    allocations: AllocationForPricing[];
+    overlapStartUtc: Date;
+    overlapEndUtc: Date;
+    denominatorDays: number;
+  }): { earned: number; segments: Array<{ start: string; end: string; days: number; price: number; earned: number }> } {
+    const allocations = (params.allocations || [])
+      .map((a) => ({
+        from: this.toDateOnlyUtc(a.effective_from),
+        to: a.effective_to ? this.toDateOnlyUtc(a.effective_to) : null,
+        price: Number(a.bed_price_snapshot || 0),
+      }))
+      .sort((x, y) => x.from.getTime() - y.from.getTime());
+
+    const segments: Array<{ start: string; end: string; days: number; price: number; earned: number }> = [];
+    let total = 0;
+
+    for (const a of allocations) {
+      const segStart = a.from > params.overlapStartUtc ? a.from : params.overlapStartUtc;
+      const segEnd = a.to && a.to < params.overlapEndUtc ? a.to : params.overlapEndUtc;
+      if (segStart > segEnd) continue;
+      if (params.denominatorDays <= 0) continue;
+
+      const days = this.getInclusiveDays(segStart, segEnd);
+      const earned = (a.price * days) / params.denominatorDays;
+      total += earned;
+      segments.push({
+        start: this.toDateOnlyIso(segStart),
+        end: this.toDateOnlyIso(segEnd),
+        days,
+        price: this.moneyRound2(a.price),
+        earned: this.moneyRound2(earned),
+      });
+    }
+
+    return { earned: this.moneyRound2(total), segments };
+  }
+
   async getMonthlyMetrics(params: { pg_id: number; monthStart: Date; monthEnd: Date }): Promise<MonthlyMetrics> {
     const { monthStart, monthEnd } = this.toMonthlyWindow({ monthStart: params.monthStart, monthEnd: params.monthEnd });
 
-    const [rentAgg, refundAgg, allocationsAgg, cycles] = await Promise.all([
+    const [rentAgg, refundAgg, advanceAgg, expensesAgg, allocationsAgg, cycles] = await Promise.all([
       this.prisma.rent_payments.aggregate({
         where: {
           pg_id: params.pg_id,
@@ -90,6 +161,23 @@ export class DashboardMonthlyMetricsService {
           OR: [{ is_deleted: false }, { is_deleted: null }],
         },
         _sum: { amount_paid: true },
+      }),
+      this.prisma.advance_payments.aggregate({
+        where: {
+          pg_id: params.pg_id,
+          payment_date: { gte: monthStart, lt: monthEnd },
+          status: 'PAID',
+          OR: [{ is_deleted: false }, { is_deleted: null }],
+        },
+        _sum: { amount_paid: true },
+      }),
+      this.prisma.expenses.aggregate({
+        where: {
+          pg_id: params.pg_id,
+          paid_date: { gte: monthStart, lt: monthEnd },
+          OR: [{ is_deleted: false }, { is_deleted: null }],
+        },
+        _sum: { amount: true },
       }),
       this.prisma.tenant_allocations.aggregate({
         where: {
@@ -115,6 +203,7 @@ export class DashboardMonthlyMetricsService {
         },
         select: {
           tenant_id: true,
+          cycle_type: true,
           cycle_start: true,
           cycle_end: true,
           tenants: {
@@ -132,14 +221,20 @@ export class DashboardMonthlyMetricsService {
       }),
     ]);
 
-    const cashReceived = this.moneyRound2(Number(rentAgg._sum.amount_paid || 0));
-    const refundsPaid = this.moneyRound2(Number(refundAgg._sum.amount_paid || 0));
-    const mrrValue = this.moneyRound2(Number(allocationsAgg._sum.bed_price_snapshot || 0));
+    const cashReceived = this.sumOrZero(rentAgg, 'amount_paid');
+    const refundsPaid = this.sumOrZero(refundAgg, 'amount_paid');
+    const advancePaid = this.sumOrZero(advanceAgg, 'amount_paid');
+    const expensesPaid = this.sumOrZero(expensesAgg, 'amount');
+    const mrrValue = this.sumOrZero(allocationsAgg, 'bed_price_snapshot');
 
     const monthStartUtc = this.toDateOnlyUtc(monthStart);
     const monthEndExclusiveUtc = this.toDateOnlyUtc(monthEnd);
     const monthEndInclusiveUtc = new Date(monthEndExclusiveUtc);
     monthEndInclusiveUtc.setUTCDate(monthEndInclusiveUtc.getUTCDate() - 1);
+
+    const daysInSelectedMonth = this.getInclusiveDays(monthStartUtc, monthEndInclusiveUtc);
+
+    const breakdownCycles: MonthlyMetrics['rent_earned_breakdown']['cycles'] = [];
 
     const rentEarned = this.moneyRound2(
       (cycles as unknown as CycleWithTenant[]).reduce((sum: number, c) => {
@@ -152,15 +247,37 @@ export class DashboardMonthlyMetricsService {
         if (overlapStart > overlapEnd) return sum;
 
         const overlapDays = this.getInclusiveDays(overlapStart, overlapEnd);
-        const totalCycleDays = this.getInclusiveDays(cycleStartUtc, cycleEndUtc);
-        if (totalCycleDays <= 0) return sum;
+        const cycleType = String(c.cycle_type || '').toUpperCase();
+        const denominatorDays = cycleType === 'CALENDAR' ? daysInSelectedMonth : this.getInclusiveDays(cycleStartUtc, cycleEndUtc);
+        if (denominatorDays <= 0) return sum;
+
+        const computed = this.computeEarnedForOverlap({
+          allocations: c.tenants?.tenant_allocations || [],
+          overlapStartUtc: overlapStart,
+          overlapEndUtc: overlapEnd,
+          denominatorDays,
+        });
 
         const monthlyPrice = this.pickMonthlyPriceForCycle({
           allocations: c.tenants?.tenant_allocations || [],
           cycleStart: c.cycle_start,
         });
 
-        const earned = (monthlyPrice * overlapDays) / totalCycleDays;
+        const earned = computed.earned;
+
+        breakdownCycles.push({
+          tenant_id: c.tenant_id,
+          cycle_start: this.toDateOnlyIso(cycleStartUtc),
+          cycle_end: this.toDateOnlyIso(cycleEndUtc),
+          overlap_start: this.toDateOnlyIso(overlapStart),
+          overlap_end: this.toDateOnlyIso(overlapEnd),
+          overlap_days: overlapDays,
+          total_cycle_days: denominatorDays,
+          monthly_price: this.moneyRound2(monthlyPrice),
+          segments: computed.segments,
+          earned: this.moneyRound2(earned),
+        });
+
         return sum + earned;
       }, 0),
     );
@@ -170,8 +287,14 @@ export class DashboardMonthlyMetricsService {
       month_end: monthEnd.toISOString(),
       cash_received: cashReceived,
       refunds_paid: refundsPaid,
+      advance_paid: advancePaid,
+      expenses_paid: expensesPaid,
       rent_earned: rentEarned,
       mrr_value: mrrValue,
+      rent_earned_breakdown: {
+        formula: 'rent_earned = Σ( monthly_price × (overlap_days_in_month ÷ total_cycle_days) )',
+        cycles: breakdownCycles,
+      },
     };
   }
 

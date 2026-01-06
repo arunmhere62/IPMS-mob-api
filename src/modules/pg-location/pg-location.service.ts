@@ -4,14 +4,12 @@ import { UpdatePgLocationDto } from './dto/update-pg-location.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { S3DeletionService } from '../common/s3-deletion.service';
 import { PrismaService } from '../../prisma/prisma.service';
-import { SubscriptionRestrictionService } from '../subscription/subscription-restriction.service';
 
 @Injectable()
 export class PgLocationService {
   constructor(
     private prisma: PrismaService,
     private s3DeletionService: S3DeletionService,
-    private subscriptionRestrictionService: SubscriptionRestrictionService,
   ) {}
 
   /**
@@ -138,8 +136,6 @@ export class PgLocationService {
       rentCycleEnd,
       pgType,
     } = createPgLocationDto;
-
-    await this.subscriptionRestrictionService.assertCanCreatePgLocationForOrganization(organizationId);
 
     try {
       const newPgLocation = await this.prisma.pg_locations.create({

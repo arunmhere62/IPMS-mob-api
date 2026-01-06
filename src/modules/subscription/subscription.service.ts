@@ -3,6 +3,10 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 import * as crypto from 'crypto';
 
+const isRecord = (value: unknown): value is Record<string, unknown> => {
+  return typeof value === 'object' && value !== null;
+};
+
 @Injectable()
 export class SubscriptionService {
   constructor(private prisma: PrismaService) {}
@@ -53,39 +57,83 @@ export class SubscriptionService {
    * Get all active subscription plans
    */
   async getActivePlans() {
+    const select = {
+      s_no: true,
+      name: true,
+      description: true,
+      duration: true,
+      price: true,
+      currency: true,
+      features: true,
+      max_tenants: true,
+      max_pg_locations: true,
+      max_beds: true,
+      max_employees: true,
+      max_rooms: true,
+      max_users: true,
+      max_invoices_per_month: true,
+      max_sms_per_month: true,
+      max_whatsapp_per_month: true,
+      is_free: true,
+      is_trial: true,
+      is_active: true,
+    } as const;
+
     const plans = await this.prisma.subscription_plans.findMany({
       where: { is_active: true },
       orderBy: { price: 'asc' },
-      select: {
-        s_no: true,
-        name: true,
-        description: true,
-        duration: true,
-        price: true,
-        currency: true,
-        features: true,
-        max_tenants: true,
-        max_pg_locations: true,
-        max_beds: true,
-        max_employees: true,
-        max_rooms : true,
-        is_active: true,
-
-      },
+      select:
+        select as unknown as Parameters<
+          PrismaService['subscription_plans']['findMany']
+        >[0]['select'],
     });
 
-    return ResponseUtil.success(plans, 'Subscription plans fetched successfully');
+    type Plan = (typeof plans)[number];
+
+    const grouped = plans.map((plan: Plan) => {
+      return {
+        ...plan,
+        limits: {
+          max_pg_locations: plan.max_pg_locations ?? null,
+          max_tenants: plan.max_tenants ?? null,
+          max_rooms: plan.max_rooms ?? null,
+          max_beds: plan.max_beds ?? null,
+          max_employees: plan.max_employees ?? null,
+          max_users: plan.max_users ?? null,
+          max_invoices_per_month: plan.max_invoices_per_month ?? null,
+          max_sms_per_month: plan.max_sms_per_month ?? null,
+          max_whatsapp_per_month: plan.max_whatsapp_per_month ?? null,
+        },
+      };
+    });
+
+    return ResponseUtil.success(grouped, 'Subscription plans fetched successfully');
   }
 
   /**
    * Get current active subscription for an organization
    */
   private async findCurrentActiveSubscription(userId: number, organizationId: number) {
+    void userId;
+    const now = new Date();
+
+    // Normalize: ACTIVE subscriptions with past end_date should become EXPIRED
+    await this.prisma.user_subscriptions.updateMany({
+      where: {
+        organization_id: organizationId,
+        status: 'ACTIVE',
+        end_date: { lt: now },
+      },
+      data: {
+        status: 'EXPIRED',
+      },
+    });
+
     return this.prisma.user_subscriptions.findFirst({
       where: {
         organization_id: organizationId,
         status: 'ACTIVE',
-        end_date: { gte: new Date() },
+        end_date: { gte: now },
       },
       include: {
         subscription_plans: true,
@@ -105,12 +153,47 @@ export class SubscriptionService {
    * Check if organization has active subscription
    */
   async checkSubscriptionStatus(userId: number, organizationId: number) {
+    const now = new Date();
+
+    // Normalize: ACTIVE subscriptions with past end_date should become EXPIRED
+    await this.prisma.user_subscriptions.updateMany({
+      where: {
+        organization_id: organizationId,
+        status: 'ACTIVE',
+        end_date: { lt: now },
+      },
+      data: {
+        status: 'EXPIRED',
+      },
+    });
+
     const subscription = await this.findCurrentActiveSubscription(userId, organizationId);
+
+    const lastSubscription = await this.prisma.user_subscriptions.findFirst({
+      where: {
+        organization_id: organizationId,
+      },
+      include: {
+        subscription_plans: true,
+      },
+      orderBy: {
+        created_at: 'desc',
+      },
+    });
 
     let normalizedSubscription: Record<string, unknown> | null = null;
     if (subscription) {
       const { subscription_plans, ...rest } = subscription as unknown as Record<string, unknown>;
       normalizedSubscription = {
+        ...rest,
+        plan: subscription_plans || null,
+      };
+    }
+
+    let normalizedLastSubscription: Record<string, unknown> | null = null;
+    if (lastSubscription) {
+      const { subscription_plans, ...rest } = lastSubscription as unknown as Record<string, unknown>;
+      normalizedLastSubscription = {
         ...rest,
         plan: subscription_plans || null,
       };
@@ -128,8 +211,9 @@ export class SubscriptionService {
       {
         has_active_subscription: !!subscription,
         subscription: normalizedSubscription,
+        last_subscription: normalizedLastSubscription,
         days_remaining: daysRemaining,
-        is_trial: false,
+        is_trial: Boolean((subscription as unknown as { is_trial?: boolean } | null)?.is_trial),
       },
       'Subscription status checked successfully',
     );
@@ -302,6 +386,120 @@ export class SubscriptionService {
   }
 
   /**
+   * Initiate an upgrade from an ACTIVE subscription to a new plan (Option A: immediate upgrade, no proration)
+   */
+  async initiateUpgrade(userId: number, organizationId: number, newPlanId: number) {
+    // Validate CCAvenue configuration
+    this.validateCCAvenueConfig();
+
+    const currentSubscription = await this.prisma.user_subscriptions.findFirst({
+      where: {
+        organization_id: organizationId,
+        status: 'ACTIVE',
+        end_date: { gte: new Date() },
+      },
+      orderBy: { end_date: 'desc' },
+    });
+
+    if (!currentSubscription) {
+      throw new BadRequestException('No active subscription found to upgrade');
+    }
+
+    if (currentSubscription.plan_id === newPlanId) {
+      throw new BadRequestException('You are already on this plan');
+    }
+
+    const plan = await this.prisma.subscription_plans.findUnique({
+      where: { s_no: newPlanId },
+    });
+
+    if (!plan || !plan.is_active) {
+      throw new BadRequestException('Invalid or inactive plan');
+    }
+
+    const user = await this.prisma.users.findUnique({
+      where: { s_no: userId },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const orderId = `UPG_${userId}_${newPlanId}_${Date.now()}`;
+
+    const subscription = await this.prisma.user_subscriptions.create({
+      data: {
+        user_id: userId,
+        organization_id: organizationId,
+        plan_id: newPlanId,
+        start_date: new Date(),
+        end_date: new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000),
+        status: 'PENDING',
+        auto_renew: false,
+        is_trial: Boolean(plan.is_trial),
+      },
+    });
+
+    await this.prisma.subscription_payments.create({
+      data: {
+        order_id: orderId,
+        user_id: userId,
+        organization_id: organizationId,
+        subscription_id: subscription.s_no,
+        plan_id: newPlanId,
+        amount: plan.price.toString(),
+        currency: plan.currency,
+        payment_type: 'UPGRADE',
+        status: 'INITIATED',
+        metadata: {
+          action: 'UPGRADE',
+          from_subscription_id: currentSubscription.s_no,
+          from_plan_id: currentSubscription.plan_id,
+          to_plan_id: newPlanId,
+        },
+      },
+    });
+
+    const paymentData = {
+      merchant_id: this.CCAVENUE_MERCHANT_ID,
+      order_id: orderId,
+      amount: plan.price.toString(),
+      currency: plan.currency,
+      redirect_url: this.CCAVENUE_REDIRECT_URL,
+      cancel_url: this.CCAVENUE_CANCEL_URL,
+      language: 'EN',
+      billing_name: user.name || 'User',
+      billing_email: user.email,
+      billing_tel: user.phone || '',
+      billing_address: '',
+      billing_city: '',
+      billing_state: '',
+      billing_zip: '',
+      billing_country: 'India',
+      merchant_param1: subscription.s_no.toString(),
+      merchant_param2: userId.toString(),
+      merchant_param3: organizationId.toString(),
+      merchant_param4: newPlanId.toString(),
+    };
+
+    const queryString = Object.entries(paymentData)
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .join('&');
+
+    const encryptedData = this.ccavenueEncrypt(queryString);
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+
+    return ResponseUtil.success(
+      {
+        subscription,
+        payment_url: paymentUrl,
+        order_id: orderId,
+      },
+      'Upgrade initiated successfully',
+    );
+  }
+
+  /**
    * CCAvenue encryption
    */
   private ccavenueEncrypt(plainText: string): string {
@@ -420,6 +618,10 @@ export class SubscriptionService {
       const statusCode = params.get('status_code');
       const statusMessage = params.get('status_message');
 
+      if (!orderId) {
+        throw new Error('Missing order_id in payment response');
+      }
+
       console.log('💳 Payment details:', {
         orderId,
         orderStatus,
@@ -435,6 +637,18 @@ export class SubscriptionService {
 
       if (!payment) {
         throw new NotFoundException('Payment record not found');
+      }
+
+      // Idempotency: if already processed, do not process again
+      if (payment.status === 'SUCCESS' || payment.status === 'FAILURE') {
+        return ResponseUtil.success(
+          {
+            orderId,
+            trackingId: payment.tracking_id,
+            message: payment.status_message,
+          },
+          payment.status === 'SUCCESS' ? 'Payment successful' : 'Payment failed',
+        );
       }
 
       // Update payment status
@@ -453,14 +667,70 @@ export class SubscriptionService {
 
       // Update subscription status if payment successful
       if (orderStatus === 'Success' && payment.subscription_id) {
-        await this.prisma.user_subscriptions.update({
-          where: { s_no: payment.subscription_id },
-          data: {
-            status: 'ACTIVE',
-          },
+        const plan = await this.prisma.subscription_plans.findUnique({
+          where: { s_no: payment.plan_id },
         });
 
-        console.log('✅ Subscription activated:', payment.subscription_id);
+        const startDate = new Date();
+        const endDate = new Date(Date.now() + (plan?.duration ?? 0) * 24 * 60 * 60 * 1000);
+
+        const metadata = isRecord(payment.metadata) ? payment.metadata : null;
+        const isUpgrade =
+          payment.payment_type === 'UPGRADE' ||
+          (metadata?.action === 'UPGRADE');
+
+        if (isUpgrade) {
+          const fromSubscriptionIdRaw = metadata?.from_subscription_id;
+          const fromSubscriptionId = typeof fromSubscriptionIdRaw === 'number'
+            ? fromSubscriptionIdRaw
+            : parseInt(String(fromSubscriptionIdRaw || ''), 10);
+
+          await this.prisma.$transaction(async (tx) => {
+            if (Number.isFinite(fromSubscriptionId)) {
+              await tx.user_subscriptions.updateMany({
+                where: {
+                  s_no: fromSubscriptionId,
+                  organization_id: payment.organization_id,
+                  status: 'ACTIVE',
+                },
+                data: {
+                  status: 'CANCELLED',
+                  end_date: startDate,
+                },
+              });
+            }
+
+            await tx.user_subscriptions.update({
+              where: { s_no: payment.subscription_id! },
+              data: {
+                status: 'ACTIVE',
+                start_date: startDate,
+                end_date: endDate,
+              },
+            });
+          });
+
+          console.log('✅ Upgrade activated:', payment.subscription_id, 'from:', fromSubscriptionId);
+        } else {
+          await this.prisma.user_subscriptions.update({
+            where: { s_no: payment.subscription_id },
+            data: {
+              status: 'ACTIVE',
+              start_date: startDate,
+              end_date: endDate,
+            },
+          });
+
+          console.log('✅ Subscription activated:', payment.subscription_id);
+        }
+      }
+
+      // Mark subscription failed if payment failed
+      if (orderStatus !== 'Success' && payment.subscription_id) {
+        await this.prisma.user_subscriptions.updateMany({
+          where: { s_no: payment.subscription_id, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        });
       }
 
       return ResponseUtil.success({

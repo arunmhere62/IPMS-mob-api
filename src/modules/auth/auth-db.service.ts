@@ -548,7 +548,11 @@ export class AuthDbService {
         const freePlan = await prisma.subscription_plans.findFirst({
           where: {
             is_active: true,
-            price: { equals: new Prisma.Decimal('0.00') },
+            OR: [
+              { is_trial: true },
+              { is_free: true },
+              { price: { equals: new Prisma.Decimal('0.00') } },
+            ],
           },
           orderBy: {
             created_at: 'desc',
@@ -557,7 +561,7 @@ export class AuthDbService {
 
         if (!freePlan) {
           throw new BadRequestException(
-            'Free subscription plan not found. Please create an active subscription plan with price 0.00.',
+            'Free/trial subscription plan not found. Please create an active subscription plan with is_trial=true (recommended) or price 0.00.',
           );
         }
 
@@ -645,6 +649,7 @@ export class AuthDbService {
             start_date: new Date(),
             end_date: endDate,
             auto_renew: false,
+            is_trial: Boolean((freePlan as unknown as { is_trial?: boolean }).is_trial || (freePlan as unknown as { is_free?: boolean }).is_free || freePlan.price?.toString() === '0'),
           },
         });
 
@@ -740,17 +745,21 @@ export class AuthDbService {
     }
 
     // Check if phone is being changed and if it's already taken
-    if (updateProfileDto.phone && updateProfileDto.phone !== user.phone) {
+    if (updateProfileDto.phone) {
       const normalizedPhone = normalizePhoneNumber(updateProfileDto.phone);
-      const existingPhone = await this.prisma.users.findFirst({
-        where: {
-          phone: normalizedPhone,
-          s_no: { not: userId },
-        },
-      });
+      const normalizedCurrentPhone = user.phone ? normalizePhoneNumber(user.phone) : '';
 
-      if (existingPhone) {
-        throw new BadRequestException('Phone number already in use');
+      if (normalizedPhone && normalizedPhone !== normalizedCurrentPhone) {
+        const existingPhone = await this.prisma.users.findFirst({
+          where: {
+            phone: normalizedPhone,
+            s_no: { not: userId },
+          },
+        });
+
+        if (existingPhone) {
+          throw new BadRequestException('Phone number already in use');
+        }
       }
     }
 

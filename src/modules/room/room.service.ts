@@ -5,22 +5,18 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { S3DeletionService } from '../common/s3-deletion.service';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
 import { ResponseUtil } from '../../common/utils/response.util';
-import { SubscriptionRestrictionService } from '../subscription/subscription-restriction.service';
 
 @Injectable()
 export class RoomService {
   constructor(
     private prisma: PrismaService,
     private s3DeletionService: S3DeletionService,
-    private subscriptionRestrictionService: SubscriptionRestrictionService,
   ) {}
 
   /**
    * Create a new room or restore soft-deleted room
    */
   async create(createRoomDto: CreateRoomDto) {
-    await this.subscriptionRestrictionService.assertCanCreateRoomInPg(createRoomDto.pg_id);
-
     const existingActiveRoom = await this.prisma.rooms.findFirst({
       where: {
         pg_id: createRoomDto.pg_id,

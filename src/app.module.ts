@@ -22,9 +22,12 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { PgUsersModule } from './modules/pg-users/pg-users.module';
 import { S3Module } from './s3/s3.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { SubscriptionCronModule } from './crons/subscription/subscription-cron.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscription-enforcement.interceptor';
 
 @Module({
   imports: [
@@ -54,8 +57,15 @@ import configuration from './config';
     PgUsersModule,
     S3Module,
     DashboardModule,
+    SubscriptionCronModule,
   ],
   controllers: [AppController],
-  providers: [AppService],
+  providers: [
+    AppService,
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: SubscriptionEnforcementInterceptor,
+    },
+  ],
 })
 export class AppModule {}

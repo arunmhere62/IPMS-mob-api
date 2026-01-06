@@ -26,7 +26,21 @@ export class SubscriptionRestrictionService {
       throw new BadRequestException('No active subscription found. Please subscribe to a plan to continue.');
     }
 
-    return activeSubscription.subscription_plans;
+    const plan = activeSubscription.subscription_plans;
+
+    // Enforce plan duration strictly based on days elapsed since subscription start.
+    // This is in addition to end_date checks.
+    const startDate = activeSubscription.start_date ? new Date(activeSubscription.start_date) : null;
+    if (startDate && Number.isFinite(plan.duration)) {
+      const expiresAtMs = startDate.getTime() + plan.duration * 24 * 60 * 60 * 1000;
+      if (now.getTime() >= expiresAtMs) {
+        throw new BadRequestException(
+          `Your subscription duration has ended (${plan.duration} days). Please renew or upgrade your plan to continue.`,
+        );
+      }
+    }
+
+    return plan;
   }
 
   async assertCanCreatePgLocationForOrganization(organizationId: number) {

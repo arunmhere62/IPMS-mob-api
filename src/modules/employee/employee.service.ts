@@ -4,22 +4,18 @@ import { S3DeletionService } from '../common/s3-deletion.service';
 import { CreateEmployeeDto } from './dto/create-employee.dto';
 import { UpdateEmployeeDto } from './dto/update-employee.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
-import { SubscriptionRestrictionService } from '../subscription/subscription-restriction.service';
 
 @Injectable()
 export class EmployeeService {
   constructor(
     private prisma: PrismaService,
     private s3DeletionService: S3DeletionService,
-    private subscriptionRestrictionService: SubscriptionRestrictionService,
   ) {}
 
   /**
    * Create a new employee
    */
   async create(organizationId: number, pgId: number, createDto: CreateEmployeeDto) {
-    await this.subscriptionRestrictionService.assertCanCreateEmployeeForOrganization(organizationId);
-
     // Restrict creating multiple SUPER_ADMINs per organization
     if (createDto.role_id) {
       const superAdminRole = await this.prisma.roles.findFirst({

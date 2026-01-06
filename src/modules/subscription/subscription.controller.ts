@@ -122,6 +122,31 @@ export class SubscriptionController {
   }
 
   /**
+   * Upgrade active subscription to a new plan
+   */
+  @Post('upgrade')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Upgrade active subscription to a new plan' })
+  async upgrade(@Req() req: RequestWithHeaders, @Body() body: { plan_id: number }) {
+    const userId = parseInt(headerToString(req.headers['x-user-id']), 10);
+    const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
+    const { plan_id } = body;
+
+    console.log('📦 Upgrade request:', { userId, organizationId, plan_id });
+
+    const result = await this.subscriptionService.initiateUpgrade(
+      userId,
+      organizationId,
+      plan_id,
+    );
+
+    return {
+      success: true,
+      data: result,
+    };
+  }
+
+  /**
    * Test CCAvenue configuration
    */
   @Get('test-ccavenue')

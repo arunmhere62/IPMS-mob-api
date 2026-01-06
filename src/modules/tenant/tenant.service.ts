@@ -8,7 +8,6 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TransferTenantDto } from './dto/transfer-tenant.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { TenantStatusService } from './tenant-status/tenant-status.service';
-import { SubscriptionRestrictionService } from '../subscription/subscription-restriction.service';
 import { TenantRentSummaryService } from './tenant-rent-summary.service';
 import { Prisma, tenants_status } from '@prisma/client';
 
@@ -77,7 +76,6 @@ export class TenantService {
     private pendingRentCalculatorService: PendingRentCalculatorService,
     private rentCycleCalculatorService: RentCycleCalculatorService,
     private s3DeletionService: S3DeletionService,
-    private subscriptionRestrictionService: SubscriptionRestrictionService,
   ) {}
 
   private resolveCurrentRentCycleForDate(params: {
@@ -310,8 +308,6 @@ export class TenantService {
     if (!pgLocation) {
       throw new NotFoundException(`PG Location with ID ${createTenantDto.pg_id} not found`);
     }
-
-    await this.subscriptionRestrictionService.assertCanCreateTenantForOrganization(pgLocation.organization_id);
 
     // Verify room exists if provided
     if (createTenantDto.room_id) {

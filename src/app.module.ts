@@ -33,6 +33,7 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
+      envFilePath: '.env',
       load: configuration,
     }),
     ScheduleModule.forRoot(),
@@ -68,4 +69,4 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
     },
   ],
 })
-export class AppModule {}
+export class AppModule { }

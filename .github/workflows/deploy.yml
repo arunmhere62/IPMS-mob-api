@@ -1,38 +1,29 @@
-name: Deploy
+name: Deploy to VPS
 
 on:
-  workflow_dispatch:
+  push:
+    branches: [ "main" ]
 
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-    
-    - name: Deploy via SSH
-      uses: appleboy/ssh-action@master
-      with:
-        host: ${{ secrets.SSH_HOST }}
-        username: ${{ secrets.SSH_USERNAME }}
-        key: ${{ secrets.SSH_PRIVATE_KEY }}
-        port: ${{ secrets.SSH_PORT }}
-        script: |
-          cd ${{ secrets.DEPLOY_PATH }}
-          git pull origin main
-          npm install --production
-          npm run build
-          npm run prisma:generate
-          npm run prisma:migrate:deploy
-          pm2 restart pg-api || npm run start:pm2
-          pm2 save
-          echo "Deployment completed successfully!"
-    
-    - name: Deployment Status
-      if: success()
-      run: echo "✅ Deployment successful!"
-    
-    - name: Deployment Failed
-      if: failure()
-      run: echo "❌ Deployment failed. Check logs above."
+      - name: Deploy over SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.VPS_HOST }}
+          username: ${{ secrets.VPS_USER }}
+          key: ${{ secrets.VPS_SSH_KEY }}
+          script: |
+            set -e
+            cd /var/www/ipms-mob-api/IPMS-mob-api
+
+            git fetch --all
+            git reset --hard origin/main
+
+            npm install --legacy-peer-deps
+            npx prisma generate
+            npm run build
+
+            pm2 reload pg-api || pm2 restart pg-api
+            pm2 save

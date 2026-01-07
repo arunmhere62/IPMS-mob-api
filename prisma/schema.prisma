@@ -26,10 +26,10 @@ model advance_payments {
   voided_at          DateTime?                       @db.DateTime(0)
   voided_by          Int?
   voided_reason      String?                         @db.VarChar(255)
-  tenants            tenants                         @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "advance_payments_ibfk_1")
-  pg_locations       pg_locations                    @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "advance_payments_ibfk_2")
-  rooms              rooms                           @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "advance_payments_ibfk_3")
-  beds               beds                            @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "advance_payments_ibfk_4")
+  tenants            tenants                         @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "advance_payments_ibfk_1")
+  pg_locations       pg_locations                    @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "advance_payments_ibfk_2")
+  rooms              rooms                           @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "advance_payments_ibfk_3")
+  beds               beds                            @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "advance_payments_ibfk_4")
 
   @@index([bed_id], map: "bedId")
   @@index([pg_id], map: "pgId")
@@ -48,8 +48,8 @@ model beds {
   is_deleted         Boolean?             @default(false)
   bed_price          Decimal              @default(0.00) @db.Decimal(10, 2)
   advance_payments   advance_payments[]
-  rooms              rooms?               @relation(fields: [room_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "beds_ibfk_1")
-  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_id")
+  rooms              rooms?               @relation(fields: [room_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "beds_ibfk_1")
+  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_pg_id")
   refund_payments    refund_payments[]
   rent_payments      rent_payments[]
   tenant_allocations tenant_allocations[]
@@ -95,8 +95,8 @@ model current_bills {
   created_at    DateTime        @default(now()) @db.Timestamp(0)
   updated_at    DateTime        @default(now()) @db.Timestamp(0)
   is_deleted    Boolean?        @default(false)
-  pg_locations  pg_locations    @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_bills_pg")
-  tenants       tenants         @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_bills_tenant")
+  pg_locations  pg_locations    @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_bills_pg")
+  tenants       tenants         @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_bills_tenant")
   rent_payments rent_payments[]
 
   @@index([pg_id], map: "fk_tenant_bills_pg")
@@ -115,7 +115,7 @@ model expenses {
   created_at     DateTime?                @default(now()) @db.Timestamp(0)
   updated_at     DateTime?                @default(now()) @db.Timestamp(0)
   is_deleted     Boolean?                 @default(false)
-  pg_locations   pg_locations?            @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "expenses_ibfk_1")
+  pg_locations   pg_locations?            @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "expenses_ibfk_1")
 
   @@index([pg_id], map: "pg_location_id")
 }
@@ -132,8 +132,8 @@ model issue_ticket_comments {
   attachments           Json?
   created_at            String                              @db.VarChar(50)
   is_deleted            Boolean                             @default(false)
-  issue_tickets         issue_tickets                       @relation(fields: [ticket_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_comment_ticket")
-  users                 users?                              @relation(fields: [user_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_comment_user")
+  issue_tickets         issue_tickets                       @relation(fields: [ticket_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_comment_ticket")
+  users                 users?                              @relation(fields: [user_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_comment_user")
 
   @@index([author_source], map: "idx_itc_author_source")
   @@index([management_user_id], map: "idx_itc_management_user_id")
@@ -160,8 +160,8 @@ model issue_tickets {
   resolved_at                            String?                 @db.VarChar(50)
   is_deleted                             Boolean                 @default(false)
   issue_ticket_comments                  issue_ticket_comments[]
-  users_issue_tickets_assigned_toTousers users?                  @relation("issue_tickets_assigned_toTousers", fields: [assigned_to], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_ticket_assignee")
-  users_issue_tickets_reported_byTousers users                   @relation("issue_tickets_reported_byTousers", fields: [reported_by], references: [s_no], onUpdate: Restrict, map: "fk_ticket_user")
+  users_issue_tickets_assigned_toTousers users?                  @relation("issue_tickets_assigned_toTousers", fields: [assigned_to], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_ticket_assignee")
+  users_issue_tickets_reported_byTousers users                   @relation("issue_tickets_reported_byTousers", fields: [reported_by], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_ticket_user")
 
   @@index([assigned_to], map: "idx_assigned_to")
   @@index([organization_id], map: "idx_organization")
@@ -185,9 +185,9 @@ model legal_documents {
   updated_by                              Int?
   created_at                              DateTime                @default(now()) @db.Timestamp(0)
   updated_at                              DateTime                @default(now()) @db.Timestamp(0)
-  users_legal_documents_created_byTousers users?                  @relation("legal_documents_created_byTousers", fields: [created_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "legal_documents_ibfk_1")
-  users_legal_documents_updated_byTousers users?                  @relation("legal_documents_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "legal_documents_ibfk_2")
-  organization                            organization?           @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "legal_documents_ibfk_3")
+  users_legal_documents_created_byTousers users?                  @relation("legal_documents_created_byTousers", fields: [created_by], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "legal_documents_ibfk_1")
+  users_legal_documents_updated_byTousers users?                  @relation("legal_documents_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "legal_documents_ibfk_2")
+  organization                            organization?           @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "legal_documents_ibfk_3")
   user_legal_acceptance                   user_legal_acceptance[]
 
   @@unique([type, version], map: "type")
@@ -209,7 +209,7 @@ model notification_settings {
   general_notifications Boolean? @default(true)
   created_at            DateTime @default(now()) @db.Timestamp(0)
   updated_at            DateTime @default(now()) @db.Timestamp(0)
-  users                 users    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_notification_settings_user")
+  users                 users    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_settings_user")
 }
 
 model notifications {
@@ -222,7 +222,7 @@ model notifications {
   is_read Boolean?  @default(false)
   sent_at DateTime  @default(now()) @db.Timestamp(0)
   read_at DateTime? @db.Timestamp(0)
-  users   users     @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_notifications_user")
+  users   users     @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_notifications_user")
 
   @@index([user_id], map: "fk_notifications_user")
 }
@@ -241,7 +241,7 @@ model organization {
   is_deleted                                Boolean?            @default(false)
   status                                    organization_status @default(ACTIVE)
   legal_documents                           legal_documents[]
-  users_organization_superadmin_idTousers   users?              @relation("organization_superadmin_idTousers", fields: [superadmin_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_org_superadmin")
+  users_organization_superadmin_idTousers   users?              @relation("organization_superadmin_idTousers", fields: [superadmin_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_org_superadmin")
   pg_locations                              pg_locations[]
   users_users_organization_idToorganization users[]             @relation("users_organization_idToorganization")
 
@@ -261,7 +261,7 @@ model otp_verifications {
   verified_at DateTime? @db.DateTime(0)
   ip_address  String?   @db.VarChar(45)
   user_agent  String?   @db.VarChar(255)
-  users       users?    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_otp_user")
+  users       users?    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_otp_user")
 
   @@index([expires_at], map: "idx_expires_at")
   @@index([is_verified], map: "idx_is_verified")
@@ -304,9 +304,9 @@ model pg_locations {
   beds               beds[]
   current_bills      current_bills[]
   expenses           expenses[]
-  city               city?                        @relation(fields: [city_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_city")
-  organization       organization                 @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_locations_organization")
-  state              state?                       @relation(fields: [state_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_state")
+  city               city?                        @relation(fields: [city_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_city")
+  organization       organization                 @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_pg_locations_organization")
+  state              state?                       @relation(fields: [state_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_state")
   pg_users           pg_users[]
   refund_payments    refund_payments[]
   rent_payments      rent_payments[]
@@ -338,8 +338,8 @@ model pg_users {
   created_at            DateTime     @default(now()) @db.Timestamp(0)
   updated_at            DateTime     @default(now()) @db.Timestamp(0)
   monthly_salary_amount Decimal?     @db.Decimal(10, 2)
-  pg_locations          pg_locations @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_users_pg")
-  users                 users        @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_pg_users_user")
+  pg_locations          pg_locations @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_pg_users_pg")
+  users                 users        @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_pg_users_user")
 
   @@unique([pg_id, user_id], map: "uq_pg_user")
   @@index([is_active], map: "idx_pg_users_active")
@@ -362,10 +362,10 @@ model refund_payments {
   status             refund_payments_status         @default(PENDING)
   is_deleted         Boolean?                       @default(false)
   actual_rent_amount Decimal                        @default(0.00) @db.Decimal(10, 2)
-  tenants            tenants                        @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "refund_payments_ibfk_1")
-  pg_locations       pg_locations                   @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "refund_payments_ibfk_2")
-  rooms              rooms                          @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "refund_payments_ibfk_3")
-  beds               beds                           @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "refund_payments_ibfk_4")
+  tenants            tenants                        @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "refund_payments_ibfk_1")
+  pg_locations       pg_locations                   @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "refund_payments_ibfk_2")
+  rooms              rooms                          @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "refund_payments_ibfk_3")
+  beds               beds                           @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "refund_payments_ibfk_4")
 
   @@index([bed_id], map: "bedId")
   @@index([pg_id], map: "pgId")
@@ -395,11 +395,11 @@ model rent_payments {
   voided_by          Int?
   voided_reason      String?                      @db.VarChar(255)
   current_bills      current_bills?               @relation(fields: [current_bill_id], references: [s_no], map: "fk_current_bill")
-  beds               beds                         @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_bed")
-  tenant_rent_cycles tenant_rent_cycles?          @relation(fields: [cycle_id], references: [s_no], onUpdate: Restrict, map: "fk_tenant_payment_cycle")
-  pg_locations       pg_locations                 @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_pg")
-  rooms              rooms                        @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_room")
-  tenants            tenants                      @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_payment_tenant")
+  beds               beds                         @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_payment_bed")
+  tenant_rent_cycles tenant_rent_cycles?          @relation(fields: [cycle_id], references: [s_no], onUpdate: NoAction, map: "fk_tenant_payment_cycle")
+  pg_locations       pg_locations                 @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_payment_pg")
+  rooms              rooms                        @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_payment_room")
+  tenants            tenants                      @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_payment_tenant")
 
   @@index([current_bill_id], map: "fk_current_bill")
   @@index([bed_id], map: "fk_tenant_payment_bed")
@@ -415,8 +415,8 @@ model role_permissions {
   permission_id      Int
   created_at         DateTime           @default(now()) @db.Timestamp(0)
   updated_at         DateTime           @default(now()) @db.Timestamp(0)
-  permissions_master permissions_master @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_role_permissions_permission")
-  roles              roles              @relation(fields: [role_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_role_permissions_role")
+  permissions_master permissions_master @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_permissions_permission")
+  roles              roles              @relation(fields: [role_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_role_permissions_role")
 
   @@unique([role_id, permission_id], map: "unique_role_permission")
   @@index([permission_id], map: "idx_role_permissions_permission")
@@ -448,7 +448,7 @@ model rooms {
   beds               beds[]
   refund_payments    refund_payments[]
   rent_payments      rent_payments[]
-  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "rooms_ibfk_1")
+  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "rooms_ibfk_1")
   tenant_allocations tenant_allocations[]
   tenants            tenants[]
   visitors           visitors[]
@@ -493,8 +493,8 @@ model subscription_payments {
   metadata           Json?
   created_at         DateTime                           @default(now()) @db.Timestamp(0)
   updated_at         DateTime                           @default(now()) @db.Timestamp(0)
-  subscription_plans subscription_plans                 @relation(fields: [plan_id], references: [s_no], onUpdate: Restrict, map: "fk_subscription_payment_plan")
-  user_subscriptions user_subscriptions?                @relation(fields: [subscription_id], references: [s_no], onUpdate: Restrict, map: "fk_subscription_payment_subscription")
+  subscription_plans subscription_plans                 @relation(fields: [plan_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_subscription_payment_plan")
+  user_subscriptions user_subscriptions?                @relation(fields: [subscription_id], references: [s_no], onUpdate: NoAction, map: "fk_subscription_payment_subscription")
 
   @@index([plan_id], map: "fk_subscription_payment_plan")
   @@index([subscription_id], map: "fk_subscription_payment_subscription")
@@ -544,10 +544,10 @@ model tenant_allocations {
   bed_price_snapshot Decimal      @default(0.00) @db.Decimal(10, 2)
   created_at         DateTime     @default(now()) @db.Timestamp(0)
   updated_at         DateTime     @default(now()) @db.Timestamp(0)
-  beds               beds         @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_allocations_bed")
-  pg_locations       pg_locations @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_allocations_pg")
-  rooms              rooms        @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_allocations_room")
-  tenants            tenants      @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_allocations_tenant")
+  beds               beds         @relation(fields: [bed_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_allocations_bed")
+  pg_locations       pg_locations @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_allocations_pg")
+  rooms              rooms        @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_allocations_room")
+  tenants            tenants      @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_allocations_tenant")
 
   @@unique([tenant_id, effective_from], map: "uk_tenant_allocations_tenant_from")
   @@index([bed_id], map: "idx_tenant_allocations_bed")
@@ -567,7 +567,7 @@ model tenant_rent_cycles {
   created_at    DateTime        @default(now()) @db.Timestamp(0)
   updated_at    DateTime        @default(now()) @db.Timestamp(0)
   rent_payments rent_payments[]
-  tenants       tenants         @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_tenant_rent_cycles_tenant")
+  tenants       tenants         @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_rent_cycles_tenant")
 
   @@unique([tenant_id, cycle_start], map: "uk_tenant_rent_cycles_tenant_start")
   @@index([cycle_end], map: "idx_tenant_rent_cycles_end")
@@ -606,11 +606,11 @@ model tenants {
   rent_payments      rent_payments[]
   tenant_allocations tenant_allocations[]
   tenant_rent_cycles tenant_rent_cycles[]
-  city               city?                @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_tenants_city")
-  state              state?               @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_tenants_state")
-  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_1")
-  rooms              rooms?               @relation(fields: [room_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_2")
-  beds               beds?                @relation(fields: [bed_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "tenants_ibfk_3")
+  city               city?                @relation(fields: [city_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_city")
+  state              state?               @relation(fields: [state_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_state")
+  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_1")
+  rooms              rooms?               @relation(fields: [room_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_2")
+  beds               beds?                @relation(fields: [bed_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_3")
 
   @@index([bed_id], map: "bed_id")
   @@index([city_id], map: "fk_tenants_city")
@@ -635,7 +635,7 @@ model tokens {
   created_at         DateTime  @default(now()) @db.Timestamp(0)
   updated_at         DateTime  @default(now()) @db.Timestamp(0)
   last_used_at       DateTime? @db.DateTime(0)
-  users              users     @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_token_user")
+  users              users     @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_token_user")
 
   @@index([access_token(length: 255)], map: "idx_access_token")
   @@index([expires_at], map: "idx_expires_at")
@@ -654,7 +654,7 @@ model user_fcm_tokens {
   is_active   Boolean? @default(true)
   created_at  DateTime @default(now()) @db.Timestamp(0)
   updated_at  DateTime @default(now()) @db.Timestamp(0)
-  users       users    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_fcm_tokens_user")
+  users       users    @relation(fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_fcm_tokens_user")
 
   @@index([user_id], map: "fk_user_fcm_tokens_user")
 }
@@ -674,10 +674,10 @@ model user_legal_acceptance {
   updated_by                                    Int?
   created_at                                    DateTime        @default(now()) @db.Timestamp(0)
   updated_at                                    DateTime        @default(now()) @db.Timestamp(0)
-  users_user_legal_acceptance_user_idTousers    users           @relation("user_legal_acceptance_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_1")
-  legal_documents                               legal_documents @relation(fields: [legal_document_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_2")
-  users_user_legal_acceptance_created_byTousers users?          @relation("user_legal_acceptance_created_byTousers", fields: [created_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_3")
-  users_user_legal_acceptance_updated_byTousers users?          @relation("user_legal_acceptance_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "user_legal_acceptance_ibfk_4")
+  users_user_legal_acceptance_user_idTousers    users           @relation("user_legal_acceptance_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "user_legal_acceptance_ibfk_1")
+  legal_documents                               legal_documents @relation(fields: [legal_document_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "user_legal_acceptance_ibfk_2")
+  users_user_legal_acceptance_created_byTousers users?          @relation("user_legal_acceptance_created_byTousers", fields: [created_by], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "user_legal_acceptance_ibfk_3")
+  users_user_legal_acceptance_updated_byTousers users?          @relation("user_legal_acceptance_updated_byTousers", fields: [updated_by], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "user_legal_acceptance_ibfk_4")
 
   @@unique([user_id, legal_document_id], map: "user_id")
   @@index([created_by], map: "created_by")
@@ -696,9 +696,9 @@ model user_permission_overrides {
   expires_at                                        DateTime?                        @db.DateTime(0)
   created_at                                        DateTime                         @default(now()) @db.Timestamp(0)
   updated_at                                        DateTime                         @default(now()) @db.Timestamp(0)
-  users_user_permission_overrides_created_byTousers users?                           @relation("user_permission_overrides_created_byTousers", fields: [created_by], references: [s_no], onUpdate: Restrict, map: "fk_user_permission_overrides_created_by")
-  permissions_master                                permissions_master               @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_permission_overrides_permission")
-  users_user_permission_overrides_user_idTousers    users                            @relation("user_permission_overrides_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: Restrict, map: "fk_user_permission_overrides_user")
+  users_user_permission_overrides_created_byTousers users?                           @relation("user_permission_overrides_created_byTousers", fields: [created_by], references: [s_no], onUpdate: NoAction, map: "fk_user_permission_overrides_created_by")
+  permissions_master                                permissions_master               @relation(fields: [permission_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_permission_overrides_permission")
+  users_user_permission_overrides_user_idTousers    users                            @relation("user_permission_overrides_user_idTousers", fields: [user_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_user_permission_overrides_user")
 
   @@unique([user_id, permission_id], map: "unique_user_permission_override")
   @@index([created_by], map: "idx_user_permission_override_created_by")
@@ -719,7 +719,7 @@ model user_subscriptions {
   created_at            DateTime                  @default(now()) @db.Timestamp(0)
   updated_at            DateTime                  @default(now()) @db.Timestamp(0)
   subscription_payments subscription_payments[]
-  subscription_plans    subscription_plans        @relation(fields: [plan_id], references: [s_no], onUpdate: Restrict, map: "fk_user_subscription_plan")
+  subscription_plans    subscription_plans        @relation(fields: [plan_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_user_subscription_plan")
 
   @@index([plan_id], map: "fk_user_subscription_plan")
   @@index([end_date], map: "idx_end_date")
@@ -765,10 +765,10 @@ model users {
   user_legal_acceptance_user_legal_acceptance_updated_byTousers         user_legal_acceptance[]     @relation("user_legal_acceptance_updated_byTousers")
   user_permission_overrides_user_permission_overrides_created_byTousers user_permission_overrides[] @relation("user_permission_overrides_created_byTousers")
   user_permission_overrides_user_permission_overrides_user_idTousers    user_permission_overrides[] @relation("user_permission_overrides_user_idTousers")
-  city                                                                  city?                       @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_city")
-  organization_users_organization_idToorganization                      organization?               @relation("users_organization_idToorganization", fields: [organization_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_organization")
-  roles                                                                 roles                       @relation(fields: [role_id], references: [s_no], onUpdate: Restrict, map: "fk_users_role")
-  state                                                                 state?                      @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_users_state")
+  city                                                                  city?                       @relation(fields: [city_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_city")
+  organization_users_organization_idToorganization                      organization?               @relation("users_organization_idToorganization", fields: [organization_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_organization")
+  roles                                                                 roles                       @relation(fields: [role_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_role")
+  state                                                                 state?                      @relation(fields: [state_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_users_state")
 
   @@index([city_id], map: "fk_users_city")
   @@index([organization_id], map: "fk_users_organization")
@@ -792,11 +792,11 @@ model visitors {
   city_id            Int?
   state_id           Int?
   convertedTo_tenant Boolean       @default(false)
-  beds               beds?         @relation(fields: [visited_bed_id], references: [s_no], onUpdate: Restrict, map: "fk_visited_bed")
-  rooms              rooms?        @relation(fields: [visited_room_id], references: [s_no], onUpdate: Restrict, map: "fk_visited_room")
-  city               city?         @relation(fields: [city_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_visitors_city")
-  state              state?        @relation(fields: [state_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "fk_visitors_state")
-  pg_locations       pg_locations? @relation(fields: [pg_id], references: [s_no], onDelete: Restrict, onUpdate: Restrict, map: "visitors_ibfk_1")
+  beds               beds?         @relation(fields: [visited_bed_id], references: [s_no], onUpdate: NoAction, map: "fk_visited_bed")
+  rooms              rooms?        @relation(fields: [visited_room_id], references: [s_no], onUpdate: NoAction, map: "fk_visited_room")
+  city               city?         @relation(fields: [city_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_visitors_city")
+  state              state?        @relation(fields: [state_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_visitors_state")
+  pg_locations       pg_locations? @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "visitors_ibfk_1")
 
   @@index([visited_bed_id], map: "fk_visited_bed")
   @@index([visited_room_id], map: "fk_visited_room")

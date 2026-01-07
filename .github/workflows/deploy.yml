@@ -20,15 +20,22 @@ jobs:
             set -e
             cd /var/www/ipms-mob-api/IPMS-mob-api
 
+            # Backup .env before pulling
+            cp .env .env.backup
+
             git fetch --all
             git reset --hard origin/main
 
-            umask 077
-            printf '%s' "${{ secrets.VPS_ENV }}" | base64 -d > .env || { echo "env decode failed: VPS_ENV must be base64 of the .env file"; exit 1; }
+            # Restore .env (don't overwrite from GitHub)
+            mv .env.backup .env
 
             npm install --legacy-peer-deps
             npx prisma generate
             npm run build
 
-            pm2 reload pg-api --update-env || pm2 restart pg-api --update-env
+            pm2 delete pg-api || true
+            pm2 start ecosystem.config.js
             pm2 save
+            
+            echo "Deployment completed!"
+            pm2 status

@@ -15,7 +15,7 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: 22
-          debug: true
+          debug: false
           script: |
             set -e
             cd /var/www/ipms-mob-api/IPMS-mob-api
@@ -23,9 +23,12 @@ jobs:
             git fetch --all
             git reset --hard origin/main
 
+            umask 077
+            printf '%s' "${{ secrets.VPS_ENV }}" | base64 -d > .env || { echo "env decode failed: VPS_ENV must be base64 of the .env file"; exit 1; }
+
             npm install --legacy-peer-deps
             npx prisma generate
             npm run build
 
-            pm2 reload pg-api || pm2 restart pg-api
+            pm2 reload pg-api --update-env || pm2 restart pg-api --update-env
             pm2 save

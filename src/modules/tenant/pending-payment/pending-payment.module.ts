@@ -6,10 +6,9 @@ import { PendingPaymentService } from './pending-payment.service';
 import { TenantStatusService } from '../tenant-status/tenant-status.service';
 import { AuthModule } from '../../auth/auth.module';
 import { NotificationModule } from '../../notification/notification.module';
-import { PendingPaymentCronModule } from './cron/pending-payment-cron.module';
 
 @Module({
-  imports: [PrismaModule, CommonModule, AuthModule, NotificationModule, PendingPaymentCronModule],
+  imports: [PrismaModule, CommonModule, AuthModule, NotificationModule],
   controllers: [PendingPaymentController],
   providers: [PendingPaymentService, TenantStatusService],
   exports: [PendingPaymentService],

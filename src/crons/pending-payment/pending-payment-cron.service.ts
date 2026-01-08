@@ -1,8 +1,17 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
-import { PrismaService } from '../../../../prisma/prisma.service';
-import { NotificationService } from '../../../notification/notification.service';
-import { PendingPaymentService } from '../pending-payment.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { NotificationService } from '../../modules/notification/notification.service';
+import { PendingPaymentService } from '../../modules/tenant/pending-payment/pending-payment.service';
+
+type PendingRentPaymentItem = {
+  tenant_id: number;
+  total_pending: number;
+};
+
+type PaymentDueItem = {
+  tenant_id: number;
+};
 
 @Injectable()
 export class PendingPaymentCronService {
@@ -14,11 +23,16 @@ export class PendingPaymentCronService {
     private prisma: PrismaService,
   ) {}
 
+  private isEnabled() {
+    return String(process.env.CRON_JOB ?? '').toLowerCase() === 'true';
+  }
+
   @Cron('0 */6 * * *', {
     name: 'check-pending-rent-payments',
     timeZone: 'Asia/Kolkata',
   })
   async checkPendingRentPayments() {
+    if (!this.isEnabled()) return;
     this.logger.log('🔔 [CRON] Starting pending rent payment check...');
 
     try {
@@ -51,6 +65,7 @@ export class PendingPaymentCronService {
     timeZone: 'Asia/Kolkata',
   })
   async sendDailyPaymentReminder() {
+    if (!this.isEnabled()) return;
     this.logger.log('🔔 [CRON] Starting daily payment reminder...');
 
     try {
@@ -81,8 +96,8 @@ export class PendingPaymentCronService {
     }
   }
 
-  private async groupTenantsByOwner(pendingPayments: any[]) {
-    const tenantsByUser: Record<number, any[]> = {};
+  private async groupTenantsByOwner(pendingPayments: PendingRentPaymentItem[]) {
+    const tenantsByUser: Record<number, PendingRentPaymentItem[]> = {};
 
     for (const payment of pendingPayments) {
       const tenant = await this.prisma.tenants.findUnique({
@@ -119,8 +134,8 @@ export class PendingPaymentCronService {
     return tenantsByUser;
   }
 
-  private async groupTenantsByOwnerFromDueList(tenantsDue: any[]) {
-    const tenantsByUser: Record<number, any[]> = {};
+  private async groupTenantsByOwnerFromDueList(tenantsDue: PaymentDueItem[]) {
+    const tenantsByUser: Record<number, PaymentDueItem[]> = {};
 
     for (const tenant of tenantsDue) {
       const tenantDetails = await this.prisma.tenants.findUnique({
@@ -156,7 +171,7 @@ export class PendingPaymentCronService {
     return tenantsByUser;
   }
 
-  private async sendPendingRentNotification(ownerId: number, tenants: any[]) {
+  private async sendPendingRentNotification(ownerId: number, tenants: PendingRentPaymentItem[]) {
     try {
       const totalPending = tenants.reduce((sum, t) => sum + t.total_pending, 0);
       const tenantCount = tenants.length;
@@ -186,7 +201,7 @@ export class PendingPaymentCronService {
     }
   }
 
-  private async sendPaymentDueNotification(ownerId: number, tenants: any[]) {
+  private async sendPaymentDueNotification(ownerId: number, tenants: PaymentDueItem[]) {
     try {
       const tenantCount = tenants.length;
 
@@ -252,7 +267,7 @@ export class PendingPaymentCronService {
     const pendingLists = await Promise.all(
       pgIds.map((pgId) => this.pendingPaymentService.getAllPendingPayments(pgId)),
     );
-    const pendingPayments = pendingLists.flat();
+    const pendingPayments = pendingLists.flat() as PendingRentPaymentItem[];
 
     if (pendingPayments.length === 0) {
       this.logger.log(`✅ [CRON] No pending rent payments for user ${userId}`);

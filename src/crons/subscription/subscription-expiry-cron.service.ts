@@ -8,11 +8,16 @@ export class SubscriptionExpiryCronService {
 
   constructor(private readonly prisma: PrismaService) {}
 
+  private isEnabled() {
+    return String(process.env.CRON_JOB ?? '').toLowerCase() === 'true';
+  }
+
   @Cron('0 */1 * * *', {
     name: 'subscription-expiry-normalization',
     timeZone: 'Asia/Kolkata',
   })
   async markExpiredSubscriptions() {
+    if (!this.isEnabled()) return;
     const now = new Date();
 
     try {

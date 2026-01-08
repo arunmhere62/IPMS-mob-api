@@ -13,5 +13,6 @@ import { DashboardMonthlyMetricsService } from './dashboard-monthly-metrics.serv
   imports: [PrismaModule, AuthModule, TenantStatusModule, TenantPaymentModule],
   controllers: [DashboardController],
   providers: [DashboardService, TenantRentSummaryService, DashboardTenantStatusService, DashboardMonthlyMetricsService],
+  exports: [DashboardService],
 })
 export class DashboardModule {}

@@ -23,6 +23,7 @@ import { PgUsersModule } from './modules/pg-users/pg-users.module';
 import { S3Module } from './s3/s3.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
 import { SubscriptionCronModule } from './crons/subscription/subscription-cron.module';
+import { DashboardRentNotificationsCronModule } from './crons/dashboard-rent-notifications/dashboard-rent-notifications-cron.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config';
@@ -59,6 +60,7 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
     S3Module,
     DashboardModule,
     SubscriptionCronModule,
+    DashboardRentNotificationsCronModule,
   ],
   controllers: [AppController],
   providers: [

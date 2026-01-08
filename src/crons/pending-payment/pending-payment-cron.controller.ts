@@ -1,6 +1,6 @@
 import { Controller, Param, ParseIntPipe, Post } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
-import { ResponseUtil } from '../../../../common/utils/response.util';
+import { ResponseUtil } from '../../common/utils/response.util';
 import { PendingPaymentCronService } from './pending-payment-cron.service';
 
 @ApiTags('Pending Payment Cron')

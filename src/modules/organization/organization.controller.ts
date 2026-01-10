@@ -1,6 +1,19 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseIntPipe, Patch, Query, Request, UseGuards } from '@nestjs/common';
+import { Request as ExpressRequest } from 'express';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { OrganizationService } from './organization.service';
+import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
+import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
+
+type AuthedRequest = ExpressRequest & {
+  user?: {
+    s_no?: number;
+    role_name?: string;
+  };
+};
 
 @ApiTags('organizations')
 @Controller('organizations')
@@ -48,7 +61,21 @@ export class OrganizationController {
   // @UseGuards(JwtAuthGuard, SuperAdminGuard) // TODO: Add authentication guards
   @ApiOperation({ summary: 'Get organization details by ID (SuperAdmin only)' })
   @ApiResponse({ status: 200, description: 'Organization retrieved successfully' })
-  async getOrganizationById(@Query('id') id: string) {
-    return this.organizationService.getOrganizationById(parseInt(id, 10));
+  async getOrganizationById(@Param('id', ParseIntPipe) id: number) {
+    return this.organizationService.getOrganizationById(id);
+  }
+
+  @Patch(':id')
+  @UseGuards(HeadersValidationGuard, JwtAuthGuard)
+  @RequireHeaders({ organization_id: true, user_id: true })
+  @ApiOperation({ summary: 'Update organization (Admin: own org only, SuperAdmin: any)' })
+  @ApiResponse({ status: 200, description: 'Organization updated successfully' })
+  async updateOrganization(
+    @Param('id', ParseIntPipe) id: number,
+    @Body() updateDto: UpdateOrganizationDto,
+    @ValidatedHeaders() headers: ValidatedHeaders,
+    @Request() req: AuthedRequest,
+  ) {
+    return this.organizationService.updateOrganization(id, updateDto, headers, req.user);
   }
 }

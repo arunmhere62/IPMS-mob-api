@@ -1,6 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
+import { UpdateOrganizationDto } from './dto/update-organization.dto';
+import type { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
 
 interface GetOrganizationsParams {
   page: number;
@@ -319,5 +321,64 @@ export class OrganizationService {
         totalRevenue: Number(totalRevenue),
       },
     }, 'Organization details fetched successfully');
+  }
+
+  async updateOrganization(
+    id: number,
+    updateDto: UpdateOrganizationDto,
+    headers: ValidatedHeaders,
+    reqUser?: { s_no?: number; role_name?: string },
+  ) {
+    const userId = headers.user_id ?? reqUser?.s_no;
+    const isSuperAdmin = reqUser?.role_name === 'SUPER_ADMIN';
+
+    if (!isSuperAdmin && headers.organization_id && id !== headers.organization_id) {
+      throw new ForbiddenException('You do not have permission to update this organization');
+    }
+
+    const organization = await this.prisma.organization.findFirst({
+      where: {
+        s_no: id,
+        is_deleted: false,
+      },
+      select: {
+        s_no: true,
+        name: true,
+        description: true,
+        created_at: true,
+        updated_at: true,
+      },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    const hasAnyField =
+      (typeof updateDto.name === 'string' && updateDto.name.trim().length > 0) ||
+      typeof updateDto.description === 'string';
+
+    if (!hasAnyField) {
+      return ResponseUtil.success(organization, 'No changes to update');
+    }
+
+    const updated = await this.prisma.organization.update({
+      where: { s_no: id },
+      data: {
+        name: typeof updateDto.name === 'string' ? updateDto.name.trim() : undefined,
+        description: typeof updateDto.description === 'string' ? updateDto.description : undefined,
+        updated_at: new Date(),
+        updated_by: userId ?? undefined,
+      },
+      select: {
+        s_no: true,
+        name: true,
+        description: true,
+        created_at: true,
+        updated_at: true,
+      },
+    });
+
+    return ResponseUtil.success(updated, 'Organization updated successfully');
   }
 }

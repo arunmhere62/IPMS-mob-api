@@ -22,6 +22,7 @@ import { RbacModule } from './modules/rbac/rbac.module';
 import { PgUsersModule } from './modules/pg-users/pg-users.module';
 import { S3Module } from './s3/s3.module';
 import { DashboardModule } from './modules/dashboard/dashboard.module';
+import { EmailModule } from './modules/email/email.module';
 import { SubscriptionCronModule } from './crons/subscription/subscription-cron.module';
 import { DashboardRentNotificationsCronModule } from './crons/dashboard-rent-notifications/dashboard-rent-notifications-cron.module';
 import { AppController } from './app.controller';
@@ -59,6 +60,7 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
     PgUsersModule,
     S3Module,
     DashboardModule,
+    EmailModule,
     SubscriptionCronModule,
     DashboardRentNotificationsCronModule,
   ],

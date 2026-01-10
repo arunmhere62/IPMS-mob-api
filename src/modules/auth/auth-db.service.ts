@@ -133,7 +133,7 @@ export class AuthDbService {
     }
 
     return ResponseUtil.success({
-      phone,
+      phone: normalizedPhone,
       expiresIn: `${this.OTP_EXPIRY_MINUTES} minutes`,
     }, 'OTP sent successfully');
   }
@@ -374,6 +374,19 @@ export class AuthDbService {
     // Normalize phone number (remove spaces)
     const normalizedPhone = normalizePhoneNumber(phone);
 
+    // If phone is already registered, don't send signup OTP
+    const existingUser = await this.prisma.users.findFirst({
+      where: {
+        phone: normalizedPhone,
+        is_deleted: false,
+      },
+      select: { s_no: true },
+    });
+
+    if (existingUser) {
+      throw new BadRequestException('Phone number already registered');
+    }
+
     // Generate OTP
     const otp = this.generateOtp();
     const expiresAt = new Date();
@@ -410,7 +423,7 @@ export class AuthDbService {
       // Create new record (first time for this phone)
       await this.prisma.otp_verifications.create({
         data: {
-          phone,
+          phone: normalizedPhone,
           otp,
           expires_at: expiresAt,
           is_verified: false,
@@ -423,14 +436,14 @@ export class AuthDbService {
 
     // Send OTP via SMS using strategy pattern
     const otpStrategy = this.otpStrategyFactory.getStrategy();
-    const smsSent = await otpStrategy.sendOtp(phone, otp);
+    const smsSent = await otpStrategy.sendOtp(normalizedPhone, otp);
 
     if (!smsSent) {
       throw new BadRequestException('Failed to send OTP. Please try again.');
     }
 
     return ResponseUtil.success({
-      phone,
+      phone: normalizedPhone,
       expiresIn: `${this.OTP_EXPIRY_MINUTES} minutes`,
     }, 'OTP sent successfully');
   }
@@ -533,15 +546,6 @@ export class AuthDbService {
     } = signupDto;
 
     const normalizedPhone = normalizePhoneNumber(phone);
-    
-    // Check if phone already exists (if provided)
-    const existingPhone = await this.prisma.users.findFirst({
-      where: { phone: normalizedPhone },
-    });
-
-    if (existingPhone) {
-      throw new BadRequestException('Phone number already registered');
-    }
 
     try {
       const result = await this.prisma.$transaction(async (prisma) => {

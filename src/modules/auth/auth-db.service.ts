@@ -384,7 +384,7 @@ export class AuthDbService {
     });
 
     if (existingUser) {
-      throw new BadRequestException('Phone number already registered');
+      throw new BadRequestException('Phone number already registered try again');
     }
 
     // Generate OTP

@@ -1,15 +1,49 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
+import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
 };
 
+type DecimalLike = Prisma.Decimal | { toNumber(): number };
+
 @Injectable()
 export class SubscriptionService {
   constructor(private prisma: PrismaService) {}
+
+  private normalizePrice(price: DecimalLike | number | string | null | undefined): number {
+    if (price && typeof price === 'object' && 'toNumber' in price && typeof (price as DecimalLike).toNumber === 'function') {
+      return Number(price.toNumber().toFixed(2));
+    }
+
+    const parsed = Number.parseFloat(String(price ?? '0'));
+    if (Number.isNaN(parsed)) {
+      return 0;
+    }
+    return Number(parsed.toFixed(2));
+  }
+
+  private calculateGstBreakdown(basePrice: number) {
+    const gstRate = 18;
+    const cgstRate = gstRate / 2;
+    const sgstRate = gstRate / 2;
+
+    const base = Number(basePrice.toFixed(2));
+    const cgstAmount = Number(((base * cgstRate) / 100).toFixed(2));
+    const sgstAmount = Number(((base * sgstRate) / 100).toFixed(2));
+    const totalAmount = Number((base + cgstAmount + sgstAmount).toFixed(2));
+
+    return {
+      cgst_rate: cgstRate,
+      cgst_amount: cgstAmount,
+      sgst_rate: sgstRate,
+      sgst_amount: sgstAmount,
+      total_amount: totalAmount,
+    };
+  }
 
   // CCAvenue configuration
   private readonly CCAVENUE_MERCHANT_ID = process.env.CCAVENUE_MERCHANT_ID;
@@ -91,8 +125,12 @@ export class SubscriptionService {
     type Plan = (typeof plans)[number];
 
     const grouped = plans.map((plan: Plan) => {
+      const basePrice = this.normalizePrice(plan.price);
+      const gstDetails = this.calculateGstBreakdown(basePrice);
+
       return {
         ...plan,
+        price: basePrice,
         limits: {
           max_pg_locations: plan.max_pg_locations ?? null,
           max_tenants: plan.max_tenants ?? null,
@@ -103,6 +141,15 @@ export class SubscriptionService {
           max_invoices_per_month: plan.max_invoices_per_month ?? null,
           max_sms_per_month: plan.max_sms_per_month ?? null,
           max_whatsapp_per_month: plan.max_whatsapp_per_month ?? null,
+        },
+        gst_breakdown: {
+          cgst_rate: gstDetails.cgst_rate,
+          cgst_amount: gstDetails.cgst_amount,
+          sgst_rate: gstDetails.sgst_rate,
+          sgst_amount: gstDetails.sgst_amount,
+          igst_rate: 0,
+          igst_amount: 0,
+          total_price_including_gst: gstDetails.total_amount,
         },
       };
     });
@@ -268,6 +315,18 @@ export class SubscriptionService {
     );
   }
 
+  async getSubscriptionInvoices(organizationId: number) {
+    const invoices = await this.prisma.subscription_invoices.findMany({
+      where: { organization_id: organizationId },
+      orderBy: { invoice_date: 'desc' },
+    });
+
+    return ResponseUtil.success(
+      invoices,
+      'Subscription invoices fetched successfully',
+    );
+  }
+
   /**
    * Initiate subscription and generate CCAvenue payment URL
    */
@@ -283,6 +342,30 @@ export class SubscriptionService {
     if (!plan || !plan.is_active) {
       throw new BadRequestException('Invalid or inactive plan');
     }
+
+    const basePrice = this.normalizePrice(plan.price);
+    const gstDetails = this.calculateGstBreakdown(basePrice);
+    const totalPriceIncludingGst = gstDetails.total_amount;
+
+    const planSummary = {
+      s_no: plan.s_no,
+      name: plan.name,
+      description: plan.description,
+      duration: plan.duration,
+      currency: plan.currency,
+      price: basePrice,
+      is_free: Boolean((plan as unknown as { is_free?: boolean }).is_free),
+      is_trial: Boolean((plan as unknown as { is_trial?: boolean }).is_trial),
+      gst_breakdown: {
+        cgst_rate: gstDetails.cgst_rate,
+        cgst_amount: gstDetails.cgst_amount,
+        sgst_rate: gstDetails.sgst_rate,
+        sgst_amount: gstDetails.sgst_amount,
+        igst_rate: 0,
+        igst_amount: 0,
+        total_price_including_gst: gstDetails.total_amount,
+      },
+    };
 
     // Get user details
     const user = await this.prisma.users.findUnique({
@@ -318,7 +401,7 @@ export class SubscriptionService {
         organization_id: organizationId,
         subscription_id: subscription.s_no,
         plan_id: planId,
-        amount: plan.price.toString(),
+        amount: totalPriceIncludingGst.toFixed(2),
         currency: plan.currency,
         payment_type: 'NEW_SUBSCRIPTION',
         status: 'INITIATED',
@@ -329,7 +412,7 @@ export class SubscriptionService {
     const paymentData = {
       merchant_id: this.CCAVENUE_MERCHANT_ID,
       order_id: orderId,
-      amount: plan.price.toString(),
+      amount: totalPriceIncludingGst.toFixed(2),
       currency: plan.currency,
       redirect_url: this.CCAVENUE_REDIRECT_URL,
       cancel_url: this.CCAVENUE_CANCEL_URL,
@@ -380,6 +463,14 @@ export class SubscriptionService {
 
     return ResponseUtil.success({
       subscription,
+      plan: planSummary,
+      pricing: {
+        currency: plan.currency,
+        base_price: basePrice,
+        cgst_amount: gstDetails.cgst_amount,
+        sgst_amount: gstDetails.sgst_amount,
+        total_price_including_gst: gstDetails.total_amount,
+      },
       payment_url: paymentUrl,
       order_id: orderId,
     }, 'Subscription initiated successfully');
@@ -440,6 +531,10 @@ export class SubscriptionService {
       },
     });
 
+    const basePrice = this.normalizePrice(plan.price);
+    const gstDetails = this.calculateGstBreakdown(basePrice);
+    const totalPriceIncludingGst = gstDetails.total_amount;
+
     await this.prisma.subscription_payments.create({
       data: {
         order_id: orderId,
@@ -447,7 +542,7 @@ export class SubscriptionService {
         organization_id: organizationId,
         subscription_id: subscription.s_no,
         plan_id: newPlanId,
-        amount: plan.price.toString(),
+        amount: totalPriceIncludingGst.toFixed(2),
         currency: plan.currency,
         payment_type: 'UPGRADE',
         status: 'INITIATED',
@@ -460,10 +555,30 @@ export class SubscriptionService {
       },
     });
 
+    const planSummary = {
+      s_no: plan.s_no,
+      name: plan.name,
+      description: plan.description,
+      duration: plan.duration,
+      currency: plan.currency,
+      price: basePrice,
+      is_free: Boolean((plan as unknown as { is_free?: boolean }).is_free),
+      is_trial: Boolean((plan as unknown as { is_trial?: boolean }).is_trial),
+      gst_breakdown: {
+        cgst_rate: gstDetails.cgst_rate,
+        cgst_amount: gstDetails.cgst_amount,
+        sgst_rate: gstDetails.sgst_rate,
+        sgst_amount: gstDetails.sgst_amount,
+        igst_rate: 0,
+        igst_amount: 0,
+        total_price_including_gst: gstDetails.total_amount,
+      },
+    };
+
     const paymentData = {
       merchant_id: this.CCAVENUE_MERCHANT_ID,
       order_id: orderId,
-      amount: plan.price.toString(),
+      amount: totalPriceIncludingGst.toFixed(2),
       currency: plan.currency,
       redirect_url: this.CCAVENUE_REDIRECT_URL,
       cancel_url: this.CCAVENUE_CANCEL_URL,
@@ -489,14 +604,19 @@ export class SubscriptionService {
     const encryptedData = this.ccavenueEncrypt(queryString);
     const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
-    return ResponseUtil.success(
-      {
-        subscription,
-        payment_url: paymentUrl,
-        order_id: orderId,
+    return ResponseUtil.success({
+      subscription,
+      plan: planSummary,
+      pricing: {
+        currency: plan.currency,
+        base_price: basePrice,
+        cgst_amount: gstDetails.cgst_amount,
+        sgst_amount: gstDetails.sgst_amount,
+        total_price_including_gst: gstDetails.total_amount,
       },
-      'Upgrade initiated successfully',
-    );
+      payment_url: paymentUrl,
+      order_id: orderId,
+    }, 'Upgrade initiated successfully');
   }
 
   /**

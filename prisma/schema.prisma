@@ -473,28 +473,29 @@ model state {
 }
 
 model subscription_payments {
-  s_no               Int                                @id @default(autoincrement())
-  order_id           String                             @unique(map: "order_id") @db.VarChar(255)
-  user_id            Int
-  organization_id    Int
-  subscription_id    Int?
-  plan_id            Int
-  amount             String                             @db.VarChar(50)
-  currency           String                             @default("INR") @db.VarChar(10)
-  payment_type       subscription_payments_payment_type
-  status             subscription_payments_status       @default(INITIATED)
-  tracking_id        String?                            @db.VarChar(255)
-  bank_ref_no        String?                            @db.VarChar(255)
-  payment_mode       String?                            @db.VarChar(100)
-  status_code        String?                            @db.VarChar(50)
-  status_message     String?                            @db.Text
-  failure_message    String?                            @db.Text
-  response_data      Json?
-  metadata           Json?
-  created_at         DateTime                           @default(now()) @db.Timestamp(0)
-  updated_at         DateTime                           @default(now()) @db.Timestamp(0)
-  subscription_plans subscription_plans                 @relation(fields: [plan_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_subscription_payment_plan")
-  user_subscriptions user_subscriptions?                @relation(fields: [subscription_id], references: [s_no], onUpdate: NoAction, map: "fk_subscription_payment_subscription")
+  s_no                  Int                                @id @default(autoincrement())
+  order_id              String                             @unique(map: "order_id") @db.VarChar(255)
+  user_id               Int
+  organization_id       Int
+  subscription_id       Int?
+  plan_id               Int
+  amount                String                             @db.VarChar(50)
+  currency              String                             @default("INR") @db.VarChar(10)
+  payment_type          subscription_payments_payment_type
+  status                subscription_payments_status       @default(INITIATED)
+  tracking_id           String?                            @db.VarChar(255)
+  bank_ref_no           String?                            @db.VarChar(255)
+  payment_mode          String?                            @db.VarChar(100)
+  status_code           String?                            @db.VarChar(50)
+  status_message        String?                            @db.Text
+  failure_message       String?                            @db.Text
+  response_data         Json?
+  metadata              Json?
+  created_at            DateTime                           @default(now()) @db.Timestamp(0)
+  updated_at            DateTime                           @default(now()) @db.Timestamp(0)
+  subscription_invoices subscription_invoices[]
+  subscription_plans    subscription_plans                 @relation(fields: [plan_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_subscription_payment_plan")
+  user_subscriptions    user_subscriptions?                @relation(fields: [subscription_id], references: [s_no], onUpdate: NoAction, map: "fk_subscription_payment_subscription")
 
   @@index([plan_id], map: "fk_subscription_payment_plan")
   @@index([subscription_id], map: "fk_subscription_payment_subscription")
@@ -805,6 +806,51 @@ model visitors {
   @@index([pg_id], map: "pg_location_id")
 }
 
+model subscription_invoices {
+  s_no                  Int                          @id @default(autoincrement())
+  invoice_number        String                       @unique(map: "invoice_number") @db.VarChar(50)
+  payment_id            Int
+  user_id               Int
+  organization_id       Int
+  subscription_id       Int
+  plan_id               Int
+  invoice_date          DateTime                     @default(now()) @db.DateTime(0)
+  seller_legal_name     String                       @db.VarChar(100)
+  seller_trade_name     String                       @db.VarChar(100)
+  seller_gstin          String                       @db.VarChar(15)
+  seller_address        String                       @db.VarChar(255)
+  seller_state_code     String                       @db.VarChar(2)
+  seller_duns_number    String?                      @db.VarChar(9)
+  buyer_name            String                       @db.VarChar(100)
+  buyer_gstin           String?                      @db.VarChar(15)
+  buyer_address         String                       @db.VarChar(255)
+  buyer_state_code      String                       @db.VarChar(2)
+  place_of_supply       String                       @db.VarChar(100)
+  service_description   String                       @db.VarChar(255)
+  hsn_sac_code          String                       @db.VarChar(10)
+  taxable_value         Decimal                      @db.Decimal(10, 2)
+  cgst_rate             Decimal?                     @default(0.00) @db.Decimal(5, 2)
+  cgst_amount           Decimal?                     @default(0.00) @db.Decimal(10, 2)
+  sgst_rate             Decimal?                     @default(0.00) @db.Decimal(5, 2)
+  sgst_amount           Decimal?                     @default(0.00) @db.Decimal(10, 2)
+  igst_rate             Decimal?                     @default(0.00) @db.Decimal(5, 2)
+  igst_amount           Decimal?                     @default(0.00) @db.Decimal(10, 2)
+  total_amount          Decimal                      @db.Decimal(10, 2)
+  gst_number            String?                      @db.VarChar(15)
+  billing_address       String?                      @db.VarChar(255)
+  is_reverse_charge     Boolean                      @default(false)
+  status                subscription_invoices_status @default(ACTIVE)
+  created_at            DateTime                     @default(now()) @db.DateTime(0)
+  updated_at            DateTime                     @default(now()) @db.DateTime(0)
+  subscription_payments subscription_payments        @relation(fields: [payment_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_invoice_payment")
+
+  @@index([payment_id], map: "fk_invoice_payment")
+  @@index([organization_id], map: "idx_invoice_org")
+  @@index([plan_id], map: "idx_invoice_plan")
+  @@index([subscription_id], map: "idx_invoice_subscription")
+  @@index([user_id], map: "idx_invoice_user")
+}
+
 enum permissions_master_action {
   CREATE
   EDIT
@@ -935,4 +981,10 @@ enum pg_locations_pg_type {
 enum users_gender {
   MALE
   FEMALE
+}
+
+enum subscription_invoices_status {
+  ACTIVE
+  CANCELLED
+  REFUNDED
 }

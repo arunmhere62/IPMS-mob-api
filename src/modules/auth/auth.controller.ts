@@ -13,6 +13,7 @@ import { JwtAuthGuard } from './guards/jwt-auth.guard';
 
 type RequestWithUser = {
   user?: unknown;
+  accessToken?: string;
 };
 
 @ApiTags('auth')
@@ -73,7 +74,7 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @ApiOperation({ summary: 'Logout user and revoke tokens' })
   async logout(@Req() req: RequestWithUser) {
-    return this.authService.logout(req.user);
+    return this.authService.logout(req.user, req.accessToken);
   }
 
   @Post('verify-signup-otp')

@@ -69,42 +69,21 @@ export class JwtTokenService {
     const expiresAt = this.calculateExpiryDate(expiresIn);
     const refreshExpiresAt = this.calculateExpiryDate(String(refreshExpiry));
 
-    // Check if user already has a token record
-    const existingToken = await this.prisma.tokens.findFirst({
-      where: { user_id: user.s_no },
+    // Create a new token record for each login/refresh (multi-session support)
+    await this.prisma.tokens.create({
+      data: {
+        user_id: user.s_no,
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        expires_at: expiresAt,
+        refresh_expires_at: refreshExpiresAt,
+        is_revoked: false,
+        revoked_at: null,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        last_used_at: new Date(),
+      },
     });
-
-    if (existingToken) {
-      // Update existing token
-      await this.prisma.tokens.update({
-        where: { s_no: existingToken.s_no },
-        data: {
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          expires_at: expiresAt,
-          refresh_expires_at: refreshExpiresAt,
-          is_revoked: false,
-          revoked_at: null,
-          ip_address: ipAddress,
-          user_agent: userAgent,
-          last_used_at: new Date(),
-        },
-      });
-    } else {
-      // Create new token record
-      await this.prisma.tokens.create({
-        data: {
-          user_id: user.s_no,
-          access_token: accessToken,
-          refresh_token: refreshToken,
-          expires_at: expiresAt,
-          refresh_expires_at: refreshExpiresAt,
-          ip_address: ipAddress,
-          user_agent: userAgent,
-          last_used_at: new Date(),
-        },
-      });
-    }
 
     return {
       access_token: accessToken,
@@ -171,6 +150,23 @@ export class JwtTokenService {
     await this.prisma.tokens.updateMany({
       where: {
         user_id: userId,
+        is_revoked: false,
+      },
+      data: {
+        is_revoked: true,
+        revoked_at: new Date(),
+      },
+    });
+  }
+
+  /**
+   * Revoke only the current session token (used for per-device logout)
+   */
+  async revokeAccessToken(userId: number, accessToken: string) {
+    await this.prisma.tokens.updateMany({
+      where: {
+        user_id: userId,
+        access_token: accessToken,
         is_revoked: false,
       },
       data: {

@@ -346,14 +346,20 @@ export class AuthDbService {
     return ResponseUtil.success(tokens, 'Token refreshed successfully');
   }
 
-  async logout(user: unknown) {
+  async logout(user: unknown, accessToken?: string) {
     const u = (user as { sub?: unknown } | null) ?? null;
     const userId = Number(u?.sub);
     if (!userId) {
       throw new UnauthorizedException('Invalid user context');
     }
 
-    await this.jwtTokenService.revokeToken(userId);
+    const token = String(accessToken ?? '').trim();
+    if (token) {
+      await this.jwtTokenService.revokeAccessToken(userId, token);
+    } else {
+      await this.jwtTokenService.revokeToken(userId);
+    }
+
     return ResponseUtil.success(null, 'Logged out successfully');
   }
 

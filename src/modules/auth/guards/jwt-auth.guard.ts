@@ -24,6 +24,7 @@ export class JwtAuthGuard implements CanActivate {
     }
 
     request.user = payload;
+    request.accessToken = token;
 
     return true;
   }

@@ -24,6 +24,8 @@ import { Prisma } from '@prisma/client';
 export class AuthDbService {
   private readonly OTP_EXPIRY_MINUTES: number;
   private readonly MAX_ATTEMPTS: number;
+  private readonly TEST_OTP_PHONE_LAST10 = '8248449609';
+  private readonly TEST_OTP_CODE = '5555';
 
   constructor(
     private prisma: PrismaService,
@@ -43,6 +45,18 @@ export class AuthDbService {
    */
   private generateOtp(): string {
     return Math.floor(1000 + Math.random() * 9000).toString();
+  }
+
+  private isTestOtpEnabled(): boolean {
+    const allow = String(this.configService.get<string>('ALLOW_TEST_OTP') ?? '').toLowerCase();
+    const isProduction = Boolean(this.configService.get<boolean>('app.isProduction'));
+    return !isProduction && (allow === 'true' || allow === '1' || allow === 'yes');
+  }
+
+  private isTestOtpPhone(phone: string): boolean {
+    const digits = String(phone ?? '').replace(/[^0-9]/g, '');
+    const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+    return last10 === this.TEST_OTP_PHONE_LAST10;
   }
 
   /**
@@ -75,7 +89,10 @@ export class AuthDbService {
     }
 
     // Generate OTP
-    const otp = this.generateOtp();
+    let otp = this.generateOtp();
+    if (this.isTestOtpEnabled() && this.isTestOtpPhone(normalizedPhone)) {
+      otp = this.TEST_OTP_CODE;
+    }
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + this.OTP_EXPIRY_MINUTES);
 

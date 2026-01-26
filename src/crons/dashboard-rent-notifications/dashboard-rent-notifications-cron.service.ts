@@ -8,9 +8,16 @@ const OWNER_ADMIN_ROLE_NAMES = ['ADMIN', 'SUPER_ADMIN'];
 
 type PgLite = { s_no: number; location_name: string | null };
 
+type RecordValue = Record<string, unknown>;
+
+const isRecord = (value: unknown): value is RecordValue =>
+  Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+
 @Injectable()
 export class DashboardRentNotificationsCronService {
   private readonly logger = new Logger(DashboardRentNotificationsCronService.name);
+
+  private readonly dedupeWindowMinutes = 180;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -20,6 +27,38 @@ export class DashboardRentNotificationsCronService {
 
   private isEnabled() {
     return String(process.env.CRON_JOB ?? '').toLowerCase() === 'true';
+  }
+
+  private async alreadyNotifiedRecently(params: {
+    userId: number;
+    type: string;
+    pgId: number;
+  }) {
+    const { userId, type, pgId } = params;
+    const since = new Date(Date.now() - this.dedupeWindowMinutes * 60 * 1000);
+
+    const recent = await this.prisma.notifications.findMany({
+      where: {
+        user_id: userId,
+        type,
+        sent_at: { gte: since },
+      },
+      orderBy: { sent_at: 'desc' },
+      take: 20,
+      select: {
+        data: true,
+      },
+    });
+
+    for (const n of recent) {
+      const data: unknown = n.data;
+      const notifiedPgId = isRecord(data) ? Number(data.pg_id) : NaN;
+      if (Number.isFinite(notifiedPgId) && notifiedPgId === pgId) {
+        return true;
+      }
+    }
+
+    return false;
   }
 
   async runPartialRentSummary(params: { force?: boolean } = {}) {
@@ -132,6 +171,18 @@ export class DashboardRentNotificationsCronService {
     const body = `${count} tenant${count === 1 ? '' : 's'} have partial rent pending in ${pg.location_name ?? 'your PG'}.`;
 
     for (const r of recipients) {
+      const alreadyNotified = await this.alreadyNotifiedRecently({
+        userId: r.userId,
+        type: 'PARTIAL_RENT_SUMMARY',
+        pgId: pg.s_no,
+      });
+      if (alreadyNotified) {
+        this.logger.log(
+          `⏭️ [CRON] Skipping duplicate PARTIAL_RENT_SUMMARY user=${r.userId} pg=${pg.s_no}`,
+        );
+        continue;
+      }
+
       await this.notificationService.sendToUser(r.userId, {
         title,
         body,
@@ -155,6 +206,18 @@ export class DashboardRentNotificationsCronService {
     const body = `${count} tenant${count === 1 ? '' : 's'} have rent pending in ${pg.location_name ?? 'your PG'}.`;
 
     for (const r of recipients) {
+      const alreadyNotified = await this.alreadyNotifiedRecently({
+        userId: r.userId,
+        type: 'PENDING_RENT_SUMMARY',
+        pgId: pg.s_no,
+      });
+      if (alreadyNotified) {
+        this.logger.log(
+          `⏭️ [CRON] Skipping duplicate PENDING_RENT_SUMMARY user=${r.userId} pg=${pg.s_no}`,
+        );
+        continue;
+      }
+
       await this.notificationService.sendToUser(r.userId, {
         title,
         body,

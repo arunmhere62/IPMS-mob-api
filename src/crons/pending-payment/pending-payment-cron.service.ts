@@ -23,7 +23,8 @@ export class PendingPaymentCronService {
   ) {}
 
   private isEnabled() {
-    return String(process.env.CRON_JOB ?? '').toLowerCase() === 'true';
+    // return String(process.env.PENDING_PAYMENT_CRON_JOB ?? '').toLowerCase() === 'true';
+    return false;
   }
 
   async checkPendingRentPayments() {

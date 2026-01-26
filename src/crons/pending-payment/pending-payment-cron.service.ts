@@ -1,5 +1,4 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { Cron } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service';
 import { NotificationService } from '../../modules/notification/notification.service';
 import { PendingPaymentService } from '../../modules/tenant/pending-payment/pending-payment.service';
@@ -27,10 +26,6 @@ export class PendingPaymentCronService {
     return String(process.env.CRON_JOB ?? '').toLowerCase() === 'true';
   }
 
-  @Cron('0 */6 * * *', {
-    name: 'check-pending-rent-payments',
-    timeZone: 'Asia/Kolkata',
-  })
   async checkPendingRentPayments() {
     if (!this.isEnabled()) return;
     this.logger.log('🔔 [CRON] Starting pending rent payment check...');
@@ -60,10 +55,6 @@ export class PendingPaymentCronService {
     }
   }
 
-  @Cron('0 9 * * *', {
-    name: 'daily-payment-reminder',
-    timeZone: 'Asia/Kolkata',
-  })
   async sendDailyPaymentReminder() {
     if (!this.isEnabled()) return;
     this.logger.log('🔔 [CRON] Starting daily payment reminder...');

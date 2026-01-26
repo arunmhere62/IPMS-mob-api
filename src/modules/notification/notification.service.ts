@@ -56,6 +56,68 @@ export class NotificationService {
   private readonly logger = new Logger(NotificationService.name);
   private expo: Expo;
 
+  private async deactivateOtherTokensForDevice(params: {
+    userId: number;
+    deviceId: string;
+    keepToken: string;
+  }) {
+    const { userId, deviceId, keepToken } = params;
+    try {
+      await this.prisma.user_fcm_tokens.updateMany({
+        where: {
+          user_id: userId,
+          device_id: deviceId,
+          is_active: true,
+          fcm_token: { not: keepToken },
+        },
+        data: {
+          is_active: false,
+          updated_at: new Date(),
+        },
+      });
+    } catch (error) {
+      this.logger.error(
+        `❌ Failed to deactivate other tokens user=${userId} device_id=${deviceId} keep=${this.maskToken(keepToken)} err=${error.message}`,
+      );
+    }
+  }
+
+  private dedupeActiveTokens(
+    tokens: Array<{ fcm_token: string; device_id: string | null; updated_at: Date; created_at: Date }>,
+  ) {
+    const byKey = new Map<
+      string,
+      { fcm_token: string; device_id: string | null; updated_at: Date; created_at: Date }
+    >();
+
+    for (const t of tokens) {
+      const key = t.device_id ? `device:${t.device_id}` : `token:${t.fcm_token}`;
+      const prev = byKey.get(key);
+      if (!prev) {
+        byKey.set(key, t);
+        continue;
+      }
+
+      const prevTime = prev.updated_at?.getTime?.() ?? prev.created_at?.getTime?.() ?? 0;
+      const nextTime = t.updated_at?.getTime?.() ?? t.created_at?.getTime?.() ?? 0;
+      if (nextTime >= prevTime) {
+        byKey.set(key, t);
+      }
+    }
+
+    const uniqByToken = new Map<
+      string,
+      { fcm_token: string; device_id: string | null; updated_at: Date; created_at: Date }
+    >();
+    for (const t of byKey.values()) {
+      if (!uniqByToken.has(t.fcm_token)) {
+        uniqByToken.set(t.fcm_token, t);
+      }
+    }
+
+    return Array.from(uniqByToken.values());
+  }
+
   private isExpoReceipt(value: unknown): value is { status?: string; message?: string; details?: Record<string, unknown> } {
     if (!value || typeof value !== 'object') return false;
     return true;
@@ -191,6 +253,14 @@ export class NotificationService {
             updated_at: new Date(),
           },
         });
+
+        if (tokenData.device_id) {
+          await this.deactivateOtherTokensForDevice({
+            userId,
+            deviceId: tokenData.device_id,
+            keepToken: tokenData.fcm_token,
+          });
+        }
         
         this.logger.log(`✅ Updated token for user ${userId} token=${this.maskToken(tokenData.fcm_token)}`);
         return { success: true, message: 'Token updated' };
@@ -207,6 +277,14 @@ export class NotificationService {
           is_active: true,
         },
       });
+
+      if (tokenData.device_id) {
+        await this.deactivateOtherTokensForDevice({
+          userId,
+          deviceId: tokenData.device_id,
+          keepToken: tokenData.fcm_token,
+        });
+      }
 
       this.logger.log(`✅ Registered token for user ${userId} token=${this.maskToken(tokenData.fcm_token)}`);
       return { success: true, message: 'Token registered' };
@@ -256,6 +334,9 @@ export class NotificationService {
         },
         select: {
           fcm_token: true,
+          device_id: true,
+          updated_at: true,
+          created_at: true,
         },
       });
 
@@ -264,7 +345,17 @@ export class NotificationService {
         return { success: false, message: 'No tokens found' };
       }
 
-      const allTokens = tokens.map(t => t.fcm_token);
+      const normalized = tokens
+        .map((t) => ({
+          fcm_token: t.fcm_token,
+          device_id: t.device_id ?? null,
+          updated_at: t.updated_at,
+          created_at: t.created_at,
+        }))
+        .filter((t) => typeof t.fcm_token === 'string' && t.fcm_token.length > 0);
+
+      const uniqueTokens = this.dedupeActiveTokens(normalized);
+      const allTokens = uniqueTokens.map((t) => t.fcm_token);
       
       // Separate Expo tokens from Firebase tokens
       const expoTokens = allTokens.filter(token => Expo.isExpoPushToken(token));

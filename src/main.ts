@@ -11,7 +11,7 @@ import { PerformanceInterceptor } from './common/interceptors/performance.interc
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-
+  console.log('NODE_ENV (runtime) =', process.env.NODE_ENV);
   // Payload size limit for image uploads (50MB - images are compressed on frontend)
   app.use(bodyParser.json({ limit: '50mb' }));
   app.use(bodyParser.urlencoded({ limit: '50mb', extended: true }));

@@ -49,8 +49,7 @@ export class AuthDbService {
 
   private isTestOtpEnabled(): boolean {
     const allow = String(this.configService.get<string>('ALLOW_TEST_OTP') ?? '').toLowerCase();
-    const isProduction = Boolean(this.configService.get<boolean>('app.isProduction'));
-    return !isProduction && (allow === 'true' || allow === '1' || allow === 'yes');
+    return allow === 'true' || allow === '1' || allow === 'yes';
   }
 
   private isTestOtpPhone(phone: string): boolean {

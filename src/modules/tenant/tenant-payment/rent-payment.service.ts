@@ -52,6 +52,12 @@ export class TenantPaymentService {
     };
   }
 
+  private getDaysBetween(start: Date, end: Date): number {
+    const startUtc = Date.UTC(start.getUTCFullYear(), start.getUTCMonth(), start.getUTCDate());
+    const endUtc = Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate());
+    return Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24));
+  }
+
   private moneyRound2(n: number): number {
     return Math.round((n + Number.EPSILON) * 100) / 100;
   }
@@ -273,15 +279,23 @@ export class TenantPaymentService {
     }
 
     const monthlyRent = Number(bed?.bed_price ?? 0);
-    const computedActualRentAmount =
-      cycleType === 'CALENDAR' && cycleStart && cycleEnd
-        ? this.computeExpectedRentForCalendarCycle({
-            monthlyRent,
-            cycleStart,
-            cycleEnd,
-            tenantCheckInDate: tenant.check_in_date,
-          })
-        : this.moneyRound2(Number(createTenantPaymentDto.actual_rent_amount || 0));
+    let computedActualRentAmount: number;
+
+    if (createTenantPaymentDto.actual_rent_amount && Number(createTenantPaymentDto.actual_rent_amount) > 0) {
+      computedActualRentAmount = this.moneyRound2(Number(createTenantPaymentDto.actual_rent_amount));
+    } else if (cycleType === 'CALENDAR' && cycleStart && cycleEnd) {
+      computedActualRentAmount = this.computeExpectedRentForCalendarCycle({
+        monthlyRent,
+        cycleStart,
+        cycleEnd,
+        tenantCheckInDate: tenant.check_in_date,
+      });
+    } else {
+      // Fallback: prorate current bed price for the cycle period
+      const daysInPeriod = this.getDaysBetween(cycleStart, cycleEnd) + 1;
+      const daysInMonth = new Date(Date.UTC(cycleStart.getUTCFullYear(), cycleStart.getUTCMonth() + 1, 0)).getUTCDate();
+      computedActualRentAmount = this.moneyRound2((monthlyRent / daysInMonth) * daysInPeriod);
+    }
 
     // Validate amount paid does not exceed computed actual rent amount
     if (Number(createTenantPaymentDto.amount_paid) > computedActualRentAmount) {
@@ -1029,7 +1043,12 @@ export class TenantPaymentService {
     const addGapIfNeeded = (cycle: { s_no: number; cycle_start: Date; cycle_end: Date }) => {
       const rentDueFromAllocations = computeProratedDueFromAllocations(cycle.cycle_start, cycle.cycle_end);
       const rentDueFromPayments = dueFromPaymentsForCycleId(cycle.s_no);
-      const rentDue = rentDueFromAllocations > 0 ? rentDueFromAllocations : rentDueFromPayments;
+      // Fallback to current bed price if both allocations and payments are missing
+      const currentBedPrice = Number(tenant.beds?.bed_price ?? 0);
+      const fallbackDue = currentBedPrice > 0 ? computeProratedAmountForMonth(currentBedPrice, cycle.cycle_start, cycle.cycle_end) : 0;
+      const rentDue = rentDueFromAllocations > 0 ? rentDueFromAllocations : 
+                     rentDueFromPayments > 0 ? rentDueFromPayments : 
+                     fallbackDue;
       const totalPaid = sumPaidForCycleId(cycle.s_no);
       const isCovered = rentDue > 0 ? amountsEqualOrGreater(totalPaid, rentDue) : totalPaid > 0;
 

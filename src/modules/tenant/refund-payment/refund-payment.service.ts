@@ -20,11 +20,6 @@ export class RefundPaymentService {
       throw new NotFoundException(`Tenant with ID ${createRefundPaymentDto.tenant_id} not found`);
     }
 
-    // Validate tenant has checked out
-    if (!tenant.check_out_date) {
-      throw new BadRequestException(`Refund payments can only be created for tenants who have checked out. Tenant ${tenant.name} has not checked out.`);
-    }
-
     // Check if tenant already has a refund payment
     const existingRefund = await this.prisma.refund_payments.findFirst({
       where: {

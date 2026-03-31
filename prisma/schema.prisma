@@ -714,7 +714,7 @@ model user_subscriptions {
   plan_id               Int
   status                user_subscriptions_status @default(PENDING)
   start_date            DateTime                  @default(now()) @db.Timestamp(0)
-  end_date              DateTime                  @default(dbgenerated("'0000-00-00 00:00:00'")) @db.Timestamp(0)
+  end_date              DateTime?                 @db.Timestamp(0)
   auto_renew            Boolean                   @default(false)
   is_trial              Boolean                   @default(false)
   created_at            DateTime                  @default(now()) @db.Timestamp(0)

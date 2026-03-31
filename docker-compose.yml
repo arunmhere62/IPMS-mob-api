@@ -1,0 +1,86 @@
+version: "3.8"
+
+services:
+  backend:
+    build: .
+    container_name: ipms-mob-api
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      PORT: 3000
+      API_PREFIX: api
+      API_VERSION: v1
+      DATABASE_URL: ${DATABASE_URL}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      EXPO_ACCESS_TOKEN: ${EXPO_ACCESS_TOKEN}
+      AWS_ACCESS_KEY_ID: ${AWS_ACCESS_KEY_ID}
+      AWS_SECRET_ACCESS_KEY: ${AWS_SECRET_ACCESS_KEY}
+      AWS_REGION: ${AWS_REGION}
+      AWS_S3_BUCKET_NAME: ${AWS_S3_BUCKET_NAME}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID}
+      FIREBASE_PRIVATE_KEY_ID: ${FIREBASE_PRIVATE_KEY_ID}
+      FIREBASE_PRIVATE_KEY: ${FIREBASE_PRIVATE_KEY}
+      FIREBASE_CLIENT_EMAIL: ${FIREBASE_CLIENT_EMAIL}
+      FIREBASE_CLIENT_ID: ${FIREBASE_CLIENT_ID}
+      EMAIL_ENABLED: ${EMAIL_ENABLED}
+      EMAIL_HOST: ${EMAIL_HOST}
+      EMAIL_PORT: ${EMAIL_PORT}
+      EMAIL_SECURE: ${EMAIL_SECURE}
+      EMAIL_USER: ${EMAIL_USER}
+      EMAIL_PASS: ${EMAIL_PASS}
+      EMAIL_FROM: ${EMAIL_FROM}
+      CCAVENUE_MERCHANT_ID: ${CCAVENUE_MERCHANT_ID}
+      CCAVENUE_ACCESS_CODE: ${CCAVENUE_ACCESS_CODE}
+      CCAVENUE_WORKING_KEY: ${CCAVENUE_WORKING_KEY}
+      CCAVENUE_PAYMENT_URL: ${CCAVENUE_PAYMENT_URL}
+      CCAVENUE_REDIRECT_URL: ${CCAVENUE_REDIRECT_URL}
+      CCAVENUE_CANCEL_URL: ${CCAVENUE_CANCEL_URL}
+      SMS_API_URL: ${SMS_API_URL}
+      SMS_USER: ${SMS_USER}
+      SMS_PASSWORD: ${SMS_PASSWORD}
+      SMS_SENDER_ID: ${SMS_SENDER_ID}
+      SMS_CHANNEL: ${SMS_CHANNEL}
+      SMS_ROUTE: ${SMS_ROUTE}
+      ALLOW_TEST_OTP: ${ALLOW_TEST_OTP}
+      FORCE_REAL_SMS_IN_DEV: ${FORCE_REAL_SMS_IN_DEV}
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ipms-mob-api-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d:ro
+      - letsencrypt:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: ipms-mob-api-certbot
+    restart: unless-stopped
+    volumes:
+      - letsencrypt:/etc/letsencrypt
+      - certbot-webroot:/var/www/certbot
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        trap exit TERM;
+        while :; do
+          certbot renew --webroot -w /var/www/certbot --quiet;
+          sleep 12h & wait $${!};
+        done
+
+networks:
+  default:
+    name: ipms_mob_api
+
+volumes:
+  letsencrypt:
+  certbot-webroot:

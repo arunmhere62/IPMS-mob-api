@@ -13,12 +13,12 @@ export class SmsService {
 
   constructor(private configService: ConfigService) {
     // SMS API Configuration
-    this.smsApiUrl = 'http://cannyinfotech.in/api/mt/SendSMS';
-    this.smsUser = 'SATZTECHNOSOLUTIONS';
-    this.smsPassword = 'demo1234';
-    this.smsSenderId = 'SATZTH';
-    this.smsChannel = 'Trans';
-    this.smsRoute = '10';
+    this.smsApiUrl = this.configService.get<string>('SMS_API_URL') || 'http://cannyinfotech.in/api/mt/SendSMS';
+    this.smsUser = this.configService.get<string>('SMS_USER') || 'SATZTECHNOSOLUTIONS';
+    this.smsPassword = this.configService.get<string>('SMS_PASSWORD') || 'demo1234';
+    this.smsSenderId = this.configService.get<string>('SMS_SENDER_ID') || 'SATZTH';
+    this.smsChannel = this.configService.get<string>('SMS_CHANNEL') || 'Trans';
+    this.smsRoute = this.configService.get<string>('SMS_ROUTE') || '10';
   }
 
   /**
@@ -28,6 +28,12 @@ export class SmsService {
     try {
       const message = `Your OTP number for registration is ${otp}. Please verify your OTP - SATZ/TNYADAVS.COM`;
 
+      const normalizedNumber = String(phoneNumber || '').replace(/[^0-9]/g, '');
+      if (!normalizedNumber) {
+        this.logger.error(`Invalid phone number for SMS provider: "${phoneNumber}"`);
+        return false;
+      }
+
       const url = new URL(this.smsApiUrl);
       url.searchParams.append('user', this.smsUser);
       url.searchParams.append('password', this.smsPassword);
@@ -35,11 +41,11 @@ export class SmsService {
       url.searchParams.append('channel', this.smsChannel);
       url.searchParams.append('DCS', '0');
       url.searchParams.append('flashsms', '0');
-      url.searchParams.append('number', phoneNumber);
+      url.searchParams.append('number', normalizedNumber);
       url.searchParams.append('text', message);
       url.searchParams.append('route', this.smsRoute);
 
-      this.logger.log(`Sending OTP to ${phoneNumber}`);
+      this.logger.log(`Sending OTP to ${normalizedNumber}`);
 
       const response = await fetch(url.toString());
       const result = await response.text();
@@ -47,15 +53,24 @@ export class SmsService {
       this.logger.log(`SMS API Response: ${result}`);
 
       // Check if SMS was sent successfully
-      if (response.ok) {
-        this.logger.log(`OTP sent successfully to ${phoneNumber}`);
+      const resultLower = String(result || '').toLowerCase();
+      const looksLikeError =
+        resultLower.includes('error') ||
+        resultLower.includes('invalid') ||
+        resultLower.includes('failed') ||
+        resultLower.includes('unauthor') ||
+        resultLower.includes('incorrect');
+
+      if (response.ok && !looksLikeError) {
+        this.logger.log(`OTP sent successfully to ${normalizedNumber}`);
         return true;
       } else {
-        this.logger.error(`Failed to send OTP to ${phoneNumber}: ${result}`);
+        this.logger.error(`Failed to send OTP to ${normalizedNumber}: ${result}`);
         return false;
       }
     } catch (error) {
-      this.logger.error(`Error sending OTP: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error sending OTP: ${msg}`);
       return false;
     }
   }
@@ -65,6 +80,12 @@ export class SmsService {
    */
   async sendSms(phoneNumber: string, message: string): Promise<boolean> {
     try {
+      const normalizedNumber = String(phoneNumber || '').replace(/[^0-9]/g, '');
+      if (!normalizedNumber) {
+        this.logger.error(`Invalid phone number for SMS provider: "${phoneNumber}"`);
+        return false;
+      }
+
       const url = new URL(this.smsApiUrl);
       url.searchParams.append('user', this.smsUser);
       url.searchParams.append('password', this.smsPassword);
@@ -72,18 +93,19 @@ export class SmsService {
       url.searchParams.append('channel', this.smsChannel);
       url.searchParams.append('DCS', '0');
       url.searchParams.append('flashsms', '0');
-      url.searchParams.append('number', phoneNumber);
+      url.searchParams.append('number', normalizedNumber);
       url.searchParams.append('text', message);
       url.searchParams.append('route', this.smsRoute);
 
       const response = await fetch(url.toString());
       const result = await response.text();
 
-      this.logger.log(`SMS sent to ${phoneNumber}: ${result}`);
+      this.logger.log(`SMS sent to ${normalizedNumber}: ${result}`);
 
       return response.ok;
     } catch (error) {
-      this.logger.error(`Error sending SMS: ${error.message}`);
+      const msg = error instanceof Error ? error.message : String(error);
+      this.logger.error(`Error sending SMS: ${msg}`);
       return false;
     }
   }

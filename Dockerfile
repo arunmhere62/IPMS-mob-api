@@ -1,25 +1,26 @@
-FROM node:20-alpine AS deps
+# Use Debian-based image (important for Prisma)
+FROM node:20
+
 WORKDIR /app
 
+# Install OpenSSL (required for Prisma)
+RUN apt-get update && apt-get install -y openssl
+
+# Copy package files
 COPY package*.json ./
-COPY prisma ./prisma
-RUN npm ci
 
-FROM node:20-alpine AS build
-WORKDIR /app
+# Install dependencies
+RUN npm install
 
-COPY --from=deps /app/node_modules ./node_modules
+# Copy full project
 COPY . .
+
+# Generate Prisma client + build app
+RUN npx prisma generate
 RUN npm run build
 
-FROM node:20-alpine AS runner
-WORKDIR /app
-ENV NODE_ENV=production
-
-COPY --from=build /app/package*.json ./
-COPY --from=build /app/node_modules ./node_modules
-COPY --from=build /app/prisma ./prisma
-COPY --from=build /app/dist ./dist
-
+# Expose port
 EXPOSE 3000
+
+# Start app
 CMD ["node", "dist/main.js"]

@@ -66,8 +66,8 @@ services:
     container_name: ipms-mob-api-certbot
     restart: unless-stopped
     volumes:
-      - letsencrypt:/etc/letsencrypt
-      - certbot-webroot:/var/www/certbot
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
     entrypoint: ["sh", "-c"]
     command:
       - |
@@ -80,7 +80,3 @@ services:
 networks:
   default:
     name: ipms_mob_api
-
-volumes:
-  letsencrypt:
-  certbot-webroot:

@@ -39,5 +39,8 @@ lerna-debug.log*
 .env.local
 .env.*.local
 
+# Certbot / Let's Encrypt (never commit certificates)
+/certbot
+
 # Prisma
 prisma/migrations

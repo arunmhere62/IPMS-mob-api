@@ -14,28 +14,16 @@ jobs:
           host: ${{ secrets.VPS_HOST }}
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
-          port: 22
+          port: ${{ secrets.VPS_PORT }}
           debug: false
           script: |
             set -e
-            cd /var/www/ipms-mob-api/IPMS-mob-api
-
-            # Backup .env before pulling
-            cp .env .env.backup
+            cd ${{ secrets.VPS_PATH }}
 
             git fetch --all
             git reset --hard origin/main
 
-            # Restore .env (don't overwrite from GitHub)
-            mv .env.backup .env
+            docker compose up -d --build
+            docker compose ps
 
-            npm install --legacy-peer-deps
-            npx prisma generate
-            npm run build
-
-            pm2 delete pg-api || true
-            pm2 start ecosystem.config.js
-            pm2 save
-            
             echo "Deployment completed!"
-            pm2 status

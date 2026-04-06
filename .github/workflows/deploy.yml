@@ -18,10 +18,23 @@ jobs:
           debug: false
           script: |
             set -e
-            cd ${{ secrets.VPS_PATH }}
+            if [ ! -d "${{ secrets.VPS_PATH }}" ]; then
+              echo "[deploy] Directory does not exist: ${{ secrets.VPS_PATH }}"
+              echo "[deploy] Current directory: $(pwd)"
+              echo "[deploy] Listing /root (if accessible):"
+              ls -la /root || true
+              exit 1
+            fi
+
+            cd "${{ secrets.VPS_PATH }}"
+            echo "[deploy] cd success: $(pwd)"
 
             git fetch --all
             git reset --hard origin/main
+
+            # Clean previous stack to avoid docker network label conflicts
+            docker compose down --remove-orphans || true
+            docker network rm ipms_mob_api || true
 
             docker compose up -d --build
             docker compose ps

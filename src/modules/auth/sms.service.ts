@@ -54,12 +54,16 @@ export class SmsService {
 
       // Check if SMS was sent successfully
       const resultLower = String(result || '').toLowerCase();
+      const hasExplicitSuccessErrorCode = /error\s*[:=]\s*0\b/.test(resultLower);
+      const hasExplicitFailureErrorCode = /error\s*[:=]\s*[1-9][0-9]*\b/.test(resultLower);
+
       const looksLikeError =
-        resultLower.includes('error') ||
-        resultLower.includes('invalid') ||
-        resultLower.includes('failed') ||
-        resultLower.includes('unauthor') ||
-        resultLower.includes('incorrect');
+        hasExplicitFailureErrorCode ||
+        (!hasExplicitSuccessErrorCode &&
+          (resultLower.includes('invalid') ||
+            resultLower.includes('failed') ||
+            resultLower.includes('unauthor') ||
+            resultLower.includes('incorrect')));
 
       if (response.ok && !looksLikeError) {
         this.logger.log(`OTP sent successfully to ${normalizedNumber}`);

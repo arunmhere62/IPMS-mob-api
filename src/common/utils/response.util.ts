@@ -64,7 +64,8 @@ export class ResponseUtil {
     page: number,
     limit: number,
     message: string = 'Success',
-  ): ApiResponseDto<{ data: T[]; pagination: { total: number; page: number; limit: number; totalPages: number } }> {
+  ): ApiResponseDto<{ data: T[]; pagination: { total: number; page: number; limit: number; totalPages: number; hasMore: boolean } }> {
+    const totalPages = Math.ceil(total / limit);
     return new ApiResponseDto(
       HttpStatus.OK,
       message,
@@ -74,7 +75,8 @@ export class ResponseUtil {
           total,
           page,
           limit,
-          totalPages: Math.ceil(total / limit),
+          totalPages,
+          hasMore: page < totalPages,
         },
       },
       undefined,

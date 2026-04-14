@@ -9,6 +9,7 @@ import { TransferTenantDto } from './dto/transfer-tenant.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { TenantStatusService } from './tenant-status/tenant-status.service';
 import { TenantRentSummaryService } from './tenant-rent-summary.service';
+import { TenantPaymentService } from './tenant-payment/rent-payment.service';
 import { Prisma, tenants_status } from '@prisma/client';
 
 type TenantAllocationSummary = {
@@ -76,6 +77,7 @@ export class TenantService {
     private pendingRentCalculatorService: PendingRentCalculatorService,
     private rentCycleCalculatorService: RentCycleCalculatorService,
     private s3DeletionService: S3DeletionService,
+    private tenantPaymentService: TenantPaymentService,
   ) {}
 
   private resolveCurrentRentCycleForDate(params: {
@@ -431,6 +433,14 @@ export class TenantService {
 
       return createdTenant;
     });
+
+    // Call gap detection after tenant creation to ensure rent cycles are created
+    try {
+      await this.tenantPaymentService.detectPaymentGaps(tenant.s_no);
+    } catch (error) {
+      // Log error but don't fail tenant creation if gap detection fails
+      console.error('Gap detection failed during tenant creation:', error);
+    }
 
     return ResponseUtil.success(tenant, 'Tenant created successfully');
   }

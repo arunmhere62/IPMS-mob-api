@@ -51,15 +51,17 @@ export class RoomController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
     @Query('search') search?: string,
+    @Query('occupancy') occupancy?: 'all' | 'occupied' | 'available',
   ) {
     const pageNumber = page ? parseInt(page, 10) : 1;
-    const limitNumber = limit ? parseInt(limit, 10) : 100;
+    const limitNumber = limit ? parseInt(limit, 10) : 20;
 
     return this.roomService.findAll({
       page: pageNumber,
       limit: limitNumber,
       pg_id: headers.pg_id!,
       search,
+      occupancy,
     });
   }
 

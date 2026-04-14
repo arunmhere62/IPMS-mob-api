@@ -228,9 +228,8 @@ export class TenantStatusService {
    * NOTE: A tenant can appear in BOTH pending and partial tabs if they have both types of payments
    */
   getTenantsWithPendingRent(tenants: unknown[]): unknown[] {
-    const enrichedTenants = this.enrichTenantsWithStatus(tenants);
-
-    const filteredTenants = enrichedTenants.filter((tenant) => {
+    // Don't re-enrich - use already enriched data from tenant.service
+    const filteredTenants = tenants.filter((tenant) => {
       const t = tenant as Record<string, unknown>;
       if (t.status !== 'ACTIVE') return false;
 
@@ -239,15 +238,16 @@ export class TenantStatusService {
       const partialDue = Number(t.partial_due_amount || 0);
       if (partialDue > 0) return false;
 
-      // Include tenant if they have any pending/failed payments
+      // Include tenant if they have unpaid months (from rent cycle calculation)
+      const unpaidMonths = (t.unpaid_months as Array<{ month_name?: string }> | undefined) || [];
+      const hasUnpaidMonths = unpaidMonths.length > 0;
+
+      // Include tenant if they have pending/failed payments
       const rentPayments = (t.rent_payments as Array<{ status?: string }> | undefined) || [];
       const hasPendingOrFailed = rentPayments.some((p: { status?: string }) => p.status === 'PENDING' || p.status === 'FAILED');
 
-      // Include tenant if they have pending months (even if they also have partial payments)
-      const hasPendingMonths = Number(t.pending_months || 0) > 0;
-
-      // Include if they have pending/failed payments OR pending months
-      return hasPendingOrFailed || hasPendingMonths;
+      // Include if they have pending/failed payments OR unpaid months
+      return hasPendingOrFailed || hasUnpaidMonths;
     });
     return filteredTenants;
   }
@@ -257,52 +257,50 @@ export class TenantStatusService {
    * Returns tenants with PARTIAL payments
    */
   getTenantsWithPartialRent(tenants: unknown[]): unknown[] {
-    // NOTE: In the tenant list API we already compute `partial_due_amount` using
-    // TenantRentSummaryService (cycle-based remaining due). Re-enriching here
-    // recalculates from raw payment statuses and can overwrite `partial_due_amount`
-    // (e.g. when payment rows are not marked PARTIAL but remaining due exists).
-    // So we filter using the existing enriched values.
-    return (tenants || []).filter((tenant) => {
+    // Don't re-enrich - use already enriched data from tenant.service
+    const filteredTenants = tenants.filter((tenant) => {
       const t = tenant as Record<string, unknown>;
-      return t.status === 'ACTIVE' && Number(t.partial_due_amount || 0) > 0;
+      if (t.status !== 'ACTIVE') return false;
+
+      const partialDue = Number(t.partial_due_amount || 0);
+      return partialDue > 0;
     });
+    return filteredTenants;
   }
 
   /**
    * Get active tenants without advance payment
-   * Returns tenants that haven't paid advance
    */
   getTenantsWithoutAdvance(tenants: unknown[]): unknown[] {
-    const enrichedTenants = this.enrichTenantsWithStatus(tenants);
-    return enrichedTenants.filter(
-      (tenant) => {
-        const t = tenant as Record<string, unknown>;
-        return t.status === 'ACTIVE' && !Boolean(t.is_advance_paid);
-      }
-    );
+    // Don't re-enrich - use already enriched data from tenant.service
+    const filteredTenants = tenants.filter((tenant) => {
+      const t = tenant as Record<string, unknown>;
+      if (t.status !== 'ACTIVE') return false;
+
+      const isAdvancePaid = t.is_advance_paid as boolean;
+      return !isAdvancePaid;
+    });
+    return filteredTenants;
   }
 
-  /**
-   * Map database tenant object to TenantData interface
-   */
   private mapTenantData(tenant: unknown): TenantData {
-    const t = (tenant as Record<string, unknown>) || {};
+    const t = tenant as Record<string, unknown>;
 
-    const toPaymentStatus = (v: unknown): TenantPayment['status'] => {
-      const s = typeof v === 'string' ? v : '';
-      if (s === 'PAID' || s === 'PENDING' || s === 'FAILED' || s === 'PARTIAL') return s;
+    const toPaymentStatus = (s: unknown): TenantPayment['status'] => {
+      const status = typeof s === 'string' ? s : '';
+      if (status === 'PAID' || status === 'PENDING' || status === 'FAILED' || status === 'PARTIAL') return status;
       return 'PENDING';
     };
 
     const toAdvanceStatus = (v: unknown): AdvancePayment['status'] => {
-      const s = typeof v === 'string' ? v : '';
-      if (s === 'PAID' || s === 'PENDING' || s === 'FAILED') return s;
+      const status = typeof v === 'string' ? v : '';
+      if (status === 'PAID' || status === 'PENDING' || status === 'FAILED') return status;
       return 'PENDING';
     };
 
     const toRefundStatus = (v: unknown): RefundPayment['status'] => {
-      const s = typeof v === 'string' ? v : '';
-      if (s === 'PAID' || s === 'PENDING' || s === 'FAILED' || s === 'PARTIAL') return s;
+      const status = typeof v === 'string' ? v : '';
+      if (status === 'PAID' || status === 'PENDING' || status === 'FAILED' || status === 'PARTIAL') return status;
       return 'PENDING';
     };
 

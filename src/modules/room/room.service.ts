@@ -68,10 +68,12 @@ export class RoomService {
     limit?: number;
     pg_id?: number;
     search?: string;
+    occupancy?: 'all' | 'occupied' | 'available';
   }) {
-    const { page = 1, limit = 10, pg_id, search } = params;
+    const { page = 1, limit = 10, pg_id, search, occupancy } = params;
     const skip = (page - 1) * limit;
 
+    // Build base where clause
     const where: Record<string, unknown> = {
       is_deleted: false,
     };
@@ -87,70 +89,85 @@ export class RoomService {
       ];
     }
 
-    const [rooms, total] = await Promise.all([
-      this.prisma.rooms.findMany({
-        where,
-        skip,
-        take: limit,
-        orderBy: {
-          room_no: 'asc',
-        },
-        include: {
-          pg_locations: {
-            select: {
-              s_no: true,
-              location_name: true,
-            },
+    // Get all rooms with bed info to calculate occupancy
+    const roomsWithBeds = await this.prisma.rooms.findMany({
+      where,
+      include: {
+        pg_locations: {
+          select: {
+            s_no: true,
+            location_name: true,
           },
-          beds: {
-            where: {
-              is_deleted: false,
-            },
-            select: {
-              s_no: true,
-              bed_no: true,
-              bed_price: true,
-              tenants: {
-                where: {
-                  status: 'ACTIVE',
-                  OR: [{ is_deleted: false }, { is_deleted: null }],
-                },
-                select: {
-                  s_no: true,
-                },
+        },
+        beds: {
+          where: {
+            is_deleted: false,
+          },
+          select: {
+            s_no: true,
+            bed_no: true,
+            bed_price: true,
+            tenants: {
+              where: {
+                status: 'ACTIVE',
+                OR: [{ is_deleted: false }, { is_deleted: null }],
+              },
+              select: {
+                s_no: true,
               },
             },
           },
         },
-      }),
-      this.prisma.rooms.count({ where }),
-    ]);
+      },
+      orderBy: {
+        room_no: 'asc',
+      },
+    });
 
-    // Add bed count for each room
+    // Add bed count and occupancy status for each room
     type BedWithTenants = Record<string, unknown> & { tenants?: Array<{ s_no: number }> };
-    const roomsWithBedCount = rooms.map((room) => {
+    const roomsWithBedCount = roomsWithBeds.map((room) => {
       const total_beds = room.beds.length;
       const occupied_beds = room.beds.filter((b) => {
         const bb = b as unknown as BedWithTenants;
         return (bb.tenants || []).length > 0;
       }).length;
       const available_beds = Math.max(total_beds - occupied_beds, 0);
+      const is_occupied = total_beds > 0 && occupied_beds === total_beds;
 
       return {
         ...room,
         beds: room.beds.map((b) => {
-          // Strip tenants from list response to keep payload small
-          const { tenants: _tenants, ...rest } = b as unknown as BedWithTenants;
+          const bb = b as unknown as BedWithTenants;
+          const bed_occupied = (bb.tenants || []).length > 0;
+          // Strip tenants from list response to keep payload small but include bed occupancy status
+          const { tenants: _tenants, ...rest } = bb;
           void _tenants;
-          return rest;
+          return {
+            ...rest,
+            is_occupied: bed_occupied,
+          };
         }),
         total_beds,
         occupied_beds,
         available_beds,
+        is_occupied,
       };
     });
 
-    return ResponseUtil.paginated(roomsWithBedCount, total, page, limit, 'Rooms fetched successfully');
+    // Apply occupancy filtering if specified
+    let filteredRooms = roomsWithBedCount;
+    if (occupancy === 'occupied') {
+      filteredRooms = roomsWithBedCount.filter(room => room.is_occupied);
+    } else if (occupancy === 'available') {
+      filteredRooms = roomsWithBedCount.filter(room => !room.is_occupied);
+    }
+
+    // Apply pagination to filtered results
+    const total = filteredRooms.length;
+    const paginatedRooms = filteredRooms.slice(skip, skip + limit);
+
+    return ResponseUtil.paginated(paginatedRooms, total, page, limit, 'Rooms fetched successfully');
   }
 
   /**

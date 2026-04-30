@@ -315,14 +315,11 @@ async function main() {
     }));
     await newPrisma.visitors.createMany({ data: visitorData, skipDuplicates: true });
   }
-  console.log('Visitors migration completed\n');
 
   // ============================================================
   // STEP 12: MIGRATE EXPENSES
   // ============================================================
-  console.log('=== STEP 12: Migrating expenses ===');
   const oldExpenses = await oldPrisma.$queryRaw<any[]>`SELECT * FROM expenses`;
-  console.log(`Found ${oldExpenses.length} expenses in old database`);
 
   if (oldExpenses.length > 0) {
     const expenseData = oldExpenses.map(expense => ({

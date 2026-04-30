@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException, MethodNotAllowedException } from '@nestjs/common';
+import { RentCalculationUtil } from '../rent-calculation.util';
 
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseUtil } from '../../../common/utils/response.util';
@@ -944,84 +945,23 @@ export class TenantPaymentService {
       return `${year}-${month}-${day}`;
     };
 
-    const getInclusiveDays = (start: Date, end: Date): number => {
-      const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
-      const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
-      return Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24)) + 1;
-    };
-
-    const toDateOnlyUtc = (d: Date): Date => new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
-
-    const computeProratedAmountForMonth = (monthlyPrice: number, start: Date, end: Date): number => {
-      if (monthlyPrice <= 0) return 0;
-
-      const s = toDateOnlyUtc(start);
-      const e = toDateOnlyUtc(end);
-
-      const year = s.getUTCFullYear();
-      const month = s.getUTCMonth();
-      const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
-      const daysInPeriod = getInclusiveDays(s, e);
-
-      return (monthlyPrice / daysInMonth) * daysInPeriod;
-    };
+    const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
 
     const computeProratedDueFromAllocations = (periodStart: Date, periodEnd: Date): number => {
       if (!allocations || allocations.length === 0) return 0;
 
-      const start = toDateOnlyUtc(periodStart);
-      const end = toDateOnlyUtc(periodEnd);
-
-      // Find allocations overlapping the period
-      const overlaps = allocations
-        .map((a: { effective_from: Date; effective_to: Date | null; bed_price_snapshot: unknown }) => ({
-          from: toDateOnlyUtc(new Date(a.effective_from)),
-          to: a.effective_to ? toDateOnlyUtc(new Date(a.effective_to)) : null,
-          price: a.bed_price_snapshot ? Number(a.bed_price_snapshot) : 0,
-        }))
-        .filter((a: { from: Date; to: Date | null; price: number }) => {
-          const aTo = a.to ?? end;
-          return a.from <= end && aTo >= start;
-        })
-        .sort((a: { from: Date }, b: { from: Date }) => a.from.getTime() - b.from.getTime());
-
-      if (overlaps.length === 0) return 0;
-
-      // Compute due by splitting by allocation and by month boundaries
-      let total = 0;
-      overlaps.forEach((a: { from: Date; to: Date | null; price: number }) => {
-        const segStart = a.from > start ? a.from : start;
-        const segEnd = (a.to ?? end) < end ? (a.to ?? end) : end;
-        if (segStart > segEnd) return;
-
-        let cursor = new Date(segStart);
-        while (cursor <= segEnd) {
-          const y = cursor.getUTCFullYear();
-          const m = cursor.getUTCMonth();
-
-          const monthStart = new Date(Date.UTC(y, m, 1));
-          const monthEnd = new Date(Date.UTC(y, m + 1, 0));
-
-          const partStart = cursor > monthStart ? cursor : monthStart;
-          const partEnd = segEnd < monthEnd ? segEnd : monthEnd;
-
-          total += computeProratedAmountForMonth(a.price, partStart, partEnd);
-
-          // move to next day after this month-part
-          const next = new Date(partEnd);
-          next.setUTCDate(next.getUTCDate() + 1);
-          cursor = next;
-        }
+      return RentCalculationUtil.computeExpectedDueFromAllocations({
+        periodStart,
+        periodEnd,
+        cycleType,
+        allocations,
       });
-
-      return moneyRound2(total);
     };
 
     const gaps: Gap[] = [];
     let gapIndex = 0;
-    const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
 
-    const moneyRound2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
+    const moneyRound2 = RentCalculationUtil.moneyRound2;
     const amountsEqualOrGreater = (paid: number, due: number): boolean => paid + 0.00001 >= due;
 
     const sumPaidForCycleId = (cycleId: number): number => {
@@ -1045,7 +985,7 @@ export class TenantPaymentService {
       const rentDueFromPayments = dueFromPaymentsForCycleId(cycle.s_no);
       // Fallback to current bed price if both allocations and payments are missing
       const currentBedPrice = Number(tenant.beds?.bed_price ?? 0);
-      const fallbackDue = currentBedPrice > 0 ? computeProratedAmountForMonth(currentBedPrice, cycle.cycle_start, cycle.cycle_end) : 0;
+      const fallbackDue = currentBedPrice > 0 ? RentCalculationUtil.computeProratedAmountForMonth(currentBedPrice, cycle.cycle_start, cycle.cycle_end) : 0;
       const rentDue = rentDueFromAllocations > 0 ? rentDueFromAllocations : 
                      rentDueFromPayments > 0 ? rentDueFromPayments : 
                      fallbackDue;
@@ -1059,7 +999,7 @@ export class TenantPaymentService {
           cycle_id: cycle.s_no,
           gapStart: formatDateOnly(cycle.cycle_start),
           gapEnd: formatDateOnly(cycle.cycle_end),
-          daysMissing: getInclusiveDays(new Date(cycle.cycle_start), new Date(cycle.cycle_end)),
+          daysMissing: RentCalculationUtil.getInclusiveDays(new Date(cycle.cycle_start), new Date(cycle.cycle_end)),
           priority: gapIndex,
           rentDue,
           totalPaid,

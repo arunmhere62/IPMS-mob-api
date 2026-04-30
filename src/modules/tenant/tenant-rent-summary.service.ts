@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { RentCalculationUtil } from './rent-calculation.util';
 
 type PaymentCycleSummary = {
   start_date: string;
@@ -8,7 +9,7 @@ type PaymentCycleSummary = {
   payments: unknown[];
 };
 
-type UnpaidMonth = { cycle_start: string; cycle_end: string };
+type UnpaidMonth = { cycle_start: string; cycle_end: string; cycle_type?: string };
 
 type TenantAllocation = { effective_from: Date; effective_to: Date | null; bed_price_snapshot: unknown };
 type TenantRentCycle = { s_no: number; cycle_start: Date; cycle_end: Date; cycle_type?: string };
@@ -147,10 +148,13 @@ export class TenantRentSummaryService {
           const totalPaid = moneyRound2(payingRows.reduce((sum: number, p: RentPayment) => sum + Number(p.amount_paid || 0), 0));
           const dueFromPayments = moneyRound2(ps.reduce((max: number, p: RentPayment) => Math.max(max, Number(p.actual_rent_amount || 0)), 0));
 
-          const expectedFromAllocations = computeExpectedDueFromAllocations(
-            new Date(c.cycle_start),
-            new Date(c.cycle_end),
-          );
+          const cycleType = (c.cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+          const expectedFromAllocations = RentCalculationUtil.computeExpectedDueFromAllocations({
+            periodStart: new Date(c.cycle_start),
+            periodEnd: new Date(c.cycle_end),
+            cycleType,
+            allocations: tenant.tenant_allocations || [],
+          });
 
           const due = expectedFromAllocations > 0 ? expectedFromAllocations : dueFromPayments;
           const remainingDue = moneyRound2(Math.max(0, due - totalPaid));
@@ -345,7 +349,13 @@ export class TenantRentSummaryService {
         const start = new Date(`${m.cycle_start}T00:00:00.000Z`);
         const end = new Date(`${m.cycle_end}T00:00:00.000Z`);
 
-        const dueFromAllocations = computeExpectedDueFromAllocations(start, end);
+        const cycleType = (m.cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+        const dueFromAllocations = RentCalculationUtil.computeExpectedDueFromAllocations({
+          periodStart: start,
+          periodEnd: end,
+          cycleType,
+          allocations: tenant.tenant_allocations || [],
+        });
         if (dueFromAllocations > 0) return sum + dueFromAllocations;
 
         const daysInPeriod = getInclusiveDays(start, end);

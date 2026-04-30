@@ -407,6 +407,9 @@ model rent_payments {
   @@index([pg_id], map: "fk_tenant_payment_pg")
   @@index([room_id], map: "fk_tenant_payment_room")
   @@index([tenant_id], map: "fk_tenant_payment_tenant")
+  @@index([tenant_id, payment_date], map: "idx_tenant_payment_date")
+  @@index([tenant_id, cycle_id], map: "idx_tenant_payment_cycle")
+  @@index([tenant_id, status, is_deleted], map: "idx_tenant_payment_status")
 }
 
 model role_permissions {
@@ -618,6 +621,7 @@ model tenants {
   @@index([state_id], map: "fk_tenants_state")
   @@index([pg_id], map: "pg_location_id")
   @@index([room_id], map: "room_id")
+  @@index([pg_id, status, is_deleted], map: "idx_tenants_pg_status_deleted")
 }
 
 model tokens {

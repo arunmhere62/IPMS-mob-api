@@ -12,13 +12,13 @@ export class SmsService {
   private readonly smsRoute: string;
 
   constructor(private configService: ConfigService) {
-    // SMS API Configuration
-    this.smsApiUrl = this.configService.get<string>('SMS_API_URL') || 'http://cannyinfotech.in/api/mt/SendSMS';
-    this.smsUser = this.configService.get<string>('SMS_USER') || 'SATZTECHNOSOLUTIONS';
-    this.smsPassword = this.configService.get<string>('SMS_PASSWORD') || 'demo1234';
-    this.smsSenderId = this.configService.get<string>('SMS_SENDER_ID') || 'SATZTH';
-    this.smsChannel = this.configService.get<string>('SMS_CHANNEL') || 'Trans';
-    this.smsRoute = this.configService.get<string>('SMS_ROUTE') || '10';
+    // SMS API Configuration - Hardcoded values
+    this.smsApiUrl = 'http://cannyinfotech.in/api/mt/SendSMS';
+    this.smsUser = 'SATZTECHNOSOLUTIONS';
+    this.smsPassword = 'demo1234';
+    this.smsSenderId = 'SATZTH';
+    this.smsChannel = 'Trans';
+    this.smsRoute = '10';
   }
 
   /**

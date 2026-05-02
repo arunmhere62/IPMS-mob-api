@@ -106,6 +106,16 @@ export class AuthDbService {
       },
     });
 
+    // Send OTP via SMS using strategy pattern FIRST
+    // Only update DB if SMS is successfully sent
+    const otpStrategy = this.otpStrategyFactory.getStrategy();
+    const smsSent = await otpStrategy.sendOtp(normalizedPhone, otp);
+
+    if (!smsSent) {
+      throw new BadRequestException('Failed to send OTP. Please try again.');
+    }
+
+    // Only update DB after successful SMS send
     if (existingOtp) {
       // Update existing record
       await this.prisma.otp_verifications.update({
@@ -138,14 +148,6 @@ export class AuthDbService {
           user_agent: userAgent,
         },
       });
-    }
-
-    // Send OTP via SMS using strategy pattern
-    const otpStrategy = this.otpStrategyFactory.getStrategy();
-    const smsSent = await otpStrategy.sendOtp(normalizedPhone, otp);
-
-    if (!smsSent) {
-      throw new BadRequestException('Failed to send OTP. Please try again.');
     }
 
     return ResponseUtil.success({
@@ -425,6 +427,16 @@ export class AuthDbService {
       },
     });
 
+    // Send OTP via SMS using strategy pattern FIRST
+    // Only update DB if SMS is successfully sent
+    const otpStrategy = this.otpStrategyFactory.getStrategy();
+    const smsSent = await otpStrategy.sendOtp(normalizedPhone, otp);
+
+    if (!smsSent) {
+      throw new BadRequestException('Failed to send OTP. Please try again.');
+    }
+
+    // Only update DB after successful SMS send
     if (existingOtp) {
       // Update existing record
       await this.prisma.otp_verifications.update({
@@ -454,14 +466,6 @@ export class AuthDbService {
           user_agent: userAgent,
         },
       });
-    }
-
-    // Send OTP via SMS using strategy pattern
-    const otpStrategy = this.otpStrategyFactory.getStrategy();
-    const smsSent = await otpStrategy.sendOtp(normalizedPhone, otp);
-
-    if (!smsSent) {
-      throw new BadRequestException('Failed to send OTP. Please try again.');
     }
 
     return ResponseUtil.success({

@@ -616,8 +616,53 @@ export class TenantService {
       },
     });
 
+    // Ensure rent cycles exist for all tenants (needed for accurate rent summary)
+    const tenantIds = tenants.map(t => t.s_no);
+    try {
+      await this.tenantPaymentService.detectPaymentGapsBulk(tenantIds, { concurrency: 2 });
+    } catch (error) {
+      console.error('Gap detection failed during tenant list fetch:', error);
+    }
+
+    // Re-fetch tenants to get newly created cycles
+    const tenantsWithCycles = await this.prisma.tenants.findMany({
+      where: where,
+      include: {
+        tenant_rent_cycles: {
+          orderBy: { cycle_start: 'desc' },
+          take: 12,
+        },
+        rent_payments: {
+          where: { is_deleted: false, status: { not: 'VOIDED' } },
+          orderBy: { payment_date: 'desc' },
+        },
+        advance_payments: {
+          where: { is_deleted: false },
+          orderBy: { payment_date: 'desc' },
+        },
+        refund_payments: {
+          where: { is_deleted: false },
+          orderBy: { payment_date: 'desc' },
+        },
+        pg_locations: { select: { s_no: true, location_name: true, rent_cycle_type: true, rent_cycle_start: true } },
+        rooms: { select: { s_no: true, room_no: true } },
+        beds: { select: { s_no: true, bed_no: true, bed_price: true } },
+        tenant_allocations: {
+          orderBy: { effective_from: 'asc' },
+          select: { effective_from: true, effective_to: true, bed_price_snapshot: true },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    // Create lookup map for re-fetched tenants
+    const tenantMap = new Map(tenantsWithCycles.map(t => [t.s_no, t]));
+
     // Enrich tenants with status calculations and rent cycle information
-    const enrichedTenants = tenants.map((tenant) => {
+    const enrichedTenants = tenants.map((originalTenant) => {
+      // Use re-fetched tenant with cycles if available, otherwise original
+      const tenant = tenantMap.get(originalTenant.s_no) || originalTenant;
+      
       const statusEnriched = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0] as Record<string, unknown>;
       const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
       const rentFlags = this.tenantStatusService.deriveRentFlags({
@@ -922,6 +967,14 @@ export class TenantService {
 
     if (!tenant) {
       throw new NotFoundException(`Tenant with ID ${id} not found`);
+    }
+
+    // Ensure rent cycles exist for this tenant before calculating summaries
+    try {
+      await this.tenantPaymentService.detectPaymentGaps(id);
+    } catch (error) {
+      // Log error but don't fail the request if gap detection fails
+      console.error('Gap detection failed during tenant details fetch:', error);
     }
 
     // Enrich tenant with status calculations using TenantStatusService

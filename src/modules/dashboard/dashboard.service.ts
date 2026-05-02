@@ -212,9 +212,59 @@ export class DashboardService {
       },
     });
 
+    // Ensure rent cycles exist for all tenants (needed for accurate rent summary)
+    const tenantIds = (tenants || []).map(t => t.s_no);
+    try {
+      await this.tenantPaymentService.detectPaymentGapsBulk(tenantIds, { concurrency: 2 });
+    } catch (error) {
+      console.error('Gap detection failed during dashboard fetch:', error);
+    }
+
+    // Re-fetch tenants to get newly created cycles
+    const tenantsWithCycles = await this.prisma.tenants.findMany({
+      where: {
+        is_deleted: false,
+        pg_id: params.pg_id,
+        status: { in: ['ACTIVE', 'INACTIVE'] },
+      },
+      include: {
+        pg_locations: {
+          select: { s_no: true, location_name: true, address: true, rent_cycle_type: true },
+        },
+        rooms: { select: { s_no: true, room_no: true } },
+        beds: { select: { s_no: true, bed_no: true, bed_price: true } },
+        tenant_rent_cycles: {
+          orderBy: { cycle_start: 'asc' },
+          select: { s_no: true, cycle_type: true, anchor_day: true, cycle_start: true, cycle_end: true },
+        },
+        rent_payments: {
+          where: { is_deleted: false, status: { not: 'VOIDED' } },
+          orderBy: { payment_date: 'desc' },
+          select: { s_no: true, payment_date: true, amount_paid: true, actual_rent_amount: true, cycle_id: true, payment_method: true, status: true, remarks: true },
+        },
+        advance_payments: {
+          where: { is_deleted: false, status: { not: 'VOIDED' } },
+          orderBy: { payment_date: 'desc' },
+          select: { s_no: true, payment_date: true, amount_paid: true, actual_rent_amount: true, payment_method: true, status: true, remarks: true },
+        },
+        refund_payments: {
+          where: { is_deleted: false },
+          orderBy: { payment_date: 'desc' },
+          select: { s_no: true, amount_paid: true, payment_method: true, payment_date: true, status: true, remarks: true, actual_rent_amount: true },
+        },
+      },
+      orderBy: { created_at: 'desc' },
+    });
+
+    // Create lookup map for re-fetched tenants
+    const tenantMap = new Map(tenantsWithCycles.map(t => [t.s_no, t]));
+
     // Enrich with the same rent summary used by the tenant list API, so dashboard
     // counts reflect mixed cases (partial + pending) correctly.
-    const enrichedTenants = (tenants || []).map((tenant) => {
+    const enrichedTenants = (tenants || []).map((originalTenant) => {
+      // Use re-fetched tenant with cycles if available, otherwise original
+      const tenant = tenantMap.get(originalTenant.s_no) || originalTenant;
+      
       const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
       const rentFlags = this.tenantStatusService.deriveRentFlags({
         paymentStatus: rentSummary.payment_status,

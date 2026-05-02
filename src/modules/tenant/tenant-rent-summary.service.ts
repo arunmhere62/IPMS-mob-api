@@ -380,4 +380,5 @@ export class TenantRentSummaryService {
       rent_due_amount,
     };
   }
+
 }

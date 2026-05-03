@@ -15,7 +15,19 @@ import { AuthModule } from '../auth/auth.module';
 import { TenantRentSummaryService } from './tenant-rent-summary.service';
 
 @Module({
-  imports: [PrismaModule, CommonModule, SubscriptionModule, AuthModule, CheckoutModule, TenantPaymentModule, AdvancePaymentModule, RefundPaymentModule, CurrentBillModule, PendingPaymentModule, TenantStatusModule],
+  imports: [
+    PrismaModule,
+    CommonModule,
+    SubscriptionModule,
+    AuthModule,
+    CheckoutModule,
+    TenantPaymentModule,
+    AdvancePaymentModule,
+    RefundPaymentModule,
+    CurrentBillModule,
+    PendingPaymentModule,
+    TenantStatusModule,
+  ],
   controllers: [TenantController],
   providers: [TenantService, TenantRentSummaryService],
   exports: [TenantService],

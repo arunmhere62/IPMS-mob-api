@@ -7,10 +7,10 @@ export class UpdateCurrentBillDto {
   @IsNumber()
   bill_amount?: number;
 
-  @ApiProperty({ 
-    description: 'Bill date (represents the month for which bill is applicable)', 
+  @ApiProperty({
+    description: 'Bill date (represents the month for which bill is applicable)',
     example: '2024-01-01',
-    required: false 
+    required: false,
   })
   @IsOptional()
   @IsDateString()

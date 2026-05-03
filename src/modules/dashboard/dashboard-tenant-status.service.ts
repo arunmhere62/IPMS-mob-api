@@ -17,9 +17,6 @@ export class DashboardTenantStatusService {
       const status = String(tenant?.status || '');
       if (status !== 'ACTIVE') return false;
 
-      const partialDue = Number(tenant?.partial_due_amount || 0);
-      if (partialDue > 0) return false;
-
       const pendingDue = Number(tenant?.pending_due_amount || 0);
       const unpaidMonthsCount = Array.isArray(tenant?.unpaid_months) ? (tenant?.unpaid_months || []).length : 0;
       return pendingDue > 0 || unpaidMonthsCount > 0;

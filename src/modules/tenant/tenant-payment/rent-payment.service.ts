@@ -1,34 +1,41 @@
-import { Injectable, NotFoundException, BadRequestException, MethodNotAllowedException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  MethodNotAllowedException,
+} from '@nestjs/common';
 import { RentCalculationUtil } from '../rent-calculation.util';
 
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseUtil } from '../../../common/utils/response.util';
 import { CreateTenantPaymentDto, UpdateTenantPaymentDto, VoidTenantPaymentDto } from './dto';
 
- type TenantUnavailableReason = 'NOT_FOUND' | 'DELETED' | 'CHECKED_OUT' | 'INACTIVE' | null;
+type TenantUnavailableReason = 'NOT_FOUND' | 'DELETED' | 'CHECKED_OUT' | 'INACTIVE' | null;
 
- type PaymentTenantInfo = {
-   is_deleted?: boolean;
-   check_out_date?: Date | string | null;
-   status?: string | null;
- } | null;
+type PaymentTenantInfo = {
+  is_deleted?: boolean;
+  check_out_date?: Date | string | null;
+  status?: string | null;
+} | null;
 
- type PaymentWithTenant = Record<string, unknown> & {
-   tenants?: PaymentTenantInfo;
- };
+type PaymentWithTenant = Record<string, unknown> & {
+  tenants?: PaymentTenantInfo;
+};
 
- type TenantRentCyclesDelegate = {
-   upsert<T = { s_no: number; cycle_start: Date; cycle_end: Date }>(args: unknown): Promise<T>;
-   findFirst<T = { s_no: number; cycle_start: Date; cycle_end: Date }>(args: unknown): Promise<T | null>;
- };
+type TenantRentCyclesDelegate = {
+  upsert<T = { s_no: number; cycle_start: Date; cycle_end: Date }>(args: unknown): Promise<T>;
+  findFirst<T = { s_no: number; cycle_start: Date; cycle_end: Date }>(
+    args: unknown,
+  ): Promise<T | null>;
+};
 
- type RentPaymentsDelegate = {
-   create<T = unknown>(args: unknown): Promise<T>;
-   findMany<T = unknown>(args: unknown): Promise<T[]>;
-   count(args: unknown): Promise<number>;
-   findFirst<T = unknown>(args: unknown): Promise<T | null>;
-   update<T = unknown>(args: unknown): Promise<T>;
- };
+type RentPaymentsDelegate = {
+  create<T = unknown>(args: unknown): Promise<T>;
+  findMany<T = unknown>(args: unknown): Promise<T[]>;
+  count(args: unknown): Promise<number>;
+  findFirst<T = unknown>(args: unknown): Promise<T | null>;
+  update<T = unknown>(args: unknown): Promise<T>;
+};
 
 type Gap = {
   gapId: string;
@@ -46,7 +53,10 @@ type Gap = {
 export class TenantPaymentService {
   constructor(private prisma: PrismaService) {}
 
-  private get prismaDelegates(): { tenant_rent_cycles: TenantRentCyclesDelegate; rent_payments: RentPaymentsDelegate } {
+  private get prismaDelegates(): {
+    tenant_rent_cycles: TenantRentCyclesDelegate;
+    rent_payments: RentPaymentsDelegate;
+  } {
     return this.prisma as unknown as {
       tenant_rent_cycles: TenantRentCyclesDelegate;
       rent_payments: RentPaymentsDelegate;
@@ -92,7 +102,8 @@ export class TenantPaymentService {
 
     if (params.cycleType === 'CALENDAR') {
       const isCheckInMonth =
-        ref.getUTCFullYear() === checkIn.getUTCFullYear() && ref.getUTCMonth() === checkIn.getUTCMonth();
+        ref.getUTCFullYear() === checkIn.getUTCFullYear() &&
+        ref.getUTCMonth() === checkIn.getUTCMonth();
       const cycleStart = isCheckInMonth ? checkIn : new Date(Date.UTC(refY, refM, 1));
       const cycleEnd = new Date(Date.UTC(refY, refM + 1, 0));
       return { cycleStart, cycleEnd, anchorDay };
@@ -100,15 +111,24 @@ export class TenantPaymentService {
 
     // MIDMONTH (TENANT anchored): anchor day is tenant check-in day.
     // Current cycle started on anchor day of this month if refD >= anchorDay, else previous month.
+    // IMPORTANT: Do NOT clamp cycleStart to the last day of the month.
+    // If anchorDay=30 and the month only has 28 days, the cycle for that month
+    // logically starts on the 30th of the PREVIOUS month, not the 28th of Feb.
+    // We use the unclamped logical anchor day to determine which month the cycle belongs to,
+    // then compute cycleEnd as (nextAnchor - 1 day) using clamped next-month anchor.
     const startMonth = refD >= anchorDay ? refM : refM - 1;
     const startYear = refY;
 
+    // Use clamped start (handles Feb 30 → Feb 28 correctly for the actual DB date)
     const cycleStart = this.makeUtcDateClamped(startYear, startMonth, anchorDay);
-    const nextStart = this.makeUtcDateClamped(
-      cycleStart.getUTCFullYear(),
-      cycleStart.getUTCMonth() + 1,
-      anchorDay,
-    );
+
+    // Next anchor: always move exactly one calendar month forward from the logical start month
+    // Use the actual cycleStart month+1 so Feb doesn't cause drift
+    const nextAnchorMonth = cycleStart.getUTCMonth() + 1;
+    const nextAnchorYear = cycleStart.getUTCFullYear();
+    const nextStart = this.makeUtcDateClamped(nextAnchorYear, nextAnchorMonth, anchorDay);
+
+    // cycleEnd = day before next anchor
     const cycleEnd = new Date(nextStart);
     cycleEnd.setUTCDate(cycleEnd.getUTCDate() - 1);
 
@@ -142,8 +162,16 @@ export class TenantPaymentService {
     }
 
     // Inclusive days from check-in date to month end.
-    const startUtc = Date.UTC(checkIn.getUTCFullYear(), checkIn.getUTCMonth(), checkIn.getUTCDate());
-    const endUtc = Date.UTC(cycleEnd.getUTCFullYear(), cycleEnd.getUTCMonth(), cycleEnd.getUTCDate());
+    const startUtc = Date.UTC(
+      checkIn.getUTCFullYear(),
+      checkIn.getUTCMonth(),
+      checkIn.getUTCDate(),
+    );
+    const endUtc = Date.UTC(
+      cycleEnd.getUTCFullYear(),
+      cycleEnd.getUTCMonth(),
+      cycleEnd.getUTCDate(),
+    );
     const daysStayed = Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24)) + 1;
     const expected = (monthlyRent / daysInMonth) * Math.max(0, daysStayed);
 
@@ -156,7 +184,7 @@ export class TenantPaymentService {
     anchorDay: number;
     cycleStart: Date;
     cycleEnd: Date;
-  }): Promise<{ s_no: number; cycle_start: Date; cycle_end: Date }>{
+  }): Promise<{ s_no: number; cycle_start: Date; cycle_end: Date }> {
     const createdOrUpdated = await this.prismaDelegates.tenant_rent_cycles.upsert({
       where: {
         tenant_id_cycle_start: {
@@ -205,10 +233,9 @@ export class TenantPaymentService {
     // Check if tenant is checked out (has a check_out_date)
     if (tenant.check_out_date) {
       throw new BadRequestException(
-        `Cannot add rent payment for checked-out tenant. Tenant was checked out on ${new Date(tenant.check_out_date).toISOString().split('T')[0]}`
+        `Cannot add rent payment for checked-out tenant. Tenant was checked out on ${new Date(tenant.check_out_date).toISOString().split('T')[0]}`,
       );
     }
-
 
     // Verify room exists
     const room = await this.prisma.rooms.findUnique({
@@ -228,7 +255,9 @@ export class TenantPaymentService {
       throw new NotFoundException(`Bed with ID ${createTenantPaymentDto.bed_id} not found`);
     }
 
-    const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+    const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as
+      | 'CALENDAR'
+      | 'MIDMONTH';
 
     const paymentDate = createTenantPaymentDto.payment_date
       ? new Date(createTenantPaymentDto.payment_date)
@@ -252,7 +281,9 @@ export class TenantPaymentService {
       });
 
       if (!existingCycle) {
-        throw new BadRequestException(`Invalid cycle_id=${createTenantPaymentDto.cycle_id} for tenant_id=${createTenantPaymentDto.tenant_id}`);
+        throw new BadRequestException(
+          `Invalid cycle_id=${createTenantPaymentDto.cycle_id} for tenant_id=${createTenantPaymentDto.tenant_id}`,
+        );
       }
 
       cycleId = existingCycle.s_no;
@@ -282,8 +313,13 @@ export class TenantPaymentService {
     const monthlyRent = Number(bed?.bed_price ?? 0);
     let computedActualRentAmount: number;
 
-    if (createTenantPaymentDto.actual_rent_amount && Number(createTenantPaymentDto.actual_rent_amount) > 0) {
-      computedActualRentAmount = this.moneyRound2(Number(createTenantPaymentDto.actual_rent_amount));
+    if (
+      createTenantPaymentDto.actual_rent_amount &&
+      Number(createTenantPaymentDto.actual_rent_amount) > 0
+    ) {
+      computedActualRentAmount = this.moneyRound2(
+        Number(createTenantPaymentDto.actual_rent_amount),
+      );
     } else if (cycleType === 'CALENDAR' && cycleStart && cycleEnd) {
       computedActualRentAmount = this.computeExpectedRentForCalendarCycle({
         monthlyRent,
@@ -294,7 +330,9 @@ export class TenantPaymentService {
     } else {
       // Fallback: prorate current bed price for the cycle period
       const daysInPeriod = this.getDaysBetween(cycleStart, cycleEnd) + 1;
-      const daysInMonth = new Date(Date.UTC(cycleStart.getUTCFullYear(), cycleStart.getUTCMonth() + 1, 0)).getUTCDate();
+      const daysInMonth = new Date(
+        Date.UTC(cycleStart.getUTCFullYear(), cycleStart.getUTCMonth() + 1, 0),
+      ).getUTCDate();
       computedActualRentAmount = this.moneyRound2((monthlyRent / daysInMonth) * daysInPeriod);
     }
 
@@ -306,7 +344,8 @@ export class TenantPaymentService {
     }
 
     const amountPaid = this.moneyRound2(Number(createTenantPaymentDto.amount_paid || 0));
-    const status = amountPaid >= computedActualRentAmount ? 'PAID' : amountPaid > 0 ? 'PARTIAL' : 'PENDING';
+    const status =
+      amountPaid >= computedActualRentAmount ? 'PAID' : amountPaid > 0 ? 'PARTIAL' : 'PENDING';
 
     // Create the payment
     const payment = await this.prismaDelegates.rent_payments.create({
@@ -380,7 +419,7 @@ export class TenantPaymentService {
     limit: number = 10,
   ) {
     const skip = (page - 1) * limit;
-    
+
     const where: Record<string, unknown> = {
       is_deleted: false,
     };
@@ -412,8 +451,18 @@ export class TenantPaymentService {
     // Filter by month and year
     if (month && year) {
       const monthIndex = [
-        'January', 'February', 'March', 'April', 'May', 'June',
-        'July', 'August', 'September', 'October', 'November', 'December'
+        'January',
+        'February',
+        'March',
+        'April',
+        'May',
+        'June',
+        'July',
+        'August',
+        'September',
+        'October',
+        'November',
+        'December',
       ].indexOf(month);
 
       if (monthIndex !== -1) {
@@ -430,11 +479,11 @@ export class TenantPaymentService {
     // Filter by date range (overrides month/year if both provided)
     if (start_date || end_date) {
       where.payment_date = {} as Record<string, unknown>;
-      
+
       if (start_date) {
         (where.payment_date as Record<string, unknown>).gte = new Date(start_date);
       }
-      
+
       if (end_date) {
         const endDateTime = new Date(end_date);
         endDateTime.setHours(23, 59, 59, 999);
@@ -514,7 +563,13 @@ export class TenantPaymentService {
       };
     });
 
-    return ResponseUtil.paginated(enrichedData, total, page, limit, 'Tenant payments fetched successfully');
+    return ResponseUtil.paginated(
+      enrichedData,
+      total,
+      page,
+      limit,
+      'Tenant payments fetched successfully',
+    );
   }
 
   async findOne(id: number) {
@@ -585,7 +640,6 @@ export class TenantPaymentService {
     if (!existingPayment) {
       throw new NotFoundException(`Tenant payment with ID ${id} not found`);
     }
-
 
     const updateData: Record<string, unknown> = {};
 
@@ -879,7 +933,10 @@ export class TenantPaymentService {
       },
     });
 
-    return ResponseUtil.success(payment, `Payment status updated to ${status.toUpperCase()} successfully`);
+    return ResponseUtil.success(
+      payment,
+      `Payment status updated to ${status.toUpperCase()} successfully`,
+    );
   }
 
   async detectPaymentGaps(tenant_id: number) {
@@ -907,6 +964,7 @@ export class TenantPaymentService {
       amount_paid: unknown;
       actual_rent_amount: unknown;
       status: string | null;
+      payment_date: Date | null;
     }> = await this.prismaDelegates.rent_payments.findMany({
       where: {
         tenant_id,
@@ -919,6 +977,7 @@ export class TenantPaymentService {
         amount_paid: true,
         actual_rent_amount: true,
         status: true,
+        payment_date: true,
       },
     });
 
@@ -945,7 +1004,9 @@ export class TenantPaymentService {
       return `${year}-${month}-${day}`;
     };
 
-    const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+    const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as
+      | 'CALENDAR'
+      | 'MIDMONTH';
 
     const computeProratedDueFromAllocations = (periodStart: Date, periodEnd: Date): number => {
       if (!allocations || allocations.length === 0) return 0;
@@ -964,32 +1025,67 @@ export class TenantPaymentService {
     const moneyRound2 = RentCalculationUtil.moneyRound2;
     const amountsEqualOrGreater = (paid: number, due: number): boolean => paid + 0.00001 >= due;
 
-    const sumPaidForCycleId = (cycleId: number): number => {
+    const isVirtualCycle = (cycleId: number) => cycleId < 0;
+
+    const paymentsInDateRange = (start: Date, end: Date) =>
+      payments.filter((p) => {
+        if (!p.payment_date) return false;
+        const pd = this.toDateOnlyUtc(new Date(p.payment_date));
+        return pd >= start && pd <= end;
+      });
+
+    const sumPaidForCycle = (cycle: { s_no: number; cycle_start: Date; cycle_end: Date }): number => {
+      if (isVirtualCycle(cycle.s_no)) {
+        return moneyRound2(
+          paymentsInDateRange(cycle.cycle_start, cycle.cycle_end)
+            .filter((p) => p.status === 'PAID' || p.status === 'PARTIAL')
+            .reduce((sum: number, p) => sum + Number(p.amount_paid || 0), 0),
+        );
+      }
       return moneyRound2(
         payments
-          .filter((p) => p.cycle_id === cycleId && (p.status === 'PAID' || p.status === 'PARTIAL'))
+          .filter((p) => p.cycle_id === cycle.s_no && (p.status === 'PAID' || p.status === 'PARTIAL'))
           .reduce((sum: number, p) => sum + Number(p.amount_paid || 0), 0),
       );
     };
 
-    const dueFromPaymentsForCycleId = (cycleId: number): number => {
+    const dueFromPaymentsForCycle = (cycle: { s_no: number; cycle_start: Date; cycle_end: Date }): number => {
+      if (isVirtualCycle(cycle.s_no)) {
+        return moneyRound2(
+          paymentsInDateRange(cycle.cycle_start, cycle.cycle_end)
+            .reduce((max: number, p) => Math.max(max, Number(p.actual_rent_amount || 0)), 0),
+        );
+      }
       return moneyRound2(
         payments
-          .filter((p) => p.cycle_id === cycleId)
+          .filter((p) => p.cycle_id === cycle.s_no)
           .reduce((max: number, p) => Math.max(max, Number(p.actual_rent_amount || 0)), 0),
       );
     };
 
     const addGapIfNeeded = (cycle: { s_no: number; cycle_start: Date; cycle_end: Date }) => {
-      const rentDueFromAllocations = computeProratedDueFromAllocations(cycle.cycle_start, cycle.cycle_end);
-      const rentDueFromPayments = dueFromPaymentsForCycleId(cycle.s_no);
+      const rentDueFromAllocations = computeProratedDueFromAllocations(
+        cycle.cycle_start,
+        cycle.cycle_end,
+      );
+      const rentDueFromPayments = dueFromPaymentsForCycle(cycle);
       // Fallback to current bed price if both allocations and payments are missing
       const currentBedPrice = Number(tenant.beds?.bed_price ?? 0);
-      const fallbackDue = currentBedPrice > 0 ? RentCalculationUtil.computeProratedAmountForMonth(currentBedPrice, cycle.cycle_start, cycle.cycle_end) : 0;
-      const rentDue = rentDueFromAllocations > 0 ? rentDueFromAllocations : 
-                     rentDueFromPayments > 0 ? rentDueFromPayments : 
-                     fallbackDue;
-      const totalPaid = sumPaidForCycleId(cycle.s_no);
+      const fallbackDue =
+        currentBedPrice > 0
+          ? RentCalculationUtil.computeProratedAmountForMonth(
+              currentBedPrice,
+              cycle.cycle_start,
+              cycle.cycle_end,
+            )
+          : 0;
+      const rentDue =
+        rentDueFromAllocations > 0
+          ? rentDueFromAllocations
+          : rentDueFromPayments > 0
+            ? rentDueFromPayments
+            : fallbackDue;
+      const totalPaid = sumPaidForCycle(cycle);
       const isCovered = rentDue > 0 ? amountsEqualOrGreater(totalPaid, rentDue) : totalPaid > 0;
 
       if (!isCovered) {
@@ -999,7 +1095,10 @@ export class TenantPaymentService {
           cycle_id: cycle.s_no,
           gapStart: formatDateOnly(cycle.cycle_start),
           gapEnd: formatDateOnly(cycle.cycle_end),
-          daysMissing: RentCalculationUtil.getInclusiveDays(new Date(cycle.cycle_start), new Date(cycle.cycle_end)),
+          daysMissing: RentCalculationUtil.getInclusiveDays(
+            new Date(cycle.cycle_start),
+            new Date(cycle.cycle_end),
+          ),
           priority: gapIndex,
           rentDue,
           totalPaid,
@@ -1012,15 +1111,27 @@ export class TenantPaymentService {
     // ============================================================================
     // FOR MIDMONTH: CHECK FOR UNPAID MONTHS BETWEEN CHECK-IN AND NOW
     // ============================================================================
-    
+
     const now = this.toDateOnlyUtc(new Date());
     const checkIn = this.toDateOnlyUtc(new Date(tenant.check_in_date));
     void checkIn;
 
-    // Generate cycles from check-in until today (inclusive)
+    // Fetch existing persisted cycles for this tenant (read-only, no writes)
+    const existingCycles = await this.prisma.tenant_rent_cycles.findMany({
+      where: { tenant_id },
+      orderBy: { cycle_start: 'asc' },
+      select: { s_no: true, cycle_start: true, cycle_end: true },
+    });
+
+    const cycleMap = new Map(
+      existingCycles.map((c) => [this.toDateOnlyUtc(c.cycle_start).getTime(), c]),
+    );
+
+    // Generate cycles from check-in until today (inclusive) - in memory only, no upserts
     let cursor = new Date(checkIn);
     let iterations = 0;
     const maxIterations = 200;
+    let virtualSno = -1;
 
     while (iterations < maxIterations) {
       iterations++;
@@ -1031,13 +1142,14 @@ export class TenantPaymentService {
         referenceDate: cursor,
       });
 
-      const cycle = await this.upsertTenantCycle({
-        tenantId: tenant_id,
-        cycleType,
-        anchorDay: computed.anchorDay,
-        cycleStart: computed.cycleStart,
-        cycleEnd: computed.cycleEnd,
-      });
+      // Use persisted cycle if it exists, else use a virtual in-memory cycle (no DB write)
+      const cycleStartKey = this.toDateOnlyUtc(computed.cycleStart).getTime();
+      const persisted = cycleMap.get(cycleStartKey);
+      const cycle = persisted ?? {
+        s_no: virtualSno--,
+        cycle_start: computed.cycleStart,
+        cycle_end: computed.cycleEnd,
+      };
 
       addGapIfNeeded({
         s_no: cycle.s_no,
@@ -1069,7 +1181,7 @@ export class TenantPaymentService {
         gapCount: gaps.length,
         gaps: gaps,
       },
-      gaps.length > 0 ? `Found ${gaps.length} gap(s) in rent periods` : 'No gaps found'
+      gaps.length > 0 ? `Found ${gaps.length} gap(s) in rent periods` : 'No gaps found',
     );
   }
 
@@ -1078,14 +1190,18 @@ export class TenantPaymentService {
     options?: { concurrency?: number },
   ): Promise<Record<number, { hasGaps: boolean; gapCount: number; gaps: Gap[] }>> {
     const uniqueIds = Array.from(
-      new Set((tenantIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)),
+      new Set(
+        (tenantIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0),
+      ),
     );
 
     const result: Record<number, { hasGaps: boolean; gapCount: number; gaps: Gap[] }> = {};
     if (uniqueIds.length === 0) return result;
 
     const concurrency =
-      typeof options?.concurrency === 'number' && Number.isFinite(options.concurrency) && options.concurrency > 0
+      typeof options?.concurrency === 'number' &&
+      Number.isFinite(options.concurrency) &&
+      options.concurrency > 0
         ? Math.floor(options.concurrency)
         : 5;
 
@@ -1100,7 +1216,12 @@ export class TenantPaymentService {
           const data = (r?.data ?? {}) as { hasGaps?: boolean; gapCount?: number; gaps?: Gap[] };
           result[current] = {
             hasGaps: !!data.hasGaps,
-            gapCount: typeof data.gapCount === 'number' ? data.gapCount : Array.isArray(data.gaps) ? data.gaps.length : 0,
+            gapCount:
+              typeof data.gapCount === 'number'
+                ? data.gapCount
+                : Array.isArray(data.gaps)
+                  ? data.gaps.length
+                  : 0,
             gaps: Array.isArray(data.gaps) ? data.gaps : [],
           };
         } catch {
@@ -1109,7 +1230,9 @@ export class TenantPaymentService {
       }
     };
 
-    await Promise.all(Array.from({ length: Math.min(concurrency, uniqueIds.length) }, () => worker()));
+    await Promise.all(
+      Array.from({ length: Math.min(concurrency, uniqueIds.length) }, () => worker()),
+    );
     return result;
   }
 
@@ -1129,7 +1252,9 @@ export class TenantPaymentService {
       throw new NotFoundException(`Tenant with ID ${tenant_id} not found`);
     }
 
-    const cycleType = (tenant.pg_locations?.rent_cycle_type || rentCycleType || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+    const cycleType = (tenant.pg_locations?.rent_cycle_type || rentCycleType || 'CALENDAR') as
+      | 'CALENDAR'
+      | 'MIDMONTH';
 
     const gapsResponse = await this.detectPaymentGaps(tenant_id);
     const gapsData = gapsResponse.data as { hasGaps?: boolean; gaps?: Gap[] };

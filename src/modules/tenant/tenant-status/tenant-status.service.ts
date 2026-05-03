@@ -125,13 +125,13 @@ export class TenantStatusService {
         // Calculate months between check-in and now
         const yearDiff = now.getFullYear() - checkInDate.getFullYear();
         let monthDiff = now.getMonth() - checkInDate.getMonth();
-        
+
         // Adjust for day of month - if current day is on or after check-in day, add 1 month
         // (meaning the full month has passed)
         if (now.getDate() >= checkInDate.getDate()) {
           monthDiff++;
         }
-        
+
         return Math.max(1, yearDiff * 12 + monthDiff);
       }
       return 0;
@@ -156,10 +156,8 @@ export class TenantStatusService {
    */
   calculateTenantStatus(tenant: TenantData): TenantStatusResult {
     // Check advance and refund payments
-    const is_advance_paid =
-      tenant.advance_payments?.some((p) => p.status === 'PAID') || false;
-    const is_refund_paid =
-      tenant.refund_payments?.some((p) => p.status === 'PAID') || false;
+    const is_advance_paid = tenant.advance_payments?.some((p) => p.status === 'PAID') || false;
+    const is_refund_paid = tenant.refund_payments?.some((p) => p.status === 'PAID') || false;
 
     // Calculate pending months
     const pendingMonths = this.calculatePendingMonths(tenant);
@@ -233,21 +231,15 @@ export class TenantStatusService {
       const t = tenant as Record<string, unknown>;
       if (t.status !== 'ACTIVE') return false;
 
-      // Business rule: "Pending" should mean fully pending rent only.
-      // If a tenant has any partial due, they should appear under Partial, not Pending.
-      const partialDue = Number(t.partial_due_amount || 0);
-      if (partialDue > 0) return false;
+      // Include tenant if they have pending due amount (regardless of partial due)
+      const pendingDue = Number(t.pending_due_amount || 0);
 
       // Include tenant if they have unpaid months (from rent cycle calculation)
       const unpaidMonths = (t.unpaid_months as Array<{ month_name?: string }> | undefined) || [];
       const hasUnpaidMonths = unpaidMonths.length > 0;
 
-      // Include tenant if they have pending/failed payments
-      const rentPayments = (t.rent_payments as Array<{ status?: string }> | undefined) || [];
-      const hasPendingOrFailed = rentPayments.some((p: { status?: string }) => p.status === 'PENDING' || p.status === 'FAILED');
-
-      // Include if they have pending/failed payments OR unpaid months
-      return hasPendingOrFailed || hasUnpaidMonths;
+      // Include if they have pending due OR unpaid months
+      return pendingDue > 0 || hasUnpaidMonths;
     });
     return filteredTenants;
   }
@@ -288,7 +280,8 @@ export class TenantStatusService {
 
     const toPaymentStatus = (s: unknown): TenantPayment['status'] => {
       const status = typeof s === 'string' ? s : '';
-      if (status === 'PAID' || status === 'PENDING' || status === 'FAILED' || status === 'PARTIAL') return status;
+      if (status === 'PAID' || status === 'PENDING' || status === 'FAILED' || status === 'PARTIAL')
+        return status;
       return 'PENDING';
     };
 
@@ -300,7 +293,8 @@ export class TenantStatusService {
 
     const toRefundStatus = (v: unknown): RefundPayment['status'] => {
       const status = typeof v === 'string' ? v : '';
-      if (status === 'PAID' || status === 'PENDING' || status === 'FAILED' || status === 'PARTIAL') return status;
+      if (status === 'PAID' || status === 'PENDING' || status === 'FAILED' || status === 'PARTIAL')
+        return status;
       return 'PENDING';
     };
 
@@ -324,17 +318,23 @@ export class TenantStatusService {
     };
 
     return {
-      rent_payments: (t.rent_payments as Array<Record<string, unknown>> | undefined)?.map((p: Record<string, unknown>) => ({
-        status: toPaymentStatus(p.status),
-        actual_rent_amount: toStringOrNumber(p.actual_rent_amount),
-        amount_paid: toStringOrNumber(p.amount_paid),
-      })),
-      advance_payments: (t.advance_payments as Array<Record<string, unknown>> | undefined)?.map((p: Record<string, unknown>) => ({
-        status: toAdvanceStatus(p.status),
-      })),
-      refund_payments: (t.refund_payments as Array<Record<string, unknown>> | undefined)?.map((p: Record<string, unknown>) => ({
-        status: toRefundStatus(p.status),
-      })),
+      rent_payments: (t.rent_payments as Array<Record<string, unknown>> | undefined)?.map(
+        (p: Record<string, unknown>) => ({
+          status: toPaymentStatus(p.status),
+          actual_rent_amount: toStringOrNumber(p.actual_rent_amount),
+          amount_paid: toStringOrNumber(p.amount_paid),
+        }),
+      ),
+      advance_payments: (t.advance_payments as Array<Record<string, unknown>> | undefined)?.map(
+        (p: Record<string, unknown>) => ({
+          status: toAdvanceStatus(p.status),
+        }),
+      ),
+      refund_payments: (t.refund_payments as Array<Record<string, unknown>> | undefined)?.map(
+        (p: Record<string, unknown>) => ({
+          status: toRefundStatus(p.status),
+        }),
+      ),
       check_in_date: toDateLike(t.check_in_date),
       check_out_date: toDateLike(t.check_out_date),
       rooms: t.rooms

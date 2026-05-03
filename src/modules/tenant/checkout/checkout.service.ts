@@ -55,7 +55,14 @@ type TenantAfterCheckout = Prisma.tenantsGetPayload<{
     };
     rent_payments: {
       where: { is_deleted: false };
-      select: { s_no: true; status: true; amount_paid: true; payment_date: true; actual_rent_amount: true; cycle_id: true };
+      select: {
+        s_no: true;
+        status: true;
+        amount_paid: true;
+        payment_date: true;
+        actual_rent_amount: true;
+        cycle_id: true;
+      };
     };
     advance_payments: {
       where: { is_deleted: false };
@@ -77,9 +84,13 @@ export class CheckoutService {
 
   private makeUtcDateClamped(year: number, month: number, day: number): Date {
     const firstOfMonth = new Date(Date.UTC(year, month, 1));
-    const lastDay = new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth() + 1, 0)).getUTCDate();
+    const lastDay = new Date(
+      Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth() + 1, 0),
+    ).getUTCDate();
     const clampedDay = Math.min(Math.max(day, 1), lastDay);
-    return new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth(), clampedDay));
+    return new Date(
+      Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth(), clampedDay),
+    );
   }
 
   private computeCycleWindow(params: {
@@ -97,7 +108,8 @@ export class CheckoutService {
 
     if (params.cycleType === 'CALENDAR') {
       const isCheckInMonth =
-        ref.getUTCFullYear() === checkIn.getUTCFullYear() && ref.getUTCMonth() === checkIn.getUTCMonth();
+        ref.getUTCFullYear() === checkIn.getUTCFullYear() &&
+        ref.getUTCMonth() === checkIn.getUTCMonth();
       const cycleStart = isCheckInMonth ? checkIn : new Date(Date.UTC(refY, refM, 1));
       const cycleEnd = new Date(Date.UTC(refY, refM + 1, 0));
       return { cycleStart, cycleEnd, anchorDay };
@@ -122,13 +134,17 @@ export class CheckoutService {
   async checkout(id: number, checkoutDto: CheckoutTenantDto) {
     // Checkout date is required - must be provided from frontend
     if (!checkoutDto.check_out_date) {
-      throw new BadRequestException('Checkout date is required. Please provide a valid checkout date.');
+      throw new BadRequestException(
+        'Checkout date is required. Please provide a valid checkout date.',
+      );
     }
 
     const checkoutDate = new Date(checkoutDto.check_out_date);
 
     if (Number.isNaN(checkoutDate.getTime())) {
-      throw new BadRequestException('Checkout date is invalid. Please provide a valid checkout date.');
+      throw new BadRequestException(
+        'Checkout date is invalid. Please provide a valid checkout date.',
+      );
     }
 
     const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -194,7 +210,7 @@ export class CheckoutService {
       const checkInDate = new Date(tenant.check_in_date);
       if (checkoutDate < checkInDate) {
         throw new BadRequestException(
-          `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`
+          `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`,
         );
       }
 
@@ -219,7 +235,9 @@ export class CheckoutService {
         });
       }
 
-      const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+      const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as
+        | 'CALENDAR'
+        | 'MIDMONTH';
       const checkInUtc = this.toDateOnlyUtc(new Date(tenant.check_in_date));
       const checkoutUtc = this.toDateOnlyUtc(new Date(checkoutDate));
 
@@ -338,7 +356,7 @@ export class CheckoutService {
         if (rentDueAmount > 0) parts.push(`Pending rent ₹${rentDueAmount}`);
         if (hasAdvancePending) parts.push('Advance pending');
         throw new BadRequestException(
-          `Cannot checkout tenant. ${parts.join(' and ')} must be settled before checkout.`
+          `Cannot checkout tenant. ${parts.join(' and ')} must be settled before checkout.`,
         );
       }
 
@@ -426,7 +444,7 @@ export class CheckoutService {
         if (rentDueAmount > 0) parts.push(`Rent due ₹${rentDueAmount}`);
         if (hasAdvancePending) parts.push('Advance pending');
         throw new BadRequestException(
-          `Cannot update checkout date. Pending dues exist: ${parts.join(' and ')}. Please clear pending amounts before checkout.`
+          `Cannot update checkout date. Pending dues exist: ${parts.join(' and ')}. Please clear pending amounts before checkout.`,
         );
       }
 
@@ -436,7 +454,7 @@ export class CheckoutService {
       // Validate that checkout date is not before check-in date (same-day checkout allowed)
       if (checkoutDate < checkInDate) {
         throw new BadRequestException(
-          `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`
+          `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`,
         );
       }
 

@@ -15,7 +15,8 @@ export class CurrentBillService {
    * 2. Individual bill for a tenant: Creates bill for a specific tenant
    */
   async create(createCurrentBillDto: CreateCurrentBillDto) {
-    const { tenant_id, room_id, pg_id, bill_amount, bill_date, split_equally, remarks } = createCurrentBillDto;
+    const { tenant_id, room_id, pg_id, bill_amount, bill_date, split_equally, remarks } =
+      createCurrentBillDto;
 
     // Validate input
     if (!bill_amount || bill_amount <= 0) {
@@ -34,17 +35,14 @@ export class CurrentBillService {
 
     // Invalid combination
     throw new BadRequestException(
-      'Invalid parameters. Either provide room_id with split_equally=true for room bill, or tenant_id for individual bill'
+      'Invalid parameters. Either provide room_id with split_equally=true for room bill, or tenant_id for individual bill',
     );
   }
 
   /**
    * Check if a bill already exists for the same month
    */
-  private async billExistsForMonth(
-    tenant_id: number,
-    bill_date: Date
-  ): Promise<boolean> {
+  private async billExistsForMonth(tenant_id: number, bill_date: Date): Promise<boolean> {
     const monthStart = new Date(bill_date.getFullYear(), bill_date.getMonth(), 1);
     const monthEnd = new Date(bill_date.getFullYear(), bill_date.getMonth() + 1, 0);
 
@@ -70,7 +68,7 @@ export class CurrentBillService {
     pg_id: number,
     total_bill_amount: number,
     bill_date?: string,
-    remarks?: string
+    remarks?: string,
   ) {
     // Verify room exists
     const room = await this.prisma.rooms.findFirst({
@@ -114,7 +112,7 @@ export class CurrentBillService {
       const billExists = await this.billExistsForMonth(tenant.s_no, billDateObj);
       if (billExists) {
         throw new BadRequestException(
-          `Room already has a bill for ${billDateObj.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}. Tenant ${tenant.name} already has a bill for this month.`
+          `Room already has a bill for ${billDateObj.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}. Tenant ${tenant.name} already has a bill for this month.`,
         );
       }
     }
@@ -147,13 +145,16 @@ export class CurrentBillService {
       createdBills.push(currentBill);
     }
 
-    return ResponseUtil.success({
-      bills: createdBills,
-      total_bill_amount: total_bill_amount,
-      bill_per_tenant: billPerTenant.toNumber(),
-      tenant_count: tenants.length,
-      bill_date: billDateObj,
-    }, `Current bill created and split equally among ${tenants.length} tenant(s)`);
+    return ResponseUtil.success(
+      {
+        bills: createdBills,
+        total_bill_amount: total_bill_amount,
+        bill_per_tenant: billPerTenant.toNumber(),
+        tenant_count: tenants.length,
+        bill_date: billDateObj,
+      },
+      `Current bill created and split equally among ${tenants.length} tenant(s)`,
+    );
   }
 
   /**
@@ -164,7 +165,7 @@ export class CurrentBillService {
     pg_id: number,
     bill_amount: number,
     bill_date?: string,
-    remarks?: string
+    remarks?: string,
   ) {
     try {
       // Verify tenant exists
@@ -184,7 +185,7 @@ export class CurrentBillService {
       const billExists = await this.billExistsForMonth(tenant_id, billDateObj);
       if (billExists) {
         throw new BadRequestException(
-          `${tenant.name} already has a bill for ${billDateObj.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`
+          `${tenant.name} already has a bill for ${billDateObj.toLocaleDateString('en-IN', { month: 'long', year: 'numeric' })}`,
         );
       }
 
@@ -235,7 +236,7 @@ export class CurrentBillService {
     start_date?: string,
     end_date?: string,
     page: number = 1,
-    limit: number = 10
+    limit: number = 10,
   ) {
     try {
       const where: any = {
@@ -294,7 +295,13 @@ export class CurrentBillService {
         this.prisma.current_bills.count({ where }),
       ]);
 
-      return ResponseUtil.paginated(bills, total, page, limit, 'Current bills fetched successfully');
+      return ResponseUtil.paginated(
+        bills,
+        total,
+        page,
+        limit,
+        'Current bills fetched successfully',
+      );
     } catch (error) {
       throw new BadRequestException(error.message || 'Failed to fetch current bills');
     }
@@ -486,17 +493,23 @@ export class CurrentBillService {
         },
       });
 
-      const totalAmount = bills.reduce((sum, bill) => sum + parseFloat(bill.bill_amount.toString()), 0);
+      const totalAmount = bills.reduce(
+        (sum, bill) => sum + parseFloat(bill.bill_amount.toString()),
+        0,
+      );
 
-      return ResponseUtil.success({
-        bills,
-        summary: {
-          month,
-          year,
-          total_bills: bills.length,
-          total_amount: totalAmount,
+      return ResponseUtil.success(
+        {
+          bills,
+          summary: {
+            month,
+            year,
+            total_bills: bills.length,
+            total_amount: totalAmount,
+          },
         },
-      }, 'Bills fetched successfully for the month');
+        'Bills fetched successfully for the month',
+      );
     } catch (error) {
       throw new BadRequestException(error.message || 'Failed to fetch bills for the month');
     }

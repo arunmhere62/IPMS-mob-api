@@ -29,7 +29,9 @@ export class RefundPaymentService {
     });
 
     if (existingRefund) {
-      throw new BadRequestException(`Tenant ${tenant.name} already has a refund payment. Only one refund payment is allowed per tenant.`);
+      throw new BadRequestException(
+        `Tenant ${tenant.name} already has a refund payment. Only one refund payment is allowed per tenant.`,
+      );
     }
 
     // Validate room exists
@@ -64,7 +66,8 @@ export class RefundPaymentService {
         room_id: createRefundPaymentDto.room_id,
         bed_id: createRefundPaymentDto.bed_id,
         amount_paid: createRefundPaymentDto.amount_paid,
-        actual_rent_amount: createRefundPaymentDto.actual_rent_amount || createRefundPaymentDto.amount_paid,
+        actual_rent_amount:
+          createRefundPaymentDto.actual_rent_amount || createRefundPaymentDto.amount_paid,
         payment_date: createRefundPaymentDto.payment_date
           ? new Date(createRefundPaymentDto.payment_date)
           : new Date(),
@@ -143,7 +146,7 @@ export class RefundPaymentService {
     if (start_date && end_date) {
       const startDateTime = new Date(start_date);
       startDateTime.setHours(0, 0, 0, 0);
-      
+
       const endDateTime = new Date(end_date);
       endDateTime.setHours(23, 59, 59, 999);
 
@@ -155,7 +158,7 @@ export class RefundPaymentService {
       const monthIndex = new Date(Date.parse(month + ' 1, 2000')).getMonth();
       const startOfMonth = new Date(year, monthIndex, 1);
       startOfMonth.setHours(0, 0, 0, 0);
-      
+
       const endOfMonth = new Date(year, monthIndex + 1, 0);
       endOfMonth.setHours(23, 59, 59, 999);
 
@@ -211,9 +214,9 @@ export class RefundPaymentService {
     ]);
 
     // Add tenant unavailability reason
-    const enrichedData = refundPayments.map(payment => {
+    const enrichedData = refundPayments.map((payment) => {
       let tenant_unavailable_reason = null;
-      
+
       if (!payment.tenants) {
         tenant_unavailable_reason = 'NOT_FOUND';
       } else if (payment.tenants.is_deleted) {
@@ -230,7 +233,13 @@ export class RefundPaymentService {
       };
     });
 
-    return ResponseUtil.paginated(enrichedData, total, page, limit, 'Refund payments fetched successfully');
+    return ResponseUtil.paginated(
+      enrichedData,
+      total,
+      page,
+      limit,
+      'Refund payments fetched successfully',
+    );
   }
 
   async findOne(id: number, pg_id: number) {

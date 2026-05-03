@@ -57,7 +57,9 @@ export class RentCalculationUtil {
     // For MIDMONTH cycles, use full bed price from allocation without proration
     if (cycleType === 'MIDMONTH') {
       const latestAllocation = allocations[allocations.length - 1];
-      const price = latestAllocation?.bed_price_snapshot ? Number(latestAllocation.bed_price_snapshot) : 0;
+      const price = latestAllocation?.bed_price_snapshot
+        ? Number(latestAllocation.bed_price_snapshot)
+        : 0;
       return this.moneyRound2(price);
     }
 

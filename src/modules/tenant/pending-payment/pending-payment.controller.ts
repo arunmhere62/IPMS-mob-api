@@ -1,4 +1,7 @@
-import { CommonHeaders, CommonHeadersDecorator } from '../../../common/decorators/common-headers.decorator';
+import {
+  CommonHeaders,
+  CommonHeadersDecorator,
+} from '../../../common/decorators/common-headers.decorator';
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { ApiTags } from '@nestjs/swagger';
 import { PendingPaymentService } from './pending-payment.service';
@@ -30,28 +33,19 @@ export class PendingPaymentController {
     @CommonHeadersDecorator() headers: CommonHeaders,
     @Query('pg_id') pgId?: string,
   ) {
-    const pgLocationId = pgId
-      ? parseInt(pgId, 10)
-      : headers.pg_id;
+    const pgLocationId = pgId ? parseInt(pgId, 10) : headers.pg_id;
 
-    const pendingPayments = await this.pendingPaymentService.getAllPendingPayments(
-      pgLocationId,
-    );
+    const pendingPayments = await this.pendingPaymentService.getAllPendingPayments(pgLocationId);
 
     return {
       success: true,
       data: pendingPayments,
       summary: {
         total_tenants: pendingPayments.length,
-        total_pending_amount: pendingPayments.reduce(
-          (sum, p) => sum + p.total_pending,
-          0,
-        ),
-        overdue_tenants: pendingPayments.filter((p) => p.payment_status === 'OVERDUE')
+        total_pending_amount: pendingPayments.reduce((sum, p) => sum + p.total_pending, 0),
+        overdue_tenants: pendingPayments.filter((p) => p.payment_status === 'OVERDUE').length,
+        partial_payment_tenants: pendingPayments.filter((p) => p.payment_status === 'PARTIAL')
           .length,
-        partial_payment_tenants: pendingPayments.filter(
-          (p) => p.payment_status === 'PARTIAL',
-        ).length,
       },
     };
   }
@@ -66,13 +60,10 @@ export class PendingPaymentController {
     @CommonHeadersDecorator() headers: CommonHeaders,
     @Query('pg_id') pgId?: string,
   ) {
-    const pgLocationId = pgId
-      ? parseInt(pgId, 10)
-      : headers.pg_id;
+    const pgLocationId = pgId ? parseInt(pgId, 10) : headers.pg_id;
 
-    const dueTomorrow = await this.pendingPaymentService.getTenantsWithPaymentDueTomorrow(
-      pgLocationId,
-    );
+    const dueTomorrow =
+      await this.pendingPaymentService.getTenantsWithPaymentDueTomorrow(pgLocationId);
 
     return {
       success: true,

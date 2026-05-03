@@ -44,10 +44,25 @@ export class TenantPaymentController {
   @ApiOperation({ summary: 'Get all tenant payments with filters' })
   @ApiQuery({ name: 'tenant_id', required: false, type: Number })
   @ApiQuery({ name: 'status', required: false, type: String })
-  @ApiQuery({ name: 'month', required: false, type: String, description: 'Month name (e.g., January)' })
+  @ApiQuery({
+    name: 'month',
+    required: false,
+    type: String,
+    description: 'Month name (e.g., January)',
+  })
   @ApiQuery({ name: 'year', required: false, type: Number, description: 'Year (e.g., 2024)' })
-  @ApiQuery({ name: 'start_date', required: false, type: String, description: 'Payment date start (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'end_date', required: false, type: String, description: 'Payment date end (YYYY-MM-DD)' })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    type: String,
+    description: 'Payment date start (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    type: String,
+    description: 'Payment date end (YYYY-MM-DD)',
+  })
   @ApiQuery({ name: 'room_id', required: false, type: Number })
   @ApiQuery({ name: 'bed_id', required: false, type: Number })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
@@ -166,8 +181,18 @@ export class TenantPaymentController {
   @Get('next-dates/:tenant_id')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Get suggested next payment dates (with gap detection)' })
-  @ApiQuery({ name: 'rentCycleType', required: false, type: String, description: 'CALENDAR or MIDMONTH' })
-  @ApiQuery({ name: 'skipGaps', required: false, type: Boolean, description: 'Skip gaps and get next payment after last payment' })
+  @ApiQuery({
+    name: 'rentCycleType',
+    required: false,
+    type: String,
+    description: 'CALENDAR or MIDMONTH',
+  })
+  @ApiQuery({
+    name: 'skipGaps',
+    required: false,
+    type: Boolean,
+    description: 'Skip gaps and get next payment after last payment',
+  })
   @ApiResponse({ status: 200, description: 'Suggested payment dates' })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
   getNextPaymentDates(

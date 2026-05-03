@@ -26,7 +26,11 @@ export class CreateRefundPaymentDto {
   @IsNumber()
   amount_paid: number;
 
-  @ApiProperty({ description: 'Original payment amount (optional)', example: 6000, required: false })
+  @ApiProperty({
+    description: 'Original payment amount (optional)',
+    example: 6000,
+    required: false,
+  })
   @IsOptional()
   @IsNumber()
   actual_rent_amount?: number;
@@ -36,17 +40,29 @@ export class CreateRefundPaymentDto {
   @IsDateString()
   payment_date: string;
 
-  @ApiProperty({ description: 'Payment method', example: 'BANK_TRANSFER', enum: ['GPAY', 'PHONEPE', 'CASH', 'BANK_TRANSFER'] })
+  @ApiProperty({
+    description: 'Payment method',
+    example: 'BANK_TRANSFER',
+    enum: ['GPAY', 'PHONEPE', 'CASH', 'BANK_TRANSFER'],
+  })
   @IsNotEmpty()
   @IsEnum(['GPAY', 'PHONEPE', 'CASH', 'BANK_TRANSFER'])
   payment_method: 'GPAY' | 'PHONEPE' | 'CASH' | 'BANK_TRANSFER';
 
-  @ApiProperty({ description: 'Refund status', example: 'PAID', enum: ['PAID', 'PENDING', 'FAILED'] })
+  @ApiProperty({
+    description: 'Refund status',
+    example: 'PAID',
+    enum: ['PAID', 'PENDING', 'FAILED'],
+  })
   @IsNotEmpty()
   @IsEnum(['PAID', 'PENDING', 'FAILED'])
   status: 'PAID' | 'PENDING' | 'FAILED';
 
-  @ApiProperty({ description: 'Additional remarks', example: 'Refunded security deposit', required: false })
+  @ApiProperty({
+    description: 'Additional remarks',
+    example: 'Refunded security deposit',
+    required: false,
+  })
   @IsOptional()
   @IsString()
   remarks?: string;

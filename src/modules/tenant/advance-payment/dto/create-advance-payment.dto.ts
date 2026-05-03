@@ -37,20 +37,20 @@ export class CreateAdvancePaymentDto {
   @IsDateString()
   payment_date?: string;
 
-  @ApiProperty({ 
-    description: 'Payment method', 
+  @ApiProperty({
+    description: 'Payment method',
     enum: ['CASH', 'GPAY', 'PHONEPE', 'BANK_TRANSFER', 'UPI', 'CARD'],
-    example: 'CASH'
+    example: 'CASH',
   })
   @IsNotEmpty()
   @IsEnum(['CASH', 'GPAY', 'PHONEPE', 'BANK_TRANSFER', 'UPI', 'CARD'])
   payment_method: string;
 
-  @ApiProperty({ 
-    description: 'Payment status', 
+  @ApiProperty({
+    description: 'Payment status',
     enum: ['PENDING', 'PAID', 'FAILED'],
     example: 'PAID',
-    required: false
+    required: false,
   })
   @IsOptional()
   @IsEnum(['PENDING', 'PAID', 'FAILED'])

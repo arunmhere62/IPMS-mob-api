@@ -25,9 +25,10 @@ export class CurrentBillController {
 
   @Post()
   @RequireHeaders({ pg_id: true })
-  @ApiOperation({ 
+  @ApiOperation({
     summary: 'Create a new current bill',
-    description: 'Create a current bill with two modes: 1) Split bill for a room (provide room_id with split_equally=true), 2) Individual bill for a tenant (provide tenant_id)'
+    description:
+      'Create a current bill with two modes: 1) Split bill for a room (provide room_id with split_equally=true), 2) Individual bill for a tenant (provide tenant_id)',
   })
   @ApiResponse({ status: 201, description: 'Current bill created successfully' })
   @ApiResponse({ status: 400, description: 'Bad request' })
@@ -46,10 +47,25 @@ export class CurrentBillController {
   @ApiOperation({ summary: 'Get all current bills with filters' })
   @ApiQuery({ name: 'tenant_id', required: false, type: Number })
   @ApiQuery({ name: 'room_id', required: false, type: Number })
-  @ApiQuery({ name: 'month', required: false, type: String, description: 'Month name (e.g., January)' })
+  @ApiQuery({
+    name: 'month',
+    required: false,
+    type: String,
+    description: 'Month name (e.g., January)',
+  })
   @ApiQuery({ name: 'year', required: false, type: Number, description: 'Year (e.g., 2024)' })
-  @ApiQuery({ name: 'start_date', required: false, type: String, description: 'Start date (YYYY-MM-DD)' })
-  @ApiQuery({ name: 'end_date', required: false, type: String, description: 'End date (YYYY-MM-DD)' })
+  @ApiQuery({
+    name: 'start_date',
+    required: false,
+    type: String,
+    description: 'Start date (YYYY-MM-DD)',
+  })
+  @ApiQuery({
+    name: 'end_date',
+    required: false,
+    type: String,
+    description: 'End date (YYYY-MM-DD)',
+  })
   @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
   @ApiQuery({ name: 'limit', required: false, type: Number, example: 10 })
   @ApiResponse({ status: 200, description: 'List of current bills' })

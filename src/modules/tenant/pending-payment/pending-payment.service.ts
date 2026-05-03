@@ -118,9 +118,7 @@ export class PendingPaymentService {
    * 2. If last payment end_date has passed → Pending for new period
    * 3. If paid partial amount → Show balance
    */
-  async calculateTenantPendingPayment(
-    tenantId: number,
-  ): Promise<PendingPaymentDetails> {
+  async calculateTenantPendingPayment(tenantId: number): Promise<PendingPaymentDetails> {
     // Get tenant details with room and payments
     const tenant: TenantWithPendingPaymentData | null = await this.prisma.tenants.findUnique({
       where: { s_no: tenantId },
@@ -187,14 +185,19 @@ export class PendingPaymentService {
     }
 
     const moneyRound2 = (n: number): number => Math.round((n + Number.EPSILON) * 100) / 100;
-    const toDateOnlyUtc = (d: Date): Date => new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
+    const toDateOnlyUtc = (d: Date): Date =>
+      new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
     const getInclusiveDays = (start: Date, end: Date): number => {
       const startUtc = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
       const endUtc = Date.UTC(end.getFullYear(), end.getMonth(), end.getDate());
       return Math.floor((endUtc - startUtc) / (1000 * 60 * 60 * 24)) + 1;
     };
 
-    const computeProratedAmountForMonth = (monthlyPrice: number, start: Date, end: Date): number => {
+    const computeProratedAmountForMonth = (
+      monthlyPrice: number,
+      start: Date,
+      end: Date,
+    ): number => {
       if (monthlyPrice <= 0) return 0;
       const s = toDateOnlyUtc(start);
       const e = toDateOnlyUtc(end);
@@ -210,11 +213,14 @@ export class PendingPaymentService {
         effective_from: Date;
         effective_to: Date | null;
         bed_price_snapshot: unknown;
-      }> = (tenant?.tenant_allocations as Array<{
-        effective_from: Date;
-        effective_to: Date | null;
-        bed_price_snapshot: unknown;
-      }> | undefined) ?? [];
+      }> =
+        (tenant?.tenant_allocations as
+          | Array<{
+              effective_from: Date;
+              effective_to: Date | null;
+              bed_price_snapshot: unknown;
+            }>
+          | undefined) ?? [];
       if (!allocations || allocations.length === 0) return 0;
 
       const start = toDateOnlyUtc(periodStart);
@@ -262,9 +268,11 @@ export class PendingPaymentService {
       return moneyRound2(total);
     };
 
-    const bedPriceNumber = tenant.beds?.bed_price ? parseFloat(tenant.beds.bed_price.toString()) : 0;
+    const bedPriceNumber = tenant.beds?.bed_price
+      ? parseFloat(tenant.beds.bed_price.toString())
+      : 0;
     const monthlyRent = bedPriceNumber;
-    
+
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
@@ -291,7 +299,7 @@ export class PendingPaymentService {
       const dueFromAllocations = computeProratedDueFromAllocations(start, end);
       totalPending = dueFromAllocations > 0 ? dueFromAllocations : monthlyRent;
       paymentStatus = 'PENDING';
-      
+
       // Due date is end of current month
       const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
       endOfMonth.setHours(23, 59, 59, 999);
@@ -306,16 +314,16 @@ export class PendingPaymentService {
         due_date: endOfMonth.toISOString(),
         is_overdue: false,
       });
-    } 
+    }
     // Case 2: Has payments - check if coverage has ended
     else {
       const lastPaymentEndDate = lastPayment.tenant_rent_cycles?.cycle_end
         ? new Date(lastPayment.tenant_rent_cycles.cycle_end)
         : null;
-      
+
       if (lastPaymentEndDate) {
         lastPaymentEndDate.setHours(23, 59, 59, 999);
-        
+
         // Case 2a: Last payment end date has passed
         if (lastPaymentEndDate < today) {
           // Payment period has ended - show as PENDING (not OVERDUE)
@@ -330,7 +338,7 @@ export class PendingPaymentService {
           const dueFromAllocations = computeProratedDueFromAllocations(start, end);
           totalPending = dueFromAllocations > 0 ? dueFromAllocations : monthlyRent;
           paymentStatus = 'PENDING';
-          
+
           nextDueDate = nextDay.toISOString();
 
           const endedMonth = lastPaymentEndDate.toLocaleString('default', { month: 'long' });
@@ -361,13 +369,14 @@ export class PendingPaymentService {
           // was recorded before the transfer.
           const dueFromAllocations = computeProratedDueFromAllocations(periodStart, periodEnd);
 
-          const actualRentAmount = dueFromAllocations > 0
-            ? dueFromAllocations
-            : lastPayment.actual_rent_amount
-              ? parseFloat(lastPayment.actual_rent_amount.toString())
-              : monthlyRent;
+          const actualRentAmount =
+            dueFromAllocations > 0
+              ? dueFromAllocations
+              : lastPayment.actual_rent_amount
+                ? parseFloat(lastPayment.actual_rent_amount.toString())
+                : monthlyRent;
           const amountPaid = parseFloat(lastPayment.amount_paid.toString());
-          
+
           if (amountPaid < actualRentAmount) {
             // Partial payment
             totalPending = actualRentAmount - amountPaid;
@@ -397,7 +406,7 @@ export class PendingPaymentService {
         // No end date on last payment - treat as pending
         totalPending = monthlyRent;
         paymentStatus = 'PENDING';
-        
+
         const endOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0);
         endOfMonth.setHours(23, 59, 59, 999);
         nextDueDate = endOfMonth.toISOString();
@@ -542,9 +551,7 @@ export class PendingPaymentService {
 
     // Convert filtered tenants to PendingPaymentDetails format
     const pendingPayments = await Promise.all(
-      tenantsWithPendingRent.map((tenant) =>
-        this.calculateTenantPendingPayment(tenant.s_no),
-      ),
+      tenantsWithPendingRent.map((tenant) => this.calculateTenantPendingPayment(tenant.s_no)),
     );
 
     return pendingPayments;
@@ -553,9 +560,7 @@ export class PendingPaymentService {
   /**
    * Check if tenant has payment due tomorrow (end date is today)
    */
-  async getTenantsWithPaymentDueTomorrow(
-    pgId?: number,
-  ): Promise<
+  async getTenantsWithPaymentDueTomorrow(pgId?: number): Promise<
     Array<{
       tenant_id: number;
       tenant_name: string;
@@ -630,9 +635,7 @@ export class PendingPaymentService {
         tenant_name: tenant.name,
         room_no: tenant.rooms?.room_no,
         last_payment_end_date: tenant.rent_payments[0].tenant_rent_cycles.cycle_end.toISOString(),
-        monthly_rent: tenant.beds?.bed_price
-          ? parseFloat(tenant.beds.bed_price.toString())
-          : 0,
+        monthly_rent: tenant.beds?.bed_price ? parseFloat(tenant.beds.bed_price.toString()) : 0,
       }));
 
     return dueTomorrow;

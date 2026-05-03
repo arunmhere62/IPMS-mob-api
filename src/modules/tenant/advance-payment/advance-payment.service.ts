@@ -1,8 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
-import {
-  advance_payments_payment_method,
-  advance_payments_status,
-} from '@prisma/client';
+import { advance_payments_payment_method, advance_payments_status } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseUtil } from '../../../common/utils/response.util';
 import { CreateAdvancePaymentDto, UpdateAdvancePaymentDto, VoidAdvancePaymentDto } from './dto';
@@ -33,9 +30,7 @@ export class AdvancePaymentService {
     });
 
     if (!tenant) {
-      throw new NotFoundException(
-        `Tenant with ID ${createAdvancePaymentDto.tenant_id} not found`,
-      );
+      throw new NotFoundException(`Tenant with ID ${createAdvancePaymentDto.tenant_id} not found`);
     }
 
     // Check if tenant already has an advance payment
@@ -62,9 +57,7 @@ export class AdvancePaymentService {
     });
 
     if (!room) {
-      throw new NotFoundException(
-        `Room with ID ${createAdvancePaymentDto.room_id} not found`,
-      );
+      throw new NotFoundException(`Room with ID ${createAdvancePaymentDto.room_id} not found`);
     }
 
     // Verify bed exists
@@ -76,9 +69,7 @@ export class AdvancePaymentService {
     });
 
     if (!bed) {
-      throw new NotFoundException(
-        `Bed with ID ${createAdvancePaymentDto.bed_id} not found`,
-      );
+      throw new NotFoundException(`Bed with ID ${createAdvancePaymentDto.bed_id} not found`);
     }
 
     // Create advance payment
@@ -89,11 +80,13 @@ export class AdvancePaymentService {
         room_id: createAdvancePaymentDto.room_id,
         bed_id: createAdvancePaymentDto.bed_id,
         amount_paid: createAdvancePaymentDto.amount_paid,
-        actual_rent_amount: createAdvancePaymentDto.actual_rent_amount || createAdvancePaymentDto.amount_paid,
-        payment_date: createAdvancePaymentDto.payment_date 
+        actual_rent_amount:
+          createAdvancePaymentDto.actual_rent_amount || createAdvancePaymentDto.amount_paid,
+        payment_date: createAdvancePaymentDto.payment_date
           ? new Date(createAdvancePaymentDto.payment_date)
           : new Date(),
-        payment_method: createAdvancePaymentDto.payment_method as unknown as advance_payments_payment_method,
+        payment_method:
+          createAdvancePaymentDto.payment_method as unknown as advance_payments_payment_method,
         status: (createAdvancePaymentDto.status || 'PAID') as unknown as advance_payments_status,
         remarks: createAdvancePaymentDto.remarks,
       },
@@ -172,7 +165,7 @@ export class AdvancePaymentService {
       // Date range filter takes precedence
       const startDateTime = new Date(start_date);
       startDateTime.setHours(0, 0, 0, 0);
-      
+
       const endDateTime = new Date(end_date);
       endDateTime.setHours(23, 59, 59, 999);
 
@@ -185,7 +178,7 @@ export class AdvancePaymentService {
       const monthIndex = new Date(Date.parse(month + ' 1, 2000')).getMonth();
       const startOfMonth = new Date(year, monthIndex, 1);
       startOfMonth.setHours(0, 0, 0, 0);
-      
+
       const endOfMonth = new Date(year, monthIndex + 1, 0);
       endOfMonth.setHours(23, 59, 59, 999);
 
@@ -241,9 +234,9 @@ export class AdvancePaymentService {
     ]);
 
     // Add tenant unavailability reason
-    const enrichedData = advancePayments.map(payment => {
+    const enrichedData = advancePayments.map((payment) => {
       let tenant_unavailable_reason = null;
-      
+
       if (!payment.tenants) {
         tenant_unavailable_reason = 'NOT_FOUND';
       } else if (payment.tenants.is_deleted) {
@@ -260,7 +253,13 @@ export class AdvancePaymentService {
       };
     });
 
-    return ResponseUtil.paginated(enrichedData, total, page, limit, 'Advance payments fetched successfully');
+    return ResponseUtil.paginated(
+      enrichedData,
+      total,
+      page,
+      limit,
+      'Advance payments fetched successfully',
+    );
   }
 
   /**
@@ -461,9 +460,7 @@ export class AdvancePaymentService {
 
     const validStatuses = ['PENDING', 'PAID', 'OVERDUE', 'CANCELLED'];
     if (!validStatuses.includes(status)) {
-      throw new BadRequestException(
-        `Invalid status. Must be one of: ${validStatuses.join(', ')}`,
-      );
+      throw new BadRequestException(`Invalid status. Must be one of: ${validStatuses.join(', ')}`);
     }
 
     const updateData: Record<string, unknown> = {
@@ -512,7 +509,10 @@ export class AdvancePaymentService {
       },
     });
 
-    return ResponseUtil.success(updatedAdvancePayment, 'Advance payment status updated successfully');
+    return ResponseUtil.success(
+      updatedAdvancePayment,
+      'Advance payment status updated successfully',
+    );
   }
 
   async voidPayment(id: number, body: VoidAdvancePaymentDto, voidedByUserId: number) {
@@ -536,7 +536,10 @@ export class AdvancePaymentService {
       throw new NotFoundException(`Advance payment with ID ${id} not found`);
     }
 
-    const existing = existingPayment as unknown as { status?: string | null; voided_at?: Date | null };
+    const existing = existingPayment as unknown as {
+      status?: string | null;
+      voided_at?: Date | null;
+    };
     const status = String(existing.status ?? '').toUpperCase();
     const voidedAt = existing.voided_at;
     if (status === 'VOIDED' || voidedAt) {

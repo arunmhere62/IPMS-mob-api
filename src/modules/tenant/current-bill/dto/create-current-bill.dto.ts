@@ -1,4 +1,12 @@
-import { IsNotEmpty, IsNumber, IsOptional, IsString, IsDateString, IsEnum, IsBoolean } from 'class-validator';
+import {
+  IsNotEmpty,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsDateString,
+  IsEnum,
+  IsBoolean,
+} from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class CreateCurrentBillDto {
@@ -22,19 +30,19 @@ export class CreateCurrentBillDto {
   @IsNumber()
   bill_amount: number;
 
-  @ApiProperty({ 
-    description: 'Bill date (represents the month for which bill is applicable)', 
+  @ApiProperty({
+    description: 'Bill date (represents the month for which bill is applicable)',
     example: '2024-01-01',
-    required: false 
+    required: false,
   })
   @IsOptional()
   @IsDateString()
   bill_date?: string;
 
-  @ApiProperty({ 
-    description: 'Whether to split bill equally among all tenants in the room', 
+  @ApiProperty({
+    description: 'Whether to split bill equally among all tenants in the room',
     example: true,
-    required: false 
+    required: false,
   })
   @IsOptional()
   @IsBoolean()

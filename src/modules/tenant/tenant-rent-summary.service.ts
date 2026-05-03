@@ -71,6 +71,14 @@ export class TenantRentSummaryService {
     monthlyRent: number,
   ): Omit<RentPeriod, 'paid_amount' | 'status' | 'due_amount'>[] {
     const periods: Omit<RentPeriod, 'paid_amount' | 'status' | 'due_amount'>[] = [];
+    // Format using local date parts — NOT toISOString() which shifts to UTC and produces
+    // the previous day in IST (UTC+5:30) for local-midnight dates.
+    const localDateStr = (d: Date): string => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
     let cursor = new Date(checkIn);
     cursor.setHours(0, 0, 0, 0);
 
@@ -89,22 +97,28 @@ export class TenantRentSummaryService {
           return new Date(cy, cm, Math.min(day, lastDay));
         };
 
-        if (d >= anchorDay) {
-          periodStart = clampDay(y, m, anchorDay);
-          // nextStart is clamped to next month's last day if needed
-          const nextStart = clampDay(periodStart.getFullYear(), periodStart.getMonth() + 1, anchorDay);
-          periodEnd = new Date(nextStart);
-          periodEnd.setDate(periodEnd.getDate() - 1);
+        // Use logical month BEFORE clamping to derive nextStart correctly.
+        // Compare d against the clamped anchor for the cursor's month (not raw anchorDay).
+        // e.g. anchor=31, cursor=Apr30: clampedAnchor=Apr30, d(30)>=30 → logicalStartMonth=Apr ✅
+        // e.g. anchor=30, cursor=Feb28: clampedAnchor=Feb28, d(28)>=28 → logicalStartMonth=Feb ✅
+        const clampedAnchorForCursorMonth = Math.min(anchorDay, new Date(y, m + 1, 0).getDate());
+        const logicalStartMonth = d >= clampedAnchorForCursorMonth ? m : m - 1;
+        periodStart = clampDay(y, logicalStartMonth, anchorDay);
+        const nextStart = clampDay(y, logicalStartMonth + 1, anchorDay);
+        periodEnd = new Date(nextStart);
+        periodEnd.setDate(periodEnd.getDate() - 1);
+
+        // Advance cursor to next period's anchor.
+        // If the anchor was clamped (e.g. Feb30→Feb28), nextStart.date < anchorDay.
+        // Adding 1 day (→Mar1) ensures the next iteration sees d(1)<anchorDay(30)
+        // and derives logicalStartMonth=Feb, giving the correct Feb28→Mar29 cycle.
+        const nextCursor = clampDay(y, logicalStartMonth + 1, anchorDay);
+        if (nextCursor.getDate() < anchorDay) {
+          cursor = new Date(nextCursor);
+          cursor.setDate(cursor.getDate() + 1);
         } else {
-          periodStart = clampDay(y, m - 1, anchorDay);
-          const nextStart = clampDay(periodStart.getFullYear(), periodStart.getMonth() + 1, anchorDay);
-          periodEnd = new Date(nextStart);
-          periodEnd.setDate(periodEnd.getDate() - 1);
+          cursor = nextCursor;
         }
-        // Advance cursor to the next period start (clamped)
-        cursor = new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, anchorDay);
-        const cursorLastDay = new Date(cursor.getFullYear(), cursor.getMonth() + 1, 0).getDate();
-        cursor = new Date(cursor.getFullYear(), cursor.getMonth(), Math.min(anchorDay, cursorLastDay));
       } else {
         // CALENDAR: 1st to last day of month
         const y = cursor.getFullYear();
@@ -118,19 +132,20 @@ export class TenantRentSummaryService {
       periodStart.setHours(0, 0, 0, 0);
       periodEnd.setHours(0, 0, 0, 0);
 
-      // Calculate prorated rent
-      const daysInMonth = new Date(
-        periodStart.getFullYear(),
-        periodStart.getMonth() + 1,
-        0,
-      ).getDate();
+      // Calculate prorated rent.
+      // For MIDMONTH cycles: each full cycle spans exactly periodDays days (e.g. Mar31→Apr29 = 30 days).
+      // Using periodDays as both numerator and denominator always yields monthlyRent for full cycles.
+      // For CALENDAR cycles: use the calendar month's day count so partial first/last months prorate correctly.
       const periodDays =
         Math.floor((periodEnd.getTime() - periodStart.getTime()) / 86400000) + 1;
-      const expectedRent = this.round2((monthlyRent / daysInMonth) * periodDays);
+      const daysInMonth = cycleType === 'MIDMONTH'
+        ? periodDays
+        : new Date(periodStart.getFullYear(), periodStart.getMonth() + 1, 0).getDate();
+      const expectedRent = this.round2(Math.min((monthlyRent / daysInMonth) * periodDays, monthlyRent));
 
       periods.push({
-        period_start: periodStart.toISOString().split('T')[0],
-        period_end: periodEnd.toISOString().split('T')[0],
+        period_start: localDateStr(periodStart),
+        period_end: localDateStr(periodEnd),
         expected_rent: expectedRent,
       });
     }
@@ -148,9 +163,13 @@ export class TenantRentSummaryService {
     payments: RentPayment[],
   ): RentPeriod[] {
     // Sort payments by payment_date ascending (nulls last)
+    const toUtcDay = (d: Date | string): number => {
+      const raw = new Date(d);
+      return Date.UTC(raw.getUTCFullYear(), raw.getUTCMonth(), raw.getUTCDate());
+    };
     const sorted = [...payments].sort((a, b) => {
-      const da = a.payment_date ? new Date(a.payment_date).getTime() : Infinity;
-      const db = b.payment_date ? new Date(b.payment_date).getTime() : Infinity;
+      const da = a.payment_date ? toUtcDay(a.payment_date) : Infinity;
+      const db = b.payment_date ? toUtcDay(b.payment_date) : Infinity;
       return da - db;
     });
 
@@ -158,31 +177,18 @@ export class TenantRentSummaryService {
     const paidMap: number[] = periods.map(() => 0);
 
     for (const payment of sorted) {
-      const paid = this.round2(this.toNum(payment.amount_paid));
-      if (paid <= 0) continue;
+      let remaining = this.round2(this.toNum(payment.amount_paid));
+      if (remaining <= 0) continue;
 
-      const payDate = payment.payment_date ? new Date(payment.payment_date) : null;
-      payDate?.setHours(0, 0, 0, 0);
-
-      // Find the best-matching period: if payDate exists, use the period that
-      // contains it; otherwise fall back to the first unpaid/partially paid period
-      let targetIdx = -1;
-
-      if (payDate) {
-        targetIdx = periods.findIndex((p) => {
-          const start = new Date(p.period_start);
-          const end = new Date(p.period_end);
-          return payDate >= start && payDate <= end;
-        });
-      }
-
-      if (targetIdx === -1) {
-        // Assign to the first period that is not yet fully paid
-        targetIdx = periods.findIndex((p, i) => paidMap[i] < p.expected_rent);
-      }
-
-      if (targetIdx !== -1) {
-        paidMap[targetIdx] = this.round2(paidMap[targetIdx] + paid);
+      // Sequential fill with overflow spillover:
+      // Fill the first underpaid period up to its expected_rent, then spill any
+      // remainder into the next underpaid period, and so on.
+      for (let i = 0; i < periods.length && remaining > 0; i++) {
+        const due = this.round2(periods[i].expected_rent - paidMap[i]);
+        if (due <= 0) continue;
+        const apply = Math.min(remaining, due);
+        paidMap[i] = this.round2(paidMap[i] + apply);
+        remaining = this.round2(remaining - apply);
       }
     }
 
@@ -222,6 +228,14 @@ export class TenantRentSummaryService {
     const now = new Date();
     now.setHours(0, 0, 0, 0);
 
+    // Parse "YYYY-MM-DD" strings as local midnight (new Date(str) parses as UTC which is wrong in IST)
+    const parseLocalDate = (s: string): Date => {
+      const [y, m, d] = s.split('-').map(Number);
+      const dt = new Date(y, m - 1, d);
+      dt.setHours(0, 0, 0, 0);
+      return dt;
+    };
+
     const checkOut = tenant.check_out_date ? new Date(tenant.check_out_date) : null;
     checkOut?.setHours(0, 0, 0, 0);
     const endDate = checkOut && checkOut < now ? checkOut : now;
@@ -245,7 +259,7 @@ export class TenantRentSummaryService {
 
     for (const period of periods) {
       // Only count periods that have started (period_start <= today)
-      const periodStart = new Date(period.period_start);
+      const periodStart = parseLocalDate(period.period_start);
       if (periodStart > now) continue;
 
       if (period.status === 'PARTIAL') {
@@ -255,7 +269,7 @@ export class TenantRentSummaryService {
           if (p.status !== 'PARTIAL' || !p.payment_date) return false;
           const d = new Date(p.payment_date);
           d.setHours(0, 0, 0, 0);
-          return d >= new Date(period.period_start) && d <= new Date(period.period_end);
+          return d >= parseLocalDate(period.period_start) && d <= parseLocalDate(period.period_end);
         });
         partialPayments.push(...periodPartials);
       } else if (period.status === 'PENDING') {
@@ -271,7 +285,7 @@ export class TenantRentSummaryService {
     const rentDueAmount = this.round2(partialDueAmount + pendingDueAmount);
 
     // 4. Overall status
-    const allStarted = periods.filter((p) => new Date(p.period_start) <= now);
+    const allStarted = periods.filter((p) => parseLocalDate(p.period_start) <= now);
     let paymentStatus: RentSummaryResult['payment_status'];
     if (allStarted.every((p) => p.status === 'PAID')) {
       paymentStatus = 'PAID';
@@ -287,8 +301,8 @@ export class TenantRentSummaryService {
 
     // 5. Current cycle
     const currentPeriod = periods.find((p) => {
-      const start = new Date(p.period_start);
-      const end = new Date(p.period_end);
+      const start = parseLocalDate(p.period_start);
+      const end = parseLocalDate(p.period_end);
       return now >= start && now <= end;
     });
     const currentCycle = currentPeriod

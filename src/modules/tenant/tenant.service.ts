@@ -576,6 +576,11 @@ export class TenantService {
     const { page = 1, limit = 10, pg_id, room_id, status, search, pending_rent, pending_advance, partial_rent } = params;
     const skip = (page - 1) * limit;
 
+    // When in-memory filters are active (pending_rent/advance/partial_rent), we must fetch ALL
+    // matching tenants first (no pagination), filter in memory, then slice for the page.
+    // DB-level pagination would cut off tenants on later pages before the filter runs.
+    const useInMemoryFilter = !!(pending_rent || pending_advance || partial_rent);
+
     const where: Prisma.tenantsWhereInput = { is_deleted: false };
 
     if (pg_id) where.pg_id = pg_id;
@@ -591,8 +596,7 @@ export class TenantService {
 
     const tenants = await this.prisma.tenants.findMany({
       where,
-      skip,
-      take: limit,
+      ...(useInMemoryFilter ? {} : { skip, take: limit }),
       orderBy: { created_at: 'desc' },
       include: {
         pg_locations: {
@@ -666,6 +670,12 @@ export class TenantService {
     const partialCount = activeTenants.filter((t) => Number((t as Record<string, unknown>).partial_due_amount || 0) > 0).length;
 
     const filteredTotal = filtered.length;
+
+    // Apply in-memory pagination after filtering
+    if (useInMemoryFilter) {
+      filtered = filtered.slice(skip, skip + limit);
+    }
+
     const totalPages = Math.ceil((pending_rent || pending_advance || partial_rent ? filteredTotal : total) / limit);
 
     return ResponseUtil.success(
@@ -1112,16 +1122,9 @@ export class TenantService {
       return candidate;
     })();
 
-    const unpaidMonths = this.getUnpaidMonthsWithCycleDates(
-      tenant.check_in_date,
-
-      tenant.check_out_date,
-
-      ((tenant as { tenant_rent_cycles?: TenantRentCycleSummary[] }).tenant_rent_cycles ||
-        []) as TenantRentCycleSummary[],
-
-      ((tenant as { rent_payments?: RentPaymentSummary[] }).rent_payments || []) as RentPaymentSummary[],
-    );
+    // Use buildRentSummary's unpaid_months — consistent with paymentStatus above.
+    // getUnpaidMonthsWithCycleDates skips payments with null cycle_id, causing mismatches.
+    const unpaidMonths = rentSummary.unpaid_months;
 
     const rentFlags = this.tenantStatusService.deriveRentFlags({
       paymentStatus,

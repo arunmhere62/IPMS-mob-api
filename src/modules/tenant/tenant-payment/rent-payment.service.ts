@@ -91,7 +91,7 @@ export class TenantPaymentService {
     cycleType: 'CALENDAR' | 'MIDMONTH';
     tenantCheckInDate: Date;
     referenceDate: Date;
-  }): { cycleStart: Date; cycleEnd: Date; anchorDay: number } {
+  }): { cycleStart: Date; cycleEnd: Date; anchorDay: number; logicalNextYear: number; logicalNextMonth: number } {
     const ref = this.toDateOnlyUtc(params.referenceDate);
     const checkIn = this.toDateOnlyUtc(params.tenantCheckInDate);
     const anchorDay = checkIn.getUTCDate();
@@ -106,7 +106,7 @@ export class TenantPaymentService {
         ref.getUTCMonth() === checkIn.getUTCMonth();
       const cycleStart = isCheckInMonth ? checkIn : new Date(Date.UTC(refY, refM, 1));
       const cycleEnd = new Date(Date.UTC(refY, refM + 1, 0));
-      return { cycleStart, cycleEnd, anchorDay };
+      return { cycleStart, cycleEnd, anchorDay, logicalNextYear: refY, logicalNextMonth: refM + 1 };
     }
 
     // MIDMONTH (TENANT anchored): anchor day is tenant check-in day.
@@ -116,23 +116,28 @@ export class TenantPaymentService {
     // logically starts on the 30th of the PREVIOUS month, not the 28th of Feb.
     // We use the unclamped logical anchor day to determine which month the cycle belongs to,
     // then compute cycleEnd as (nextAnchor - 1 day) using clamped next-month anchor.
+    // Logical month index BEFORE clamping — critical for correct next-cycle derivation
     const startMonth = refD >= anchorDay ? refM : refM - 1;
-    const startYear = refY;
 
-    // Use clamped start (handles Feb 30 → Feb 28 correctly for the actual DB date)
-    const cycleStart = this.makeUtcDateClamped(startYear, startMonth, anchorDay);
+    // cycleStart: clamped (e.g. Feb 30 → Feb 28)
+    const cycleStart = this.makeUtcDateClamped(refY, startMonth, anchorDay);
 
-    // Next anchor: always move exactly one calendar month forward from the logical start month
-    // Use the actual cycleStart month+1 so Feb doesn't cause drift
-    const nextAnchorMonth = cycleStart.getUTCMonth() + 1;
-    const nextAnchorYear = cycleStart.getUTCFullYear();
-    const nextStart = this.makeUtcDateClamped(nextAnchorYear, nextAnchorMonth, anchorDay);
+    // MUST use startMonth+1 (logical), NOT cycleStart.getUTCMonth()+1 (clamped).
+    // When Feb clamps 30→28, cycleStart.month = 1 (Feb), so +1 = Mar ✓ BUT
+    // if anchorDay=30 and Feb has 28 days, clamped cycleStart is still Feb,
+    // which would give Mar as next — that part is actually OK here.
+    // The real danger is when months like Feb (month=1) clamp and the cursor
+    // gets stuck: cursor = cycleEnd+1 = Feb28, refD=28 < anchorDay=30,
+    // so startMonth = Feb-1 = Jan again → infinite loop.
+    // Fix: next anchor uses the ORIGINAL startMonth index, not clamped month.
+    const nextStart = this.makeUtcDateClamped(refY, startMonth + 1, anchorDay);
 
     // cycleEnd = day before next anchor
     const cycleEnd = new Date(nextStart);
     cycleEnd.setUTCDate(cycleEnd.getUTCDate() - 1);
 
-    return { cycleStart, cycleEnd, anchorDay };
+    // logicalNextMonth is startMonth+1 BEFORE any clamping — needed by caller to advance cursor
+    return { cycleStart, cycleEnd, anchorDay, logicalNextYear: refY, logicalNextMonth: startMonth + 1 };
   }
 
   private computeExpectedRentForCalendarCycle(params: {
@@ -1127,11 +1132,18 @@ export class TenantPaymentService {
       existingCycles.map((c) => [this.toDateOnlyUtc(c.cycle_start).getTime(), c]),
     );
 
-    // Generate cycles from check-in until today (inclusive) - in memory only, no upserts
+    // Generate cycles from check-in until today (inclusive)
+    // Upsert missing cycles to DB so they get a real s_no
     let cursor = new Date(checkIn);
     let iterations = 0;
     const maxIterations = 200;
     let virtualSno = -1;
+
+    // anchorDay: for MIDMONTH = check-in day; for CALENDAR = 1
+    const anchorDay = cycleType === 'MIDMONTH' ? checkIn.getUTCDate() : 1;
+
+    // Collect virtual cycles to batch-create after the loop
+    const virtualCycles: { s_no: number; cycle_start: Date; cycle_end: Date }[] = [];
 
     while (iterations < maxIterations) {
       iterations++;
@@ -1142,14 +1154,18 @@ export class TenantPaymentService {
         referenceDate: cursor,
       });
 
-      // Use persisted cycle if it exists, else use a virtual in-memory cycle (no DB write)
       const cycleStartKey = this.toDateOnlyUtc(computed.cycleStart).getTime();
       const persisted = cycleMap.get(cycleStartKey);
-      const cycle = persisted ?? {
-        s_no: virtualSno--,
-        cycle_start: computed.cycleStart,
-        cycle_end: computed.cycleEnd,
-      };
+
+      let cycle: { s_no: number; cycle_start: Date; cycle_end: Date };
+      if (persisted) {
+        cycle = persisted;
+      } else {
+        // Not in DB yet — queue for upsert
+        const vSno = virtualSno--;
+        cycle = { s_no: vSno, cycle_start: computed.cycleStart, cycle_end: computed.cycleEnd };
+        virtualCycles.push(cycle);
+      }
 
       addGapIfNeeded({
         s_no: cycle.s_no,
@@ -1160,9 +1176,62 @@ export class TenantPaymentService {
       // Stop once we've processed the cycle that contains today
       if (computed.cycleEnd >= now) break;
 
-      // Move cursor to next day after this cycle
-      cursor = new Date(computed.cycleEnd);
-      cursor.setUTCDate(cursor.getUTCDate() + 1);
+      // Advance cursor to the next cycle's anchor date.
+      // nextStart = makeUtcDateClamped(logicalNextYear, logicalNextMonth, anchorDay)
+      // e.g. Jan(startMonth=0)+1 = Feb, anchor=30 → Feb 28 (clamped).
+      // But cursor=Feb28, refD(28)<anchorDay(30) → startMonth=Jan again → infinite loop.
+      // Solution: if nextStart would clamp to a date < anchorDay, it means the anchor
+      // doesn't fit that month. The cursor must land ON or AFTER the anchor in that month,
+      // so we add one extra day to guarantee refD >= anchorDay in the following iteration.
+      const nextCursor = this.makeUtcDateClamped(computed.logicalNextYear, computed.logicalNextMonth, computed.anchorDay);
+      const nextCursorDay = nextCursor.getUTCDate();
+      if (nextCursorDay < computed.anchorDay) {
+        // The anchor was clamped (e.g. Feb 30 → Feb 28). Adding 1 day (Mar 1) ensures
+        // the next computeCycleWindow call sees refD(1) < anchorDay(30) → startMonth=Feb,
+        // which is exactly the next cycle (Feb 28 → Mar 29).
+        cursor = new Date(nextCursor);
+        cursor.setUTCDate(cursor.getUTCDate() + 1);
+      } else {
+        cursor = nextCursor;
+      }
+    }
+
+    // Create all missing cycles in one batch, skipping any that already exist
+    // (avoids unique constraint race condition from parallel upserts)
+    if (virtualCycles.length > 0) {
+      await this.prisma.tenant_rent_cycles.createMany({
+        data: virtualCycles.map((vc) => ({
+          tenant_id,
+          cycle_type: cycleType,
+          anchor_day: anchorDay,
+          cycle_start: vc.cycle_start,
+          cycle_end: vc.cycle_end,
+        })),
+        skipDuplicates: true,
+      });
+    }
+
+    // Always patch gaps with real s_no values from DB.
+    // The initial cycleMap may have stale/wrong-dated rows from before the fix,
+    // so any gap with a negative cycle_id needs to be resolved against a fresh fetch.
+    const hasNegativeIds = gaps.some((g) => g.cycle_id < 0);
+    if (hasNegativeIds) {
+      const freshCycles = await this.prisma.tenant_rent_cycles.findMany({
+        where: { tenant_id },
+        select: { s_no: true, cycle_start: true },
+      });
+      const freshMap = new Map(
+        freshCycles.map((c) => [this.toDateOnlyUtc(c.cycle_start).getTime(), c.s_no]),
+      );
+      for (const gap of gaps) {
+        if (gap.cycle_id < 0) {
+          const startKey = new Date(gap.gapStart + 'T00:00:00.000Z').getTime();
+          const realSno = freshMap.get(startKey);
+          if (realSno !== undefined) {
+            gap.cycle_id = realSno;
+          }
+        }
+      }
     }
 
     gaps.sort((a, b) => {

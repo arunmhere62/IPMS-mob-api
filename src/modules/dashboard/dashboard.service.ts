@@ -276,30 +276,6 @@ export class DashboardService {
 
         },
 
-        tenant_rent_cycles: {
-
-          orderBy: {
-
-            cycle_start: 'asc',
-
-          },
-
-          select: {
-
-            s_no: true,
-
-            cycle_type: true,
-
-            anchor_day: true,
-
-            cycle_start: true,
-
-            cycle_end: true,
-
-          },
-
-        },
-
         rent_payments: {
 
           where: {
@@ -316,7 +292,7 @@ export class DashboardService {
 
           orderBy: {
 
-            payment_date: 'desc',
+            payment_date: 'asc',
 
           },
 
@@ -444,11 +420,23 @@ export class DashboardService {
 
       });
 
+      const statusEnriched = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0] as Record<string, unknown>;
 
+      // Strip heavy/sensitive fields not needed by dashboard widgets
+      const {
+        proof_documents, profile_photo, id_proof, images,
+        rent_payments, advance_payments, refund_payments,
+        ...slimStatus
+      } = statusEnriched as Record<string, unknown> & {
+        proof_documents?: unknown; profile_photo?: unknown; id_proof?: unknown; images?: unknown;
+        rent_payments?: unknown; advance_payments?: unknown; refund_payments?: unknown;
+      };
+      void proof_documents; void profile_photo; void id_proof; void images;
+      void rent_payments; void advance_payments; void refund_payments;
 
       return {
 
-        ...(tenant as unknown as Record<string, unknown>),
+        ...slimStatus,
 
         is_rent_paid: rentFlags.is_rent_paid,
 
@@ -472,45 +460,11 @@ export class DashboardService {
 
 
 
-    const { pendingRentTenants, partialRentTenants } = this.dashboardTenantStatusService.classify({
+    const pendingRentTenantsEnriched = this.tenantStatusService.getTenantsWithPendingRent(enrichedTenants as unknown[]);
 
-      tenants: enrichedTenants as unknown[],
+    const partialRentTenantsEnriched = this.tenantStatusService.getTenantsWithPartialRent(enrichedTenants as unknown[]);
 
-    });
-
-
-
-    const tenantsWithoutAdvance = enrichedTenants.filter((t) => {
-
-      const status = String((t as { status?: unknown })?.status || '');
-
-      if (status !== 'ACTIVE') return false;
-
-      const adv = ((t as { advance_payments?: Array<{ status?: string }> })?.advance_payments || []) as Array<{
-
-        status?: string;
-
-      }>;
-
-      return !adv.some((p) => p.status === 'PAID');
-
-    });
-
-
-
-    const enrichTenants = (list: unknown[]) => {
-
-      return list || [];
-
-    };
-
-
-
-    const pendingRentTenantsEnriched = enrichTenants(pendingRentTenants as unknown[]);
-
-    const partialRentTenantsEnriched = enrichTenants(partialRentTenants as unknown[]);
-
-    const tenantsWithoutAdvanceEnriched = enrichTenants(tenantsWithoutAdvance as unknown[]);
+    const tenantsWithoutAdvanceEnriched = this.tenantStatusService.getTenantsWithoutAdvance(enrichedTenants as unknown[]);
 
 
 

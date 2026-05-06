@@ -249,10 +249,11 @@ export class LegalDocumentsService {
   ) {
     const normalizedContext = (context ?? '').toUpperCase();
     const isSignupContext = normalizedContext === 'SIGNUP';
+    const isPublicContext = isSignupContext || normalizedContext === 'LOGIN' || normalizedContext === 'SETTINGS';
 
     const normalizedType = (type ?? '').toUpperCase().trim();
 
-    if (!headers.user_id && !isSignupContext) {
+    if (!headers.user_id && !isPublicContext) {
       throw new BadRequestException('Missing x-user-id header');
     }
 

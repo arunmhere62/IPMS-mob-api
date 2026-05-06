@@ -144,15 +144,14 @@ export class LegalDocumentsController {
   }
 
   // User: check whether they have accepted all currently required docs
+  // Public endpoint - no auth required (needed for login/signup screens)
   @Get('required/status')
-  @RequireHeaders()
-  @ApiOperation({ summary: 'Get user acceptance status for all currently required legal documents' })
-  @ApiHeader({ name: 'x-user-id', required: false, description: 'User to check acceptance for (required except SIGNUP context)' })
+  @ApiOperation({ summary: 'Get user acceptance status for all currently required legal documents (public)' })
+  @ApiHeader({ name: 'x-user-id', required: false, description: 'User to check acceptance for (optional)' })
   @ApiHeader({ name: 'x-organization-id', required: false, description: 'Organization scope (optional)' })
   @ApiQuery({ name: 'context', required: false, description: 'Optional context label (SIGNUP/LOGIN/INVOICE/etc) returned back in response' })
   @ApiQuery({ name: 'type', required: false, description: 'Optional legal document type filter (e.g. PRIVACY_POLICY)' })
   @ApiResponse({ status: HttpStatus.OK, description: 'Legal acceptance status fetched successfully' })
-  @ApiResponse({ status: HttpStatus.BAD_REQUEST, description: 'Missing x-user-id' })
   async requiredStatus(
     @ValidatedHeaders() headers: ValidatedHeadersType,
     @Query('context') context?: string,

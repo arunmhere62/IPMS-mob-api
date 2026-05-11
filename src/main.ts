@@ -77,6 +77,7 @@ async function bootstrap() {
     .addTag('rbac', 'Role-based access control endpoints')
     .addTag('payment-gateway', 'Payment gateway endpoints')
     .addTag('legal-documents', 'Legal documents endpoints')
+    .addTag('tenant-auth', 'Tenant portal authentication endpoints')
     .addBearerAuth()
     .build();
 

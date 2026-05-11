@@ -14,6 +14,7 @@ import { TokensController } from './controllers/tokens.controller';
 import { SignupController } from './controllers/signup.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UsersController } from './controllers/users.controller';
+import { TenantJwtAuthGuard } from './guards/tenant-jwt-auth.guard';
 import type { JwtSignOptions } from '@nestjs/jwt';
 
 @Module({
@@ -39,7 +40,8 @@ import type { JwtSignOptions } from '@nestjs/jwt';
     ProductionOtpStrategy,
     DevelopmentOtpStrategy,
     S3DeletionService,
+    TenantJwtAuthGuard,
   ],
-  exports: [AuthDbService, SmsService, JwtTokenService, OtpStrategyFactory],
+  exports: [AuthDbService, SmsService, JwtTokenService, OtpStrategyFactory, TenantJwtAuthGuard],
 })
 export class AuthModule {}

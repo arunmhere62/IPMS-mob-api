@@ -11,7 +11,7 @@ import { SmsService } from '../sms.service';
 @Injectable()
 export class DevelopmentOtpStrategy implements OtpStrategy {
   private readonly logger = new Logger(DevelopmentOtpStrategy.name);
-  private readonly BYPASS_OTP = '1234'; // Development bypass OTP
+  private readonly BYPASS_OTP = '5555'; // Development bypass OTP
 
   constructor(private readonly smsService: SmsService) {}
 

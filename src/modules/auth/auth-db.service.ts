@@ -411,8 +411,12 @@ export class AuthDbService {
       throw new BadRequestException('Phone number already registered try again');
     }
 
-    // Generate OTP
-    const otp = this.generateOtp();
+    // Generate OTP — use fixed bypass OTP in development mode
+    const isDev = this.otpStrategyFactory.getStrategy().getStrategyName() === 'Development';
+    let otp = this.generateOtp();
+    if (isDev) {
+      otp = this.TEST_OTP_CODE;
+    }
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + this.OTP_EXPIRY_MINUTES);
 

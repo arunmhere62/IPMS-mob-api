@@ -243,6 +243,7 @@ model organization {
   legal_documents                           legal_documents[]
   users_organization_superadmin_idTousers   users?              @relation("organization_superadmin_idTousers", fields: [superadmin_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_org_superadmin")
   pg_locations                              pg_locations[]
+  tenant_tickets                            tenant_tickets[]
   users_users_organization_idToorganization users[]             @relation("users_organization_idToorganization")
 
   @@index([superadmin_id], map: "fk_org_superadmin")
@@ -312,6 +313,7 @@ model pg_locations {
   rent_payments      rent_payments[]
   rooms              rooms[]
   tenant_allocations tenant_allocations[]
+  tenant_tickets     tenant_tickets[]
   tenants            tenants[]
   visitors           visitors[]
 
@@ -610,6 +612,7 @@ model tenants {
   rent_payments      rent_payments[]
   tenant_allocations tenant_allocations[]
   tenant_rent_cycles tenant_rent_cycles[]
+  tenant_tickets     tenant_tickets[]
   city               city?                @relation(fields: [city_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_city")
   state              state?               @relation(fields: [state_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_state")
   pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_1")
@@ -763,6 +766,7 @@ model users {
   organization_organization_superadmin_idTousers                        organization?               @relation("organization_superadmin_idTousers")
   otp_verifications                                                     otp_verifications[]
   pg_users                                                              pg_users[]
+  tenant_tickets                                                        tenant_tickets[]
   tokens                                                                tokens[]
   user_fcm_tokens                                                       user_fcm_tokens[]
   user_legal_acceptance_user_legal_acceptance_user_idTousers            user_legal_acceptance[]     @relation("user_legal_acceptance_user_idTousers")
@@ -853,6 +857,46 @@ model subscription_invoices {
   @@index([plan_id], map: "idx_invoice_plan")
   @@index([subscription_id], map: "idx_invoice_subscription")
   @@index([user_id], map: "idx_invoice_user")
+}
+
+model tenant_ticket_comments {
+  s_no           Int                                @id @default(autoincrement())
+  ticket_id      Int
+  sender_type    tenant_ticket_comments_sender_type
+  sender_id      Int
+  message        String?                            @db.Text
+  attachments    Json?
+  is_deleted     Boolean                            @default(false)
+  created_at     DateTime                           @default(now())
+  tenant_tickets tenant_tickets                     @relation(fields: [ticket_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_ttc_ticket")
+
+  @@index([ticket_id], map: "fk_ttc_ticket")
+}
+
+model tenant_tickets {
+  s_no                   Int                      @id @default(autoincrement())
+  organization_id        Int
+  pg_id                  Int
+  tenant_id              Int
+  assigned_to            Int?
+  category               tenant_tickets_category  @default(OTHER)
+  title                  String                   @db.VarChar(255)
+  description            String?                  @db.Text
+  status                 tenant_tickets_status    @default(OPEN)
+  priority               tenant_tickets_priority  @default(MEDIUM)
+  is_deleted             Boolean                  @default(false)
+  created_at             DateTime                 @default(now())
+  updated_at             DateTime                 @default(now())
+  tenant_ticket_comments tenant_ticket_comments[]
+  users                  users?                   @relation(fields: [assigned_to], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tt_assigned_to")
+  organization           organization             @relation(fields: [organization_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tt_organization")
+  pg_locations           pg_locations             @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tt_pg")
+  tenants                tenants                  @relation(fields: [tenant_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tt_tenant")
+
+  @@index([assigned_to], map: "fk_tt_assigned_to")
+  @@index([organization_id], map: "fk_tt_organization")
+  @@index([pg_id], map: "fk_tt_pg")
+  @@index([tenant_id], map: "fk_tt_tenant")
 }
 
 enum permissions_master_action {
@@ -991,4 +1035,29 @@ enum subscription_invoices_status {
   ACTIVE
   CANCELLED
   REFUNDED
+}
+
+enum tenant_ticket_comments_sender_type {
+  TENANT
+  OWNER
+}
+
+enum tenant_tickets_category {
+  MAINTENANCE
+  COMPLAINT
+  REQUEST
+  OTHER
+}
+
+enum tenant_tickets_status {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  CLOSED
+}
+
+enum tenant_tickets_priority {
+  LOW
+  MEDIUM
+  HIGH
 }

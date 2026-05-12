@@ -26,6 +26,7 @@ import { EmailModule } from './modules/email/email.module';
 import { SubscriptionCronModule } from './crons/subscription/subscription-cron.module';
 import { DashboardRentNotificationsCronModule } from './crons/dashboard-rent-notifications/dashboard-rent-notifications-cron.module';
 import { TenantPortalModule } from './modules/tenant-portal/tenant-portal.module';
+import { TenantTicketsModule } from './modules/tenant-tickets/tenant-tickets.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config';
@@ -65,6 +66,7 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
     SubscriptionCronModule,
     DashboardRentNotificationsCronModule,
     TenantPortalModule,
+    TenantTicketsModule,
   ],
   controllers: [AppController],
   providers: [

@@ -604,10 +604,18 @@ export class TenantService {
         },
         rooms: { select: { s_no: true, room_no: true } },
         beds: { select: { s_no: true, bed_no: true, bed_price: true } },
+        tenant_rent_cycles: {
+          orderBy: { cycle_start: 'asc' },
+          select: { s_no: true, cycle_type: true, anchor_day: true, cycle_start: true, cycle_end: true },
+        },
+        tenant_allocations: {
+          orderBy: { effective_from: 'asc' },
+          select: { s_no: true, effective_from: true, effective_to: true, bed_price_snapshot: true },
+        },
         rent_payments: {
           where: { is_deleted: false, status: { not: 'VOIDED' } },
           orderBy: { payment_date: 'asc' },
-          select: { s_no: true, payment_date: true, amount_paid: true, actual_rent_amount: true, status: true, payment_method: true, remarks: true },
+          select: { s_no: true, cycle_id: true, payment_date: true, amount_paid: true, actual_rent_amount: true, status: true, payment_method: true, remarks: true },
         },
         advance_payments: {
           where: { is_deleted: false, status: { not: 'VOIDED' } },

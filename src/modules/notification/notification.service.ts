@@ -286,6 +286,12 @@ export class NotificationService {
         });
       }
 
+      // Deactivate this token from tenant_fcm_tokens if it exists (same device, different role)
+      await this.prisma.tenant_fcm_tokens.updateMany({
+        where: { fcm_token: tokenData.fcm_token },
+        data: { is_active: false, updated_at: new Date() },
+      });
+
       this.logger.log(`✅ Registered token for user ${userId} token=${this.maskToken(tokenData.fcm_token)}`);
       return { success: true, message: 'Token registered' };
     } catch (error) {
@@ -401,6 +407,112 @@ export class NotificationService {
     } catch (error) {
       this.logger.error(`❌ Failed to send notification: ${error.message}`);
       throw error;
+    }
+  }
+
+  /**
+   * Register FCM token for a tenant
+   */
+  async registerTenantToken(tenantId: number, tokenData: RegisterTokenDto) {
+    try {
+      const existing = await this.prisma.tenant_fcm_tokens.findUnique({
+        where: { fcm_token: tokenData.fcm_token },
+      });
+
+      if (existing) {
+        await this.prisma.tenant_fcm_tokens.update({
+          where: { fcm_token: tokenData.fcm_token },
+          data: {
+            tenant_id: tenantId,
+            device_type: tokenData.device_type,
+            device_id: tokenData.device_id,
+            device_name: tokenData.device_name,
+            is_active: true,
+            updated_at: new Date(),
+          },
+        });
+      } else {
+        await this.prisma.tenant_fcm_tokens.create({
+          data: {
+            tenant_id: tenantId,
+            fcm_token: tokenData.fcm_token,
+            device_type: tokenData.device_type,
+            device_id: tokenData.device_id,
+            device_name: tokenData.device_name,
+            is_active: true,
+          },
+        });
+      }
+
+      // Deactivate this token from user_fcm_tokens if it exists (same device, different role)
+      await this.prisma.user_fcm_tokens.updateMany({
+        where: { fcm_token: tokenData.fcm_token },
+        data: { is_active: false, updated_at: new Date() },
+      });
+
+      return { success: true, message: 'Tenant token registered' };
+    } catch (error) {
+      this.logger.error(`❌ registerTenantToken tenant=${tenantId} err=${error.message}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Unregister FCM token for a tenant
+   */
+  async unregisterTenantToken(fcmToken: string) {
+    try {
+      await this.prisma.tenant_fcm_tokens.update({
+        where: { fcm_token: fcmToken },
+        data: { is_active: false, updated_at: new Date() },
+      });
+      return { success: true, message: 'Tenant token unregistered' };
+    } catch {
+      return { success: false, message: 'Token not found' };
+    }
+  }
+
+  /**
+   * Send push notification to a tenant (uses tenant_fcm_tokens table)
+   */
+  async sendToTenant(tenantId: number, notification: SendNotificationDto) {
+    try {
+      this.logger.log(`📤 sendToTenant tenant=${tenantId} title=${notification.title}`);
+
+      const tokens = await this.prisma.tenant_fcm_tokens.findMany({
+        where: { tenant_id: tenantId, is_active: true },
+        select: { fcm_token: true },
+      });
+
+      if (tokens.length === 0) {
+        this.logger.warn(`⚠️ No tokens found for tenant ${tenantId}`);
+        return { success: false, message: 'No tokens found' };
+      }
+
+      const allTokens = tokens.map((t) => t.fcm_token).filter((t) => t.length > 0);
+      const expoTokens = allTokens.filter((t) => Expo.isExpoPushToken(t));
+      const firebaseTokens = allTokens.filter((t) => !Expo.isExpoPushToken(t));
+
+      let successCount = 0;
+      let failureCount = 0;
+
+      if (expoTokens.length > 0) {
+        const result = await this.sendViaExpo(expoTokens, notification);
+        successCount += result.successCount;
+        failureCount += result.failureCount;
+      }
+
+      if (firebaseTokens.length > 0 && firebaseApp) {
+        const result = await this.sendViaFirebase(firebaseTokens, notification);
+        successCount += result.successCount;
+        failureCount += result.failureCount;
+      }
+
+      this.logger.log(`✅ sendToTenant tenant=${tenantId}: ${successCount}/${allTokens.length} successful`);
+      return { success: successCount > 0, successCount, failureCount };
+    } catch (error) {
+      this.logger.error(`❌ sendToTenant tenant=${tenantId} err=${error.message}`);
+      return { success: false, message: error.message };
     }
   }
 

@@ -276,6 +276,52 @@ export class DashboardService {
 
         },
 
+        tenant_rent_cycles: {
+
+          orderBy: {
+
+            cycle_start: 'asc',
+
+          },
+
+          select: {
+
+            s_no: true,
+
+            cycle_type: true,
+
+            anchor_day: true,
+
+            cycle_start: true,
+
+            cycle_end: true,
+
+          },
+
+        },
+
+        tenant_allocations: {
+
+          orderBy: {
+
+            effective_from: 'asc',
+
+          },
+
+          select: {
+
+            s_no: true,
+
+            effective_from: true,
+
+            effective_to: true,
+
+            bed_price_snapshot: true,
+
+          },
+
+        },
+
         rent_payments: {
 
           where: {

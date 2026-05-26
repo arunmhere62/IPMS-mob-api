@@ -1,10 +1,12 @@
 import { Injectable, NotFoundException, ForbiddenException, BadRequestException, Inject, forwardRef } from '@nestjs/common';
+import { Prisma, tenant_tickets_status, tenant_tickets_category } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
-import { CreateTicketDto } from './dto/create-ticket.dto';
+import { CreateTicketDto, TenantTicketCategory, TenantTicketPriority } from './dto/create-ticket.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { UpdateTicketStatusDto, TenantTicketStatus } from './dto/update-ticket-status.dto';
 import { TicketsGateway } from './gateway/tickets.gateway';
+import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
 export class TenantTicketsService {
@@ -12,6 +14,7 @@ export class TenantTicketsService {
     private readonly prisma: PrismaService,
     @Inject(forwardRef(() => TicketsGateway))
     private readonly ticketsGateway: TicketsGateway,
+    private readonly notificationService: NotificationService,
   ) {}
 
   // ─── Tenant-side ────────────────────────────────────────────────────────────
@@ -34,20 +37,34 @@ export class TenantTicketsService {
         organization_id: resolvedOrgId,
         pg_id: pgId,
         tenant_id: tenantId,
-        category: dto.category as any,
+        category: dto.category as TenantTicketCategory,
         title: dto.title,
         description: dto.description,
-        priority: (dto.priority as any) ?? 'MEDIUM',
+        priority: (dto.priority ?? TenantTicketPriority.MEDIUM) as TenantTicketPriority,
         status: 'OPEN',
       },
     });
 
+    // Notify owner (organization superadmin)
+    const org = await this.prisma.organization.findUnique({
+      where: { s_no: resolvedOrgId },
+      select: { superadmin_id: true },
+    });
+    if (org?.superadmin_id) {
+      void this.notificationService.sendToUser(org.superadmin_id, {
+        title: '🎫 New Ticket Raised',
+        body: `${dto.title} — ${dto.category}`,
+        type: 'TICKET_NEW',
+        data: { ticketId: String(ticket.s_no), screen: 'TicketDetail' },
+      });
+    }
+
     return ResponseUtil.success(ticket, 'Ticket raised successfully');
   }
 
-  async getTenantTickets(tenantId: number, status?: string, page = 1, limit = 20) {
-    const where: any = { tenant_id: tenantId, is_deleted: false };
-    if (status) where.status = status;
+  async getTenantTickets(tenantId: number, status?: TenantTicketStatus, page = 1, limit = 20) {
+    const where: Prisma.tenant_ticketsWhereInput = { tenant_id: tenantId, is_deleted: false };
+    if (status) where.status = status as tenant_tickets_status;
 
     const [tickets, total] = await Promise.all([
       this.prisma.tenant_tickets.findMany({
@@ -108,11 +125,26 @@ export class TenantTicketsService {
         sender_type: 'TENANT',
         sender_id: tenantId,
         message: dto.message,
-        attachments: dto.attachments ? (dto.attachments as any) : undefined,
+        attachments: dto.attachments ? (dto.attachments as Prisma.InputJsonValue) : undefined,
       },
     });
 
     this.ticketsGateway.emitNewComment(ticketId, comment);
+
+    // Notify the assigned staff member (or superadmin if unassigned) about tenant reply
+    const orgInfo = await this.prisma.tenant_tickets.findUnique({
+      where: { s_no: ticketId },
+      select: { assigned_to: true, organization: { select: { superadmin_id: true } }, title: true },
+    });
+    const notifyUserId = orgInfo?.assigned_to ?? orgInfo?.organization?.superadmin_id;
+    if (notifyUserId) {
+      void this.notificationService.sendToUser(notifyUserId, {
+        title: '💬 Tenant Replied',
+        body: `Re: ${orgInfo.title}`,
+        type: 'TICKET_COMMENT',
+        data: { ticketId: String(ticketId), screen: 'TicketDetail' },
+      });
+    }
 
     return ResponseUtil.success(comment, 'Comment added successfully');
   }
@@ -132,15 +164,30 @@ export class TenantTicketsService {
 
     this.ticketsGateway.emitTicketStatusChanged(ticketId, 'CLOSED');
 
+    // Notify the assigned staff member (or superadmin if unassigned) that tenant closed the ticket
+    const closedTicketOrg = await this.prisma.tenant_tickets.findUnique({
+      where: { s_no: ticketId },
+      select: { assigned_to: true, organization: { select: { superadmin_id: true } }, title: true },
+    });
+    const closedNotifyUserId = closedTicketOrg?.assigned_to ?? closedTicketOrg?.organization?.superadmin_id;
+    if (closedNotifyUserId) {
+      void this.notificationService.sendToUser(closedNotifyUserId, {
+        title: '🔒 Ticket Closed by Tenant',
+        body: `"${closedTicketOrg.title}" has been closed`,
+        type: 'TICKET_CLOSED',
+        data: { ticketId: String(ticketId), screen: 'TicketDetail' },
+      });
+    }
+
     return ResponseUtil.success(updated, 'Ticket closed successfully');
   }
 
   // ─── PG Owner-side ──────────────────────────────────────────────────────────
 
-  async getPgTickets(pgId: number | undefined, status?: string, category?: string, page = 1, limit = 20) {
-    const where: any = { ...(pgId ? { pg_id: pgId } : {}), is_deleted: false };
-    if (status) where.status = status;
-    if (category) where.category = category;
+  async getPgTickets(pgId: number | undefined, status?: TenantTicketStatus, category?: TenantTicketCategory, page = 1, limit = 20) {
+    const where: Prisma.tenant_ticketsWhereInput = { ...(pgId ? { pg_id: pgId } : {}), is_deleted: false };
+    if (status) where.status = status as tenant_tickets_status;
+    if (category) where.category = category as tenant_tickets_category;
 
     const [tickets, total] = await Promise.all([
       this.prisma.tenant_tickets.findMany({
@@ -186,10 +233,18 @@ export class TenantTicketsService {
 
     const updated = await this.prisma.tenant_tickets.update({
       where: { s_no: ticketId },
-      data: { status: dto.status as any },
+      data: { status: dto.status as TenantTicketStatus },
     });
 
     this.ticketsGateway.emitTicketStatusChanged(ticketId, dto.status);
+
+    // Notify tenant about status change
+    void this.notificationService.sendToTenant(ticket.tenant_id, {
+      title: '📋 Ticket Status Updated',
+      body: `Your ticket "${ticket.title}" is now ${dto.status.replace('_', ' ')}`,
+      type: 'TICKET_STATUS',
+      data: { ticketId: String(ticketId), screen: 'TenantTicketDetail' },
+    });
 
     return ResponseUtil.success(updated, 'Ticket status updated successfully');
   }
@@ -201,11 +256,21 @@ export class TenantTicketsService {
 
     const ticket = await this.prisma.tenant_tickets.findFirst({
       where: { s_no: ticketId, ...(pgId ? { pg_id: pgId } : {}), is_deleted: false },
+      include: { organization: { select: { superadmin_id: true } } },
     });
 
     if (!ticket) throw new NotFoundException('Ticket not found');
     if (ticket.status === 'CLOSED') throw new ForbiddenException('Cannot comment on a closed ticket');
 
+    const isSuperadmin = ticket.organization?.superadmin_id === ownerId;
+    const isAssigned = ticket.assigned_to === ownerId;
+
+    // Once assigned, only the assigned person or superadmin can reply
+    if (ticket.assigned_to && !isAssigned && !isSuperadmin) {
+      throw new ForbiddenException('Only the assigned staff member or admin can reply to this ticket');
+    }
+
+    // First reply: auto-assign and move to IN_PROGRESS
     if (ticket.status === TenantTicketStatus.OPEN) {
       await this.prisma.tenant_tickets.update({
         where: { s_no: ticketId },
@@ -219,11 +284,19 @@ export class TenantTicketsService {
         sender_type: 'OWNER',
         sender_id: ownerId,
         message: dto.message,
-        attachments: dto.attachments ? (dto.attachments as any) : undefined,
+        attachments: dto.attachments ? (dto.attachments as Prisma.InputJsonValue) : undefined,
       },
     });
 
     this.ticketsGateway.emitNewComment(ticketId, comment);
+
+    // Notify tenant about owner reply
+    void this.notificationService.sendToTenant(ticket.tenant_id, {
+      title: '💬 New Reply on Your Ticket',
+      body: `Re: "${ticket.title}"`,
+      type: 'TICKET_COMMENT',
+      data: { ticketId: String(ticketId), screen: 'TenantTicketDetail' },
+    });
 
     return ResponseUtil.success(comment, 'Comment added successfully');
   }

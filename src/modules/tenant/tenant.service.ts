@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PendingRentCalculatorService } from '../common/pending-rent-calculator.service';
 import { RentCycleCalculatorService } from '../common/rent-cycle-calculator.service';
+import { RentCycleCreationService } from '../common/rent-cycle-creation.service';
 import { S3DeletionService } from '../common/s3-deletion.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
@@ -84,6 +85,8 @@ export class TenantService {
     private s3DeletionService: S3DeletionService,
 
     private tenantPaymentService: TenantPaymentService,
+
+    private rentCycleCreationService: RentCycleCreationService,
   ) {}
 
   private resolveCurrentRentCycleForDate(params: {
@@ -552,6 +555,20 @@ export class TenantService {
           },
         });
       }
+
+      // Seed rent cycles atomically in the same transaction — no extra DB read needed
+      const cycleType: 'CALENDAR' | 'MIDMONTH' =
+        createdTenant.pg_locations?.rent_cycle_type === 'MIDMONTH' ? 'MIDMONTH' : 'CALENDAR';
+      const anchorDay = cycleType === 'MIDMONTH'
+        ? checkInDateOnly.getUTCDate()
+        : (createdTenant.pg_locations?.rent_cycle_start ?? 1);
+
+      await this.rentCycleCreationService.createCyclesInTx(tx, {
+        tenantId: createdTenant.s_no,
+        checkInDate: checkInDateOnly,
+        cycleType,
+        anchorDay,
+      });
 
       return createdTenant;
     });

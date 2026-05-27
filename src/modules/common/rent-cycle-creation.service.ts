@@ -41,6 +41,44 @@ export class RentCycleCreationService {
   // ─── Public API ─────────────────────────────────────────────────────────────
 
   /**
+   * Create rent cycles inside an existing Prisma transaction.
+   * Use this during tenant creation so cycles are written atomically
+   * alongside the tenant and allocation records — no extra DB read needed.
+   *
+   * @param tx    - The Prisma transaction client
+   * @param data  - Tenant data already available in memory (no extra DB fetch)
+   */
+  async createCyclesInTx(
+    tx: { tenant_rent_cycles: { createMany: (args: unknown) => Promise<{ count: number }> } },
+    data: {
+      tenantId: number;
+      checkInDate: Date;
+      cycleType: CycleType;
+      anchorDay: number;
+    },
+  ): Promise<{ created: number }> {
+    const { tenantId, checkInDate, cycleType, anchorDay } = data;
+    const checkIn = this._toUtcMidnight(new Date(checkInDate));
+    const todayIST = this._todayIST();
+
+    const cycles = this._computeAllCycles(checkIn, todayIST, cycleType, checkInDate);
+    if (cycles.length === 0) return { created: 0 };
+
+    const result = await tx.tenant_rent_cycles.createMany({
+      data: cycles.map((c) => ({
+        tenant_id: tenantId,
+        cycle_type: cycleType,
+        anchor_day: anchorDay,
+        cycle_start: c.cycleStart,
+        cycle_end: c.cycleEnd,
+      })),
+      skipDuplicates: true,
+    } as never);
+
+    return { created: (result as { count: number }).count };
+  }
+
+  /**
    * Create all missing rent cycles for a single tenant, from check-in up to today (IST).
    * Safe to call at any time — skips cycles that already exist.
    */

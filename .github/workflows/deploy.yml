@@ -22,9 +22,11 @@ jobs:
             # Set deployment path and docker-compose file based on branch
             if [ "${{ github.ref }}" = "refs/heads/main" ]; then
               DEPLOY_PATH="/root/IPMS-mob-api"
+              COMPOSE_FILE="docker-compose.yml"
               NETWORK_NAME="ipms_mob_api"
             elif [ "${{ github.ref }}" = "refs/heads/development" ]; then
               DEPLOY_PATH="/root/IPMS-mob-api-dev"
+              COMPOSE_FILE="docker-compose.dev.yml"
               NETWORK_NAME="ipms_mob_api_dev"
             else
               echo "Unsupported branch: ${{ github.ref }}"
@@ -33,7 +35,7 @@ jobs:
 
             echo "[deploy] Branch: ${{ github.ref }}"
             echo "[deploy] Path: $DEPLOY_PATH"
-            echo "[deploy] Compose file: docker-compose.yml"
+            echo "[deploy] Compose file: $COMPOSE_FILE"
 
             if [ ! -d "$DEPLOY_PATH" ]; then
               echo "[deploy] Directory does not exist: $DEPLOY_PATH"
@@ -50,10 +52,10 @@ jobs:
             git reset --hard origin/${{ github.ref_name }}
 
             # Clean previous stack to avoid docker network label conflicts
-            docker compose down --remove-orphans || true
+            docker compose -f $COMPOSE_FILE down --remove-orphans || true
             docker network rm $NETWORK_NAME || true
 
-            docker compose up -d --build
-            docker compose ps
+            docker compose -f $COMPOSE_FILE up -d --build
+            docker compose -f $COMPOSE_FILE ps
 
             echo "Deployment completed!"

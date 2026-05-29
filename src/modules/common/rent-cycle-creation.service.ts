@@ -64,6 +64,11 @@ export class RentCycleCreationService {
     const cycles = this._computeAllCycles(checkIn, todayIST, cycleType, checkInDate);
     if (cycles.length === 0) return { created: 0 };
 
+    // Note: During tenant creation in a transaction, we cannot query existing cycles
+    // for overlap detection since the tenant is being created. However, the
+    // UNIQUE(tenant_id, cycle_start) constraint will prevent duplicates.
+    // Overlap detection is handled in _createForTenant for manual triggers.
+
     const result = await tx.tenant_rent_cycles.createMany({
       data: cycles.map((c) => ({
         tenant_id: tenantId,
@@ -153,8 +158,32 @@ export class RentCycleCreationService {
 
     if (cycles.length === 0) return { created: 0 };
 
+    // Fetch existing cycles to check for overlaps
+    const existingCycles = await this.prisma.tenant_rent_cycles.findMany({
+      where: { tenant_id: tenant.s_no },
+      select: { cycle_start: true, cycle_end: true, s_no: true },
+    });
+
+    // Filter out computed cycles that overlap with existing cycles
+    const nonOverlappingCycles = cycles.filter((computed) => {
+      return !existingCycles.some((existing) => {
+        const existingStart = this._toUtcMidnight(new Date(existing.cycle_start));
+        const existingEnd = this._toUtcMidnight(new Date(existing.cycle_end));
+        // Check for overlap: (start1 <= end2) && (start2 <= end1)
+        return computed.cycleStart <= existingEnd && existingStart <= computed.cycleEnd;
+      });
+    });
+
+    if (nonOverlappingCycles.length < cycles.length) {
+      this.logger.warn(
+        `Tenant ${tenant.s_no}: filtered out ${cycles.length - nonOverlappingCycles.length} overlapping cycles, creating ${nonOverlappingCycles.length}`,
+      );
+    }
+
+    if (nonOverlappingCycles.length === 0) return { created: 0 };
+
     const result = await this.prisma.tenant_rent_cycles.createMany({
-      data: cycles.map((c) => ({
+      data: nonOverlappingCycles.map((c) => ({
         tenant_id: tenant.s_no,
         cycle_type: cycleType,
         anchor_day: anchorDay,
@@ -166,6 +195,8 @@ export class RentCycleCreationService {
 
     if (result.count > 0) {
       this.logger.log(`Created ${result.count} cycle(s) for tenant ${tenant.s_no}`);
+    } else {
+      this.logger.log(`Skipped tenant ${tenant.s_no} - cycles already exist`);
     }
 
     return { created: result.count };
@@ -183,8 +214,10 @@ export class RentCycleCreationService {
     checkInDate: Date,
   ): CycleWindow[] {
     const cycles: CycleWindow[] = [];
-    let cursor = new Date(checkIn);
     const MAX = 200; // safety guard against infinite loops
+
+    // Start from check-in date and compute the first cycle
+    let cursor = new Date(checkIn);
 
     for (let i = 0; i < MAX; i++) {
       const window = this._computeCycleWindow(cycleType, checkInDate, cursor);
@@ -192,26 +225,20 @@ export class RentCycleCreationService {
       // Only collect cycles that have started (cycle_start <= today)
       if (window.cycleStart > today) break;
 
-      cycles.push(window);
+      // Only collect cycles that start on or after check-in
+      if (window.cycleStart >= checkIn) {
+        cycles.push(window);
+      }
 
       // If this cycle covers today, we're done
       if (window.cycleEnd >= today) break;
 
-      // Advance cursor to the next cycle.
-      // When anchor is clamped (e.g. Feb doesn't have day 30), adding 1 day after the
-      // clamped date guarantees the next computeCycleWindow call picks the correct month.
-      const nextCursor = this._makeUtcDateClamped(
-        window.logicalNextYear,
-        window.logicalNextMonth,
-        window.anchorDay,
-      );
-      if (nextCursor.getUTCDate() < window.anchorDay) {
-        // Anchor was clamped — step one day further to avoid re-entering same logical month
-        cursor = new Date(nextCursor);
-        cursor.setUTCDate(cursor.getUTCDate() + 1);
-      } else {
-        cursor = nextCursor;
-      }
+      // Advance cursor to the next cycle's start date.
+      // Use the next cycle's start as the new cursor to ensure forward progress.
+      // This is computed as: cycleEnd + 1, which should equal the next cycle's start
+      const nextCursor = new Date(window.cycleEnd);
+      nextCursor.setUTCDate(nextCursor.getUTCDate() + 1);
+      cursor = nextCursor;
     }
 
     return cycles;
@@ -319,6 +346,10 @@ export class RentCycleCreationService {
   }
 
   private _cycleType(tenant: TenantRow): CycleType {
-    return tenant.pg_locations?.rent_cycle_type === 'MIDMONTH' ? 'MIDMONTH' : 'CALENDAR';
+    const type = tenant.pg_locations?.rent_cycle_type;
+    if (type === 'MIDMONTH') return 'MIDMONTH';
+    if (type === 'CALENDAR') return 'CALENDAR';
+    this.logger.warn(`Tenant ${tenant.s_no}: Invalid rent_cycle_type '${type}', defaulting to CALENDAR`);
+    return 'CALENDAR';
   }
 }

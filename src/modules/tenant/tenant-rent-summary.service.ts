@@ -18,6 +18,7 @@ type RentPayment = {
 type TenantRentCycle = {
   s_no: number;
   cycle_type?: string | null;
+  anchor_day?: number | null;
   cycle_start: Date | string;
   cycle_end: Date | string;
 };
@@ -122,14 +123,24 @@ export class TenantRentSummaryService {
     // Rules:
     //   - cycle_start >= check_in_date  (ignore phantom cycles from before check-in)
     //   - cycle_start <= today          (don't count future cycles)
+    // For MIDMONTH, the anchor_day on each cycle must match the tenant's actual
+    // check-in day. Stale cycles with a different anchor_day (e.g. created before
+    // check_in_date was corrected) would produce false PENDING periods.
+    const expectedAnchorDay = checkIn.getUTCDate();
+
     const cycles = ((tenant.tenant_rent_cycles ?? []) as TenantRentCycle[])
       .map((c) => ({
         s_no: c.s_no,
         cycle_type: c.cycle_type ?? cycleType,
+        anchor_day: c.anchor_day ?? null,
         cycle_start: this.toUtcDate(c.cycle_start),
         cycle_end: this.toUtcDate(c.cycle_end),
       }))
-      .filter((c) => c.cycle_start >= checkIn && c.cycle_start <= today)
+      .filter((c) => {
+        if (c.cycle_start < checkIn || c.cycle_start > today) return false;
+        if (cycleType === 'MIDMONTH' && c.anchor_day !== null && c.anchor_day !== expectedAnchorDay) return false;
+        return true;
+      })
       .sort((a, b) => a.cycle_start.getTime() - b.cycle_start.getTime());
 
     // ── Step 2: Group valid payments by cycle_id ───────────────────────────
@@ -214,9 +225,18 @@ export class TenantRentSummaryService {
     const rentDueAmount = this.round2(partialDueAmount + pendingDueAmount);
 
     // ── Step 5: Overall payment status ────────────────────────────────────
+    // No cycles + tenant already checked in = rent is due but not recorded yet → PENDING
+    // Cycles exist but last cycle ended before today = rent is due for current period → PENDING
     let paymentStatus: RentSummaryResult['payment_status'];
-    if (periods.length === 0 || periods.every((p) => p.status === 'PAID')) {
-      paymentStatus = 'PAID';
+    if (periods.length === 0) {
+      paymentStatus = checkIn < today ? 'PENDING' : 'PAID';
+    } else if (periods.every((p) => p.status === 'PAID')) {
+      // Check if any cycle contains today
+      const currentCycleEntry = cycles.find(
+        (c) => c.cycle_start <= today && c.cycle_end >= today,
+      );
+      // If all cycles are paid but no cycle contains today, rent is pending for current period
+      paymentStatus = currentCycleEntry ? 'PAID' : 'PENDING';
     } else if (partialDueAmount > 0 && pendingDueAmount > 0) {
       paymentStatus = 'MIXED';
     } else if (partialDueAmount > 0) {

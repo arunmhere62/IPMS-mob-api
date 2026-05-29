@@ -1,5 +1,4 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
-import { PendingRentCalculatorService } from '../common/pending-rent-calculator.service';
 import { RentCycleCalculatorService } from '../common/rent-cycle-calculator.service';
 import { RentCycleCreationService } from '../common/rent-cycle-creation.service';
 import { S3DeletionService } from '../common/s3-deletion.service';
@@ -77,8 +76,6 @@ export class TenantService {
     private tenantStatusService: TenantStatusService,
 
     private tenantRentSummaryService: TenantRentSummaryService,
-
-    private pendingRentCalculatorService: PendingRentCalculatorService,
 
     private rentCycleCalculatorService: RentCycleCalculatorService,
 
@@ -556,19 +553,19 @@ export class TenantService {
         });
       }
 
-      // Seed rent cycles atomically in the same transaction — no extra DB read needed
-      const cycleType: 'CALENDAR' | 'MIDMONTH' =
-        createdTenant.pg_locations?.rent_cycle_type === 'MIDMONTH' ? 'MIDMONTH' : 'CALENDAR';
-      const anchorDay = cycleType === 'MIDMONTH'
-        ? checkInDateOnly.getUTCDate()
-        : (createdTenant.pg_locations?.rent_cycle_start ?? 1);
+      // // Seed rent cycles atomically in the same transaction — no extra DB read needed
+      // const cycleType: 'CALENDAR' | 'MIDMONTH' =
+      //   createdTenant.pg_locations?.rent_cycle_type === 'MIDMONTH' ? 'MIDMONTH' : 'CALENDAR';
+      // const anchorDay = cycleType === 'MIDMONTH'
+      //   ? checkInDateOnly.getUTCDate()
+      //   : (createdTenant.pg_locations?.rent_cycle_start ?? 1);
 
-      await this.rentCycleCreationService.createCyclesInTx(tx, {
-        tenantId: createdTenant.s_no,
-        checkInDate: checkInDateOnly,
-        cycleType,
-        anchorDay,
-      });
+      // await this.rentCycleCreationService.createCyclesInTx(tx, {
+      //   tenantId: createdTenant.s_no,
+      //   checkInDate: checkInDateOnly,
+      //   cycleType,
+      //   anchorDay,
+      // });
 
       return createdTenant;
     });
@@ -650,7 +647,16 @@ export class TenantService {
     // Enrich each tenant with dynamic rent summary
     const enriched = tenants.map((tenant) => {
       const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
-      const statusEnriched = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0] as Record<string, unknown>;
+      // Merge rent summary into tenant before passing to status service
+      const tenantWithSummary = {
+        ...tenant,
+        payment_status: rentSummary.payment_status,
+        rent_due_amount: rentSummary.rent_due_amount,
+        partial_due_amount: rentSummary.partial_due_amount,
+        pending_due_amount: rentSummary.pending_due_amount,
+        unpaid_months: rentSummary.unpaid_months,
+      };
+      const statusEnriched = this.tenantStatusService.enrichTenantsWithStatus([tenantWithSummary])[0] as Record<string, unknown>;
       const rentFlags = this.tenantStatusService.deriveRentFlags({
         paymentStatus: rentSummary.payment_status,
         unpaidMonthsCount: rentSummary.unpaid_months?.length || 0,
@@ -1072,10 +1078,17 @@ export class TenantService {
     }
 
     // Enrich tenant with status calculations using TenantStatusService
-
-    const enrichedTenant = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0] as Record<string, unknown>;
-
     const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
+    // Merge rent summary into tenant before passing to status service
+    const tenantWithSummary = {
+      ...tenant,
+      payment_status: rentSummary.payment_status,
+      rent_due_amount: rentSummary.rent_due_amount,
+      partial_due_amount: rentSummary.partial_due_amount,
+      pending_due_amount: rentSummary.pending_due_amount,
+      unpaid_months: rentSummary.unpaid_months,
+    };
+    const enrichedTenant = this.tenantStatusService.enrichTenantsWithStatus([tenantWithSummary])[0] as Record<string, unknown>;
 
     const paymentStatus = rentSummary.payment_status || 'NO_PAYMENT';
 

@@ -85,7 +85,7 @@ export class TenantAuthService {
     };
   }
 
-  async verifyOtp(dto: TenantVerifyOtpDto) {
+  async verifyOtp(dto: TenantVerifyOtpDto, deviceInfo?: string, ipAddress?: string) {
     const { phone, otp } = dto;
 
     // Normalize phone by removing spaces for database search
@@ -144,8 +144,21 @@ export class TenantAuthService {
       pgId: tenant.pg_id,
     };
 
-    const accessToken = this.jwtService.sign(payload);
+    const accessToken = this.jwtService.sign(payload, { expiresIn: '1h' });
     const refreshToken = this.jwtService.sign(payload, { expiresIn: '30d' });
+
+    // Store refresh token in database
+    await this.prisma.tenant_tokens.create({
+      data: {
+        tenant_id: tenant.s_no,
+        refresh_token: refreshToken,
+        token_type: 'Bearer',
+        refresh_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+        is_revoked: false,
+        device_info: deviceInfo || null,
+        ip_address: ipAddress || null,
+      },
+    });
 
     return {
       success: true,
@@ -180,7 +193,26 @@ export class TenantAuthService {
         throw new UnauthorizedException('Invalid token');
       }
 
-      // Generate new access token
+      // Check if refresh token exists and is not revoked
+      const tokenRecord = await this.prisma.tenant_tokens.findFirst({
+        where: {
+          refresh_token: refreshToken,
+          is_revoked: false,
+          refresh_expires_at: { gte: new Date() },
+        },
+      });
+
+      if (!tokenRecord) {
+        throw new UnauthorizedException('Refresh token has been revoked or expired');
+      }
+
+      // Revoke the old refresh token (token rotation for security)
+      await this.prisma.tenant_tokens.update({
+        where: { s_no: tokenRecord.s_no },
+        data: { is_revoked: true, updated_at: new Date() },
+      });
+
+      // Generate new tokens
       const newPayload = {
         sub: payload.sub,
         tenantId: payload.tenantId,
@@ -189,23 +221,65 @@ export class TenantAuthService {
         pgId: payload.pgId,
       };
 
-      const newAccessToken = this.jwtService.sign(newPayload);
+      const newAccessToken = this.jwtService.sign(newPayload, { expiresIn: '1h' });
+      const newRefreshToken = this.jwtService.sign(newPayload, { expiresIn: '30d' });
+
+      // Store new refresh token in database
+      await this.prisma.tenant_tokens.create({
+        data: {
+          tenant_id: payload.tenantId,
+          refresh_token: newRefreshToken,
+          token_type: 'Bearer',
+          refresh_expires_at: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+          is_revoked: false,
+          device_info: tokenRecord.device_info,
+          ip_address: tokenRecord.ip_address,
+        },
+      });
 
       return {
         success: true,
         message: 'Token refreshed successfully',
         data: {
           accessToken: newAccessToken,
+          refreshToken: newRefreshToken,
         },
       };
     } catch (error) {
+      if (error instanceof UnauthorizedException) {
+        throw error;
+      }
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
   }
 
-  async logout(tenantId: number) {
-    // TODO: Invalidate refresh token in database if token blacklisting is implemented
-    // For now, just return success as JWT tokens are stateless
+  async logout(tenantId: number, refreshToken?: string) {
+    if (refreshToken) {
+      // Revoke specific token (if provided)
+      await this.prisma.tenant_tokens.updateMany({
+        where: {
+          tenant_id: tenantId,
+          refresh_token: refreshToken,
+        },
+        data: {
+          is_revoked: true,
+          updated_at: new Date(),
+        },
+      });
+    } else {
+      // Revoke all tokens for this tenant
+      await this.prisma.tenant_tokens.updateMany({
+        where: {
+          tenant_id: tenantId,
+          is_revoked: false,
+        },
+        data: {
+          is_revoked: true,
+          updated_at: new Date(),
+        },
+      });
+    }
+
     return {
       success: true,
       message: 'Logout successful',

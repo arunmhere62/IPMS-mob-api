@@ -10,6 +10,14 @@ import {
   TenantLoginResponseDto,
 } from './dto/tenant-login-response.dto';
 
+interface RequestWithTenant {
+  user: {
+    tenantId: number;
+    pgId: number;
+    role: string;
+  };
+}
+
 @ApiTags('tenant-auth')
 @Controller('tenant-auth')
 export class TenantAuthController {
@@ -42,8 +50,10 @@ export class TenantAuthController {
   })
   @ApiResponse({ status: 401, description: 'Invalid or expired OTP' })
   @ApiResponse({ status: 404, description: 'Tenant not found' })
-  async verifyOtp(@Body() dto: TenantVerifyOtpDto) {
-    return this.tenantAuthService.verifyOtp(dto);
+  async verifyOtp(@Body() dto: TenantVerifyOtpDto, @Req() req: Request) {
+    const deviceInfo = req.headers['user-agent'] as string | undefined;
+    const ipAddress = (req.headers['x-forwarded-for'] as string | undefined) || req.ip;
+    return this.tenantAuthService.verifyOtp(dto, deviceInfo, ipAddress);
   }
 
   @Post('refresh-token')
@@ -68,8 +78,8 @@ export class TenantAuthController {
     description: 'Logout successful',
   })
   @ApiResponse({ status: 401, description: 'Unauthorized' })
-  async logout(@Req() req: Request) {
-    const tenantId = (req as any).user?.tenantId;
-    return this.tenantAuthService.logout(tenantId);
+  async logout(@Req() req: RequestWithTenant, @Body('refreshToken') refreshToken?: string) {
+    const tenantId = req.user?.tenantId;
+    return this.tenantAuthService.logout(tenantId, refreshToken);
   }
 }

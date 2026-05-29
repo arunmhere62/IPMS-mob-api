@@ -15,7 +15,8 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth, ApiQuery } from '@nestjs/swagger';
 import { TenantTicketsService } from './tenant-tickets.service';
 import { AddCommentDto } from './dto/add-comment.dto';
-import { UpdateTicketStatusDto } from './dto/update-ticket-status.dto';
+import { UpdateTicketStatusDto, TenantTicketStatus } from './dto/update-ticket-status.dto';
+import { TenantTicketCategory } from './dto/create-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/common-headers.decorator';
@@ -46,8 +47,8 @@ export class PgTicketsController {
   ) {
     return this.tenantTicketsService.getPgTickets(
       headers.pg_id!,
-      status,
-      category,
+      status as TenantTicketStatus | undefined,
+      category as TenantTicketCategory | undefined,
       page ? parseInt(page, 10) : 1,
       limit ? parseInt(limit, 10) : 20,
     );

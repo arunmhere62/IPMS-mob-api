@@ -2,7 +2,7 @@ name: Deploy to VPS
 
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "main", "development" ]
 
 jobs:
   deploy:
@@ -18,25 +18,44 @@ jobs:
           debug: false
           script: |
             set -e
-            if [ ! -d "${{ secrets.VPS_PATH }}" ]; then
-              echo "[deploy] Directory does not exist: ${{ secrets.VPS_PATH }}"
+
+            # Set deployment path and docker-compose file based on branch
+            if [ "${{ github.ref }}" = "refs/heads/main" ]; then
+              DEPLOY_PATH="/root/IPMS-mob-api"
+              COMPOSE_FILE="docker-compose.yml"
+              NETWORK_NAME="ipms_mob_api"
+            elif [ "${{ github.ref }}" = "refs/heads/development" ]; then
+              DEPLOY_PATH="/root/IPMS-mob-api-dev"
+              COMPOSE_FILE="docker-compose.dev.yml"
+              NETWORK_NAME="ipms_mob_api_dev"
+            else
+              echo "Unsupported branch: ${{ github.ref }}"
+              exit 1
+            fi
+
+            echo "[deploy] Branch: ${{ github.ref }}"
+            echo "[deploy] Path: $DEPLOY_PATH"
+            echo "[deploy] Compose file: $COMPOSE_FILE"
+
+            if [ ! -d "$DEPLOY_PATH" ]; then
+              echo "[deploy] Directory does not exist: $DEPLOY_PATH"
               echo "[deploy] Current directory: $(pwd)"
               echo "[deploy] Listing /root (if accessible):"
               ls -la /root || true
               exit 1
             fi
 
-            cd "${{ secrets.VPS_PATH }}"
+            cd "$DEPLOY_PATH"
             echo "[deploy] cd success: $(pwd)"
 
             git fetch --all
-            git reset --hard origin/main
+            git reset --hard origin/${{ github.ref_name }}
 
             # Clean previous stack to avoid docker network label conflicts
-            docker compose down --remove-orphans || true
-            docker network rm ipms_mob_api || true
+            docker compose -f $COMPOSE_FILE down --remove-orphans || true
+            docker network rm $NETWORK_NAME || true
 
-            docker compose up -d --build
-            docker compose ps
+            docker compose -f $COMPOSE_FILE up -d --build
+            docker compose -f $COMPOSE_FILE ps
 
             echo "Deployment completed!"

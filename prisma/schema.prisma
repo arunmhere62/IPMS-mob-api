@@ -611,8 +611,10 @@ model tenants {
   refund_payments    refund_payments[]
   rent_payments      rent_payments[]
   tenant_allocations tenant_allocations[]
+  tenant_fcm_tokens  tenant_fcm_tokens[]
   tenant_rent_cycles tenant_rent_cycles[]
   tenant_tickets     tenant_tickets[]
+  tenant_tokens      tenant_tokens[]
   city               city?                @relation(fields: [city_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_city")
   state              state?               @relation(fields: [state_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_state")
   pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_1")
@@ -897,6 +899,57 @@ model tenant_tickets {
   @@index([organization_id], map: "fk_tt_organization")
   @@index([pg_id], map: "fk_tt_pg")
   @@index([tenant_id], map: "fk_tt_tenant")
+}
+
+model tenant_fcm_tokens {
+  s_no        Int      @id @default(autoincrement())
+  tenant_id   Int
+  fcm_token   String   @unique(map: "uk_tenant_fcm_tokens_token") @db.VarChar(512)
+  device_type String?  @db.VarChar(20)
+  device_id   String?  @db.VarChar(255)
+  device_name String?  @db.VarChar(255)
+  is_active   Boolean? @default(true)
+  created_at  DateTime @default(now()) @db.Timestamp(0)
+  updated_at  DateTime @default(now()) @db.Timestamp(0)
+  tenants     tenants  @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_fcm_tokens_tenant")
+
+  @@index([tenant_id], map: "fk_tenant_fcm_tokens_tenant")
+}
+
+model app_settings {
+  s_no                        Int      @id @default(autoincrement())
+  is_maintenance_mode         Boolean  @default(false)
+  maintenance_message         String?  @db.VarChar(500)
+  is_registration_open        Boolean  @default(true)
+  force_update_android        Boolean  @default(false)
+  force_update_ios            Boolean  @default(false)
+  android_store_url           String?  @db.VarChar(500)
+  ios_store_url               String?  @db.VarChar(500)
+  max_login_attempts          Int      @default(5)
+  otp_expiry_seconds          Int      @default(300)
+  otp_resend_cooldown_seconds Int      @default(60)
+  created_at                  DateTime @default(now()) @db.Timestamp(0)
+  updated_at                  DateTime @default(now()) @db.Timestamp(0)
+  updated_by                  Int?
+}
+
+model tenant_tokens {
+  s_no               Int       @id @default(autoincrement())
+  tenant_id          Int
+  refresh_token      String    @db.Text
+  token_type         String?   @default("Bearer") @db.VarChar(20)
+  expires_at         DateTime? @db.DateTime(0)
+  refresh_expires_at DateTime? @db.DateTime(0)
+  is_revoked         Boolean   @default(false)
+  device_info        String?   @db.VarChar(255)
+  ip_address         String?   @db.VarChar(45)
+  created_at         DateTime  @default(now()) @db.Timestamp(0)
+  updated_at         DateTime  @default(now()) @db.Timestamp(0)
+  tenants            tenants   @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_tenant_tokens_tenant")
+
+  @@index([tenant_id], map: "fk_tenant_tokens_tenant")
+  @@index([is_revoked], map: "idx_tenant_is_revoked")
+  @@index([refresh_token(length: 255)], map: "idx_tenant_refresh_token")
 }
 
 enum permissions_master_action {

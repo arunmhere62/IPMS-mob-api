@@ -59,4 +59,13 @@ export class TenantPortalController {
   async getDues(@TenantHeadersDecorator() headers: TenantHeaders) {
     return this.tenantPortalService.getTenantDues(headers.tenant_id);
   }
+
+  @Get('ticket-stats')
+  @ApiOperation({ summary: 'Get tenant dashboard ticket statistics' })
+  @ApiResponse({ status: 200, description: 'Ticket statistics retrieved successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Not a tenant' })
+  async getTicketStats(@TenantHeadersDecorator() headers: TenantHeaders) {
+    return this.tenantPortalService.getTenantTicketDashboardStats({ tenant_id: headers.tenant_id });
+  }
 }

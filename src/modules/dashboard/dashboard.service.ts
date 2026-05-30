@@ -6,6 +6,7 @@ import { TenantPaymentService } from '../tenant/tenant-payment/rent-payment.serv
 import { TenantRentSummaryService } from '../tenant/tenant-rent-summary.service';
 import { DashboardTenantStatusService } from './dashboard-tenant-status.service';
 import { DashboardMonthlyMetricsService } from './dashboard-monthly-metrics.service';
+import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class DashboardService {
@@ -342,5 +343,93 @@ export class DashboardService {
       },
       'Dashboard summary fetched successfully',
     );
+  }
+
+  async getTicketDashboardStats(params: { pg_id: number }) {
+    const where: Prisma.tenant_ticketsWhereInput = { pg_id: params.pg_id, is_deleted: false };
+
+    // Get status counts
+    const [
+      totalCount,
+      openCount,
+      inProgressCount,
+      resolvedCount,
+      closedCount,
+      highPriorityCount,
+      recentTickets,
+      unreadTickets,
+    ] = await Promise.all([
+      this.prisma.tenant_tickets.count({ where }),
+      this.prisma.tenant_tickets.count({ where: { ...where, status: 'OPEN' } }),
+      this.prisma.tenant_tickets.count({ where: { ...where, status: 'IN_PROGRESS' } }),
+      this.prisma.tenant_tickets.count({ where: { ...where, status: 'RESOLVED' } }),
+      this.prisma.tenant_tickets.count({ where: { ...where, status: 'CLOSED' } }),
+      this.prisma.tenant_tickets.count({ where: { ...where, priority: 'HIGH' } }),
+      // Recent tickets (last 5)
+      this.prisma.tenant_tickets.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        take: 5,
+        select: {
+          s_no: true,
+          title: true,
+          status: true,
+          priority: true,
+          category: true,
+          created_at: true,
+          tenants: { select: { s_no: true, name: true } },
+          _count: { select: { tenant_ticket_comments: { where: { is_deleted: false } } } },
+        },
+      }),
+      // Unread tickets (tickets with no owner comments or only tenant comments)
+      this.prisma.tenant_tickets.findMany({
+        where,
+        orderBy: { created_at: 'desc' },
+        take: 10,
+        select: {
+          s_no: true,
+          title: true,
+          status: true,
+          priority: true,
+          category: true,
+          created_at: true,
+          tenants: { select: { s_no: true, name: true } },
+          _count: { select: { tenant_ticket_comments: { where: { is_deleted: false } } } },
+        },
+      }),
+    ]);
+
+    // Filter unread tickets (tickets where owner hasn't commented)
+    // A ticket is considered unread if it has no comments from the owner side
+    // We'll check if there are any comments with sender_type != 'TENANT'
+    const unreadTicketIds = await this.prisma.tenant_ticket_comments.groupBy({
+      by: ['ticket_id'],
+      where: {
+        ticket_id: { in: unreadTickets.map(t => t.s_no) },
+        is_deleted: false,
+        sender_type: { not: 'TENANT' },
+      },
+    });
+
+    const unreadTicketIdSet = new Set(unreadTicketIds.map(c => c.ticket_id));
+    const actualUnreadTickets = unreadTickets.filter(t => !unreadTicketIdSet.has(t.s_no));
+
+    const stats = {
+      overview: {
+        total: totalCount,
+        open: openCount,
+        inProgress: inProgressCount,
+        resolved: resolvedCount,
+        closed: closedCount,
+        highPriority: highPriorityCount,
+      },
+      recentTickets,
+      unreadTickets: {
+        count: actualUnreadTickets.length,
+        tickets: actualUnreadTickets,
+      },
+    };
+
+    return ResponseUtil.success(stats, 'Dashboard ticket statistics fetched successfully');
   }
 }

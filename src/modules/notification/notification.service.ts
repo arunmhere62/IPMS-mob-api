@@ -85,31 +85,46 @@ export class NotificationService {
   private dedupeActiveTokens(
     tokens: Array<{ fcm_token: string; device_id: string | null; updated_at: Date; created_at: Date }>,
   ) {
-    const byKey = new Map<
-      string,
+    // Group by device_id first (if present)
+    const byDevice = new Map<
+      string | null,
       { fcm_token: string; device_id: string | null; updated_at: Date; created_at: Date }
     >();
 
     for (const t of tokens) {
-      const key = t.device_id ? `device:${t.device_id}` : `token:${t.fcm_token}`;
-      const prev = byKey.get(key);
+      const prev = byDevice.get(t.device_id);
       if (!prev) {
-        byKey.set(key, t);
+        byDevice.set(t.device_id, t);
         continue;
       }
 
+      // Keep the most recent token for each device
       const prevTime = prev.updated_at?.getTime?.() ?? prev.created_at?.getTime?.() ?? 0;
       const nextTime = t.updated_at?.getTime?.() ?? t.created_at?.getTime?.() ?? 0;
       if (nextTime >= prevTime) {
-        byKey.set(key, t);
+        byDevice.set(t.device_id, t);
       }
     }
 
+    // If we have multiple devices, keep only the most recently updated one
+    // This prevents sending duplicate notifications to multiple old tokens
+    const deviceTokens = Array.from(byDevice.values());
+    if (deviceTokens.length > 1) {
+      deviceTokens.sort((a, b) => {
+        const timeA = a.updated_at?.getTime?.() ?? a.created_at?.getTime?.() ?? 0;
+        const timeB = b.updated_at?.getTime?.() ?? b.created_at?.getTime?.() ?? 0;
+        return timeB - timeA; // Sort descending (most recent first)
+      });
+      // Keep only the most recent token
+      return [deviceTokens[0]];
+    }
+
+    // Finally, deduplicate by token (in case of exact duplicates)
     const uniqByToken = new Map<
       string,
       { fcm_token: string; device_id: string | null; updated_at: Date; created_at: Date }
     >();
-    for (const t of byKey.values()) {
+    for (const t of deviceTokens) {
       if (!uniqByToken.has(t.fcm_token)) {
         uniqByToken.set(t.fcm_token, t);
       }

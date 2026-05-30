@@ -37,4 +37,14 @@ export class DashboardController {
       monthEnd,
     });
   }
+
+  @Get('ticket-stats')
+  @RequireHeaders({ pg_id: true })
+  @ApiOperation({ summary: 'Dashboard ticket statistics' })
+  @ApiResponse({ status: 200, description: 'Dashboard ticket statistics fetched successfully' })
+  async getTicketStats(@CommonHeadersDecorator() commonHeaders: CommonHeaders) {
+    return this.dashboardService.getTicketDashboardStats({
+      pg_id: commonHeaders.pg_id!,
+    });
+  }
 }

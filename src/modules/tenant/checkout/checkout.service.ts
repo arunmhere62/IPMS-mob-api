@@ -342,22 +342,33 @@ export class CheckoutService {
         throw new NotFoundException(`Tenant with ID ${id} not found`);
       }
 
-      const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant: tenantAfter });
-      const rentDueAmount = Number(rentSummary?.rent_due_amount || 0);
+      // Do not calculate dynamically. Only check if any rent cycles up to checkout date
+      // do not have a PAID rent_payment entry.
+      const cyclesUpToCheckout = await tx.tenant_rent_cycles.findMany({
+        where: {
+          tenant_id: id,
+          cycle_end: { lte: checkoutUtc },
+        },
+        select: { s_no: true },
+      });
 
-      const advances = (tenantAfter.advance_payments || []).filter((p) => p.status !== 'VOIDED');
-      const hasAnyAdvance = advances.length > 0;
-      const hasPaidAdvance = advances.some((p) => p.status === 'PAID');
-      const hasNonPaidAdvance = advances.some((p) => p.status && p.status !== 'PAID');
-      const hasAdvancePending = hasAnyAdvance && (!hasPaidAdvance || hasNonPaidAdvance);
-
-      if (rentDueAmount > 0 || hasAdvancePending) {
-        const parts: string[] = [];
-        if (rentDueAmount > 0) parts.push(`Pending rent ₹${rentDueAmount}`);
-        if (hasAdvancePending) parts.push('Advance pending');
-        throw new BadRequestException(
-          `Cannot checkout tenant. ${parts.join(' and ')} must be settled before checkout.`,
-        );
+      if (cyclesUpToCheckout.length > 0) {
+        const cycleIds = cyclesUpToCheckout.map((c) => c.s_no);
+        const paidForCycles = await tx.rent_payments.findMany({
+          where: {
+            is_deleted: false,
+            status: 'PAID',
+            cycle_id: { in: cycleIds },
+          },
+          select: { cycle_id: true },
+        });
+        const paidSet = new Set((paidForCycles || []).map((p) => p.cycle_id).filter(Boolean));
+        const pendingCycles = cyclesUpToCheckout.filter((c) => !paidSet.has(c.s_no));
+        if (pendingCycles.length > 0) {
+          throw new BadRequestException(
+            `Cannot checkout tenant. Pending rent cycles exist (${pendingCycles.length}). Please clear them before checkout.`,
+          );
+        }
       }
 
       const updatedTenant = await tx.tenants.findFirst({
@@ -430,24 +441,6 @@ export class CheckoutService {
         status: 'ACTIVE',
       };
     } else if (updateCheckoutDateDto.check_out_date) {
-      const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
-      const rentDueAmount = Number(rentSummary?.rent_due_amount || 0);
-
-      const advances = (tenant.advance_payments || []).filter((p) => p.status !== 'VOIDED');
-      const hasAnyAdvance = advances.length > 0;
-      const hasPaidAdvance = advances.some((p) => p.status === 'PAID');
-      const hasNonPaidAdvance = advances.some((p) => p.status && p.status !== 'PAID');
-      const hasAdvancePending = hasAnyAdvance && (!hasPaidAdvance || hasNonPaidAdvance);
-
-      if (rentDueAmount > 0 || hasAdvancePending) {
-        const parts: string[] = [];
-        if (rentDueAmount > 0) parts.push(`Rent due ₹${rentDueAmount}`);
-        if (hasAdvancePending) parts.push('Advance pending');
-        throw new BadRequestException(
-          `Cannot update checkout date. Pending dues exist: ${parts.join(' and ')}. Please clear pending amounts before checkout.`,
-        );
-      }
-
       const checkoutDate = new Date(updateCheckoutDateDto.check_out_date);
       const checkInDate = new Date(tenant.check_in_date);
 
@@ -456,6 +449,35 @@ export class CheckoutService {
         throw new BadRequestException(
           `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`,
         );
+      }
+
+      // Do not calculate dynamically. Only check if any rent cycles up to checkout date
+      // do not have a PAID rent_payment entry.
+      const cyclesUpToCheckout = await this.prisma.tenant_rent_cycles.findMany({
+        where: {
+          tenant_id: tenant.s_no,
+          cycle_end: { lte: new Date(checkoutDate.toISOString().split('T')[0] + 'T00:00:00.000Z') },
+        },
+        select: { s_no: true },
+      });
+
+      if (cyclesUpToCheckout.length > 0) {
+        const cycleIds = cyclesUpToCheckout.map((c) => c.s_no);
+        const paidForCycles = await this.prisma.rent_payments.findMany({
+          where: {
+            is_deleted: false,
+            status: 'PAID',
+            cycle_id: { in: cycleIds },
+          },
+          select: { cycle_id: true },
+        });
+        const paidSet = new Set((paidForCycles || []).map((p) => p.cycle_id).filter(Boolean));
+        const pendingCycles = cyclesUpToCheckout.filter((c) => !paidSet.has(c.s_no));
+        if (pendingCycles.length > 0) {
+          throw new BadRequestException(
+            `Cannot update checkout date. Pending rent cycles exist (${pendingCycles.length}). Please clear them before checkout.`,
+          );
+        }
       }
 
       updateData = {

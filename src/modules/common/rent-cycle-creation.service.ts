@@ -223,7 +223,12 @@ export class RentCycleCreationService {
       const window = this._computeCycleWindow(cycleType, checkInDate, cursor);
 
       // Only collect cycles that have started (cycle_start <= today)
-      if (window.cycleStart > today) break;
+      if (window.cycleStart > today) {
+        if (cycles.length === 0) {
+          cycles.push(window);
+        }
+        break;
+      }
 
       // Only collect cycles that start on or after check-in
       if (window.cycleStart >= checkIn) {

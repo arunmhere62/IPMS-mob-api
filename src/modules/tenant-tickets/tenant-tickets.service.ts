@@ -204,6 +204,25 @@ export class TenantTicketsService {
       this.prisma.tenant_tickets.count({ where }),
     ]);
 
+    // Clean up tickets with deleted assigned users
+    const ticketsWithDeletedAssignments = tickets.filter(t => t.assigned_to && !t.users);
+    if (ticketsWithDeletedAssignments.length > 0) {
+      await Promise.all(
+        ticketsWithDeletedAssignments.map(t =>
+          this.prisma.tenant_tickets.update({
+            where: { s_no: t.s_no },
+            data: { assigned_to: null },
+          })
+        )
+      );
+      // Update the response to reflect the changes
+      tickets.forEach(t => {
+        if (t.assigned_to && !t.users) {
+          t.assigned_to = null;
+        }
+      });
+    }
+
     return ResponseUtil.success({ tickets, total, page, limit }, 'Tickets fetched successfully');
   }
 
@@ -221,19 +240,44 @@ export class TenantTicketsService {
     });
 
     if (!ticket) throw new NotFoundException('Ticket not found');
+
+    // If assigned user is deleted (users relation is null), nullify assigned_to
+    if (ticket.assigned_to && !ticket.users) {
+      await this.prisma.tenant_tickets.update({
+        where: { s_no: ticketId },
+        data: { assigned_to: null },
+      });
+      ticket.assigned_to = null;
+    }
+
     return ResponseUtil.success(ticket, 'Ticket fetched successfully');
   }
 
-  async updateTicketStatus(pgId: number | undefined, ticketId: number, dto: UpdateTicketStatusDto) {
+  async updateTicketStatus(userId: number, pgId: number | undefined, ticketId: number, dto: UpdateTicketStatusDto) {
     const ticket = await this.prisma.tenant_tickets.findFirst({
       where: { s_no: ticketId, ...(pgId ? { pg_id: pgId } : {}), is_deleted: false },
+      include: { organization: { select: { superadmin_id: true } } },
     });
 
     if (!ticket) throw new NotFoundException('Ticket not found');
 
+    const isSuperadmin = ticket.organization?.superadmin_id === userId;
+    const isAssigned = ticket.assigned_to === userId;
+
+    // Only assigned user or superadmin can update status
+    if (ticket.assigned_to && !isAssigned && !isSuperadmin) {
+      throw new ForbiddenException('Only the assigned staff member or admin can update this ticket status');
+    }
+
+    // If setting to IN_PROGRESS without assignment, auto-assign to current user
+    const updateData: { status: TenantTicketStatus; assigned_to?: number } = { status: dto.status as TenantTicketStatus };
+    if (dto.status === TenantTicketStatus.IN_PROGRESS && !ticket.assigned_to) {
+      updateData.assigned_to = userId;
+    }
+
     const updated = await this.prisma.tenant_tickets.update({
       where: { s_no: ticketId },
-      data: { status: dto.status as TenantTicketStatus },
+      data: updateData,
     });
 
     this.ticketsGateway.emitTicketStatusChanged(ticketId, dto.status);
@@ -271,7 +315,8 @@ export class TenantTicketsService {
     }
 
     // First reply: auto-assign and move to IN_PROGRESS
-    if (ticket.status === TenantTicketStatus.OPEN) {
+    // Also auto-assign if IN_PROGRESS but unassigned (handles edge cases)
+    if (ticket.status === TenantTicketStatus.OPEN || (ticket.status === TenantTicketStatus.IN_PROGRESS && !ticket.assigned_to)) {
       await this.prisma.tenant_tickets.update({
         where: { s_no: ticketId },
         data: { status: 'IN_PROGRESS', assigned_to: ownerId },

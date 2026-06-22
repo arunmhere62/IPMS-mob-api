@@ -15,6 +15,7 @@ import { TenantService } from './tenant.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TransferTenantDto } from './dto/transfer-tenant.dto';
+import { SendPhoneOtpDto, VerifyPhoneOtpDto } from './dto/verify-phone.dto';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
@@ -170,5 +171,29 @@ export class TenantController {
     @Body() transferTenantDto: TransferTenantDto,
   ) {
     return this.tenantService.transferTenant(id, transferTenantDto);
+  }
+
+  /**
+   * Send OTP to phone number for tenant verification
+   * POST /api/v1/tenants/send-otp
+   */
+  @Post('send-otp')
+  @ApiOperation({ summary: 'Send OTP to phone/WhatsApp for tenant verification' })
+  @ApiResponse({ status: 200, description: 'OTP sent successfully' })
+  @ApiResponse({ status: 400, description: 'Phone already registered or invalid' })
+  async sendOtp(@Body() dto: SendPhoneOtpDto) {
+    return this.tenantService.sendPhoneOtp(dto.phone);
+  }
+
+  /**
+   * Verify OTP for phone number
+   * POST /api/v1/tenants/verify-otp
+   */
+  @Post('verify-otp')
+  @ApiOperation({ summary: 'Verify OTP for phone/WhatsApp number' })
+  @ApiResponse({ status: 200, description: 'OTP verified successfully' })
+  @ApiResponse({ status: 400, description: 'Invalid or expired OTP' })
+  async verifyOtp(@Body() dto: VerifyPhoneOtpDto) {
+    return this.tenantService.verifyPhoneOtp(dto.phone, dto.otp);
   }
 }

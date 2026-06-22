@@ -68,11 +68,13 @@ export class PgTicketsController {
   @ApiOperation({ summary: 'Update ticket status' })
   @ApiResponse({ status: 404, description: 'Ticket not found' })
   updateStatus(
+    @Req() req: RequestWithUser,
     @CommonHeadersDecorator() headers: CommonHeaders,
     @Param('id', ParseIntPipe) id: number,
     @Body() dto: UpdateTicketStatusDto,
   ) {
-    return this.tenantTicketsService.updateTicketStatus(headers.pg_id!, id, dto);
+    const userId = req.user?.s_no ?? req.user?.sub;
+    return this.tenantTicketsService.updateTicketStatus(userId, headers.pg_id!, id, dto);
   }
 
   @Post(':id/comments')

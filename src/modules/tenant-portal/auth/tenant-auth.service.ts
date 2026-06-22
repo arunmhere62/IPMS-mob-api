@@ -28,13 +28,16 @@ export class TenantAuthService {
     // Normalize phone by removing spaces for database search
     const normalizedPhone = phone.replace(/\s/g, '');
 
-    // Find tenant by phone
-    const tenant = await this.prisma.tenants.findFirst({
-      where: {
-        phone_no: normalizedPhone,
-        is_deleted: false,
-      },
-    });
+    // Prefer the ACTIVE tenant record for this phone (handles re-join after checkout at another PG)
+    const tenant =
+      (await this.prisma.tenants.findFirst({
+        where: { phone_no: normalizedPhone, is_deleted: false, status: 'ACTIVE' },
+        orderBy: { s_no: 'desc' },
+      })) ??
+      (await this.prisma.tenants.findFirst({
+        where: { phone_no: normalizedPhone, is_deleted: false },
+        orderBy: { s_no: 'desc' },
+      }));
 
     if (!tenant) {
       throw new NotFoundException(

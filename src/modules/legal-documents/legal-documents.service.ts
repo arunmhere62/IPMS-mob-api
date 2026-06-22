@@ -249,7 +249,8 @@ export class LegalDocumentsService {
   ) {
     const normalizedContext = (context ?? '').toUpperCase();
     const isSignupContext = normalizedContext === 'SIGNUP';
-    const isPublicContext = isSignupContext || normalizedContext === 'LOGIN' || normalizedContext === 'SETTINGS';
+    const isSettingsContext = normalizedContext === 'SETTINGS';
+    const isPublicContext = isSignupContext || normalizedContext === 'LOGIN' || isSettingsContext;
 
     const normalizedType = (type ?? '').toUpperCase().trim();
 
@@ -259,10 +260,14 @@ export class LegalDocumentsService {
 
     const now = new Date();
 
+    // For SETTINGS context, return ALL active documents (for display links)
+    // For SIGNUP/LOGIN, only return required documents (for acceptance)
+    const shouldFilterRequired = !isSettingsContext;
+
     const requiredDocs = await this.prisma.legal_documents.findMany({
       where: {
         is_active: true,
-        is_required: true,
+        ...(shouldFilterRequired ? { is_required: true } : {}),
         effective_date: { lte: now },
         OR: [
           { expiry_date: null },

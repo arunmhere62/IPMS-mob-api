@@ -6,6 +6,7 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateTenantDto } from './dto/create-tenant.dto';
 import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TransferTenantDto } from './dto/transfer-tenant.dto';
+import { SmsService } from '../auth/sms.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { TenantStatusService } from './tenant-status/tenant-status.service';
 import { TenantRentSummaryService } from './tenant-rent-summary.service';
@@ -84,6 +85,8 @@ export class TenantService {
     private tenantPaymentService: TenantPaymentService,
 
     private rentCycleCreationService: RentCycleCreationService,
+
+    private smsService: SmsService,
   ) {}
 
   private resolveCurrentRentCycleForDate(params: {
@@ -553,19 +556,19 @@ export class TenantService {
         });
       }
 
-      // // Seed rent cycles atomically in the same transaction — no extra DB read needed
-      // const cycleType: 'CALENDAR' | 'MIDMONTH' =
-      //   createdTenant.pg_locations?.rent_cycle_type === 'MIDMONTH' ? 'MIDMONTH' : 'CALENDAR';
-      // const anchorDay = cycleType === 'MIDMONTH'
-      //   ? checkInDateOnly.getUTCDate()
-      //   : (createdTenant.pg_locations?.rent_cycle_start ?? 1);
+      // Seed rent cycles atomically in the same transaction — no extra DB read needed
+      const cycleType: 'CALENDAR' | 'MIDMONTH' =
+        createdTenant.pg_locations?.rent_cycle_type === 'MIDMONTH' ? 'MIDMONTH' : 'CALENDAR';
+      const anchorDay = cycleType === 'MIDMONTH'
+        ? checkInDateOnly.getUTCDate()
+        : (createdTenant.pg_locations?.rent_cycle_start ?? 1);
 
-      // await this.rentCycleCreationService.createCyclesInTx(tx, {
-      //   tenantId: createdTenant.s_no,
-      //   checkInDate: checkInDateOnly,
-      //   cycleType,
-      //   anchorDay,
-      // });
+      await this.rentCycleCreationService.createCyclesInTx(tx, {
+        tenantId: createdTenant.s_no,
+        checkInDate: checkInDateOnly,
+        cycleType,
+        anchorDay,
+      });
 
       return createdTenant;
     });
@@ -740,147 +743,101 @@ export class TenantService {
     const tenant = await this.prisma.tenants.findFirst({
       where: {
         s_no: id,
-
         is_deleted: false,
       },
-
       include: {
         pg_locations: {
           select: {
             s_no: true,
-
             location_name: true,
-
             address: true,
-
             city: true,
-
             state: true,
-
             rent_cycle_type: true,
           },
         },
-
         rooms: {
           select: {
             s_no: true,
-
             room_no: true,
           },
         },
-
         beds: {
           select: {
             s_no: true,
-
             bed_no: true,
-
             bed_price: true,
           },
         },
-
         city: {
           select: {
             s_no: true,
-
             name: true,
           },
         },
-
         state: {
           select: {
             s_no: true,
-
             name: true,
           },
         },
-
         tenant_rent_cycles: {
           orderBy: {
             cycle_start: 'asc',
           },
-
           select: {
             s_no: true,
-
             cycle_type: true,
-
             anchor_day: true,
-
             cycle_start: true,
-
             cycle_end: true,
           },
         },
-
         rent_payments: {
           where: {
             is_deleted: false,
-
             status: {
               not: 'VOIDED',
             },
           },
-
           orderBy: {
             payment_date: 'desc',
           },
-
           select: {
             s_no: true,
-
             payment_date: true,
-
             pg_id: true,
-
             room_id: true,
-
             bed_id: true,
-
             amount_paid: true,
-
             actual_rent_amount: true,
-
             cycle_id: true,
-
             payment_method: true,
-
             remarks: true,
-
             status: true,
-
             tenant_rent_cycles: {
               select: {
                 s_no: true,
-
                 cycle_type: true,
-
                 cycle_start: true,
-
                 cycle_end: true,
               },
             },
-
             pg_locations: {
               select: {
                 s_no: true,
-
                 location_name: true,
               },
             },
-
             rooms: {
               select: {
                 s_no: true,
-
                 room_no: true,
               },
             },
-
             beds: {
               select: {
                 s_no: true,
-
                 bed_no: true,
               },
             },
@@ -890,181 +847,124 @@ export class TenantService {
         advance_payments: {
           where: {
             is_deleted: false,
-
             status: {
               not: 'VOIDED',
             },
           },
-
           orderBy: {
             payment_date: 'desc',
           },
-
           select: {
             s_no: true,
-
             payment_date: true,
-
             pg_id: true,
-
             room_id: true,
-
             bed_id: true,
-
             amount_paid: true,
-
             actual_rent_amount: true,
-
             payment_method: true,
-
             status: true,
-
             remarks: true,
-
             pg_locations: {
               select: {
                 s_no: true,
-
                 location_name: true,
               },
             },
-
             rooms: {
               select: {
                 s_no: true,
-
                 room_no: true,
               },
             },
-
             beds: {
               select: {
                 s_no: true,
-
                 bed_no: true,
               },
             },
           },
         },
-
         refund_payments: {
           where: {
             is_deleted: false,
           },
-
           orderBy: {
             payment_date: 'desc',
           },
-
           select: {
             s_no: true,
-
             pg_id: true,
-
             room_id: true,
-
             bed_id: true,
-
             amount_paid: true,
-
             payment_method: true,
-
             payment_date: true,
-
             status: true,
-
             remarks: true,
-
             actual_rent_amount: true,
-
             pg_locations: {
               select: {
                 s_no: true,
-
                 location_name: true,
               },
             },
-
             rooms: {
               select: {
                 s_no: true,
-
                 room_no: true,
               },
             },
-
             beds: {
               select: {
                 s_no: true,
-
                 bed_no: true,
               },
             },
           },
         },
-
         current_bills: {
           where: {
             is_deleted: false,
           },
-
           orderBy: {
             bill_date: 'desc',
           },
-
           select: {
             s_no: true,
-
             bill_amount: true,
-
             bill_date: true,
-
             created_at: true,
-
             updated_at: true,
           },
         },
-
         tenant_allocations: {
           orderBy: {
             effective_from: 'asc',
           },
-
           select: {
             s_no: true,
-
             effective_from: true,
-
             effective_to: true,
-
             bed_price_snapshot: true,
-
             pg_id: true,
-
             room_id: true,
-
             bed_id: true,
-
             pg_locations: {
               select: {
                 s_no: true,
-
                 location_name: true,
               },
             },
-
             rooms: {
               select: {
                 s_no: true,
-
                 room_no: true,
               },
             },
-
             beds: {
               select: {
                 s_no: true,
-
                 bed_no: true,
               },
             },
@@ -1914,5 +1814,110 @@ export class TenantService {
     };
 
     return out;
+  }
+
+  /**
+   * Send OTP to phone number for tenant verification
+   * Checks if phone exists and sends OTP via SMS
+   */
+  async sendPhoneOtp(phone: string) {
+    // Normalize phone number (ensure it has + prefix for comparison)
+    const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
+
+    // Check if phone/WhatsApp already registered
+    const existing = await this.prisma.tenants.findFirst({
+      where: {
+        OR: [{ phone_no: normalizedPhone }, { whatsapp_number: normalizedPhone }],
+        is_deleted: false,
+        status: { not: 'CHECKED_OUT' },
+      },
+      select: { s_no: true, name: true },
+    });
+
+    if (existing) {
+      throw new BadRequestException(
+        `Phone number "${phone}" is already registered to tenant "${existing.name}" (ID: ${existing.s_no})`,
+      );
+    }
+
+    // Generate 4-digit OTP
+    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+
+    // Delete any existing OTP records for this phone
+    await this.prisma.otp_verifications.deleteMany({
+      where: { phone },
+    });
+
+    // Store OTP in database with 5-minute expiry
+    await this.prisma.otp_verifications.create({
+      data: {
+        phone,
+        otp,
+        expires_at: new Date(Date.now() + 5 * 60 * 1000),
+        attempts: 0,
+        is_verified: false,
+      },
+    });
+
+    // Send OTP via SMS
+    const sent = await this.smsService.sendOtp(phone, otp);
+
+    if (!sent) {
+      throw new BadRequestException('Failed to send OTP. Please try again.');
+    }
+
+    return ResponseUtil.success(
+      { phone, message: 'OTP sent successfully', expiresInMinutes: 5 },
+      'OTP sent successfully',
+    );
+  }
+
+  /**
+   * Verify OTP for phone number
+   */
+  async verifyPhoneOtp(phone: string, otp: string) {
+    // Find OTP record in database
+    const record = await this.prisma.otp_verifications.findFirst({
+      where: { phone, is_verified: false },
+      orderBy: { s_no: 'desc' },
+    });
+
+    if (!record) {
+      throw new BadRequestException('No OTP found. Please request a new OTP.');
+    }
+
+    // Check if expired
+    if (new Date() > record.expires_at) {
+      await this.prisma.otp_verifications.deleteMany({ where: { phone } });
+      throw new BadRequestException('OTP has expired. Please request a new OTP.');
+    }
+
+    // Check max attempts
+    if ((record.attempts || 0) >= 3) {
+      await this.prisma.otp_verifications.deleteMany({ where: { phone } });
+      throw new BadRequestException('Too many failed attempts. Please request a new OTP.');
+    }
+
+    // Increment attempts
+    await this.prisma.otp_verifications.update({
+      where: { s_no: record.s_no },
+      data: { attempts: { increment: 1 } },
+    });
+
+    // Check OTP match
+    if (record.otp !== otp) {
+      throw new BadRequestException('Invalid OTP. Please try again.');
+    }
+
+    // OTP verified - mark as verified
+    await this.prisma.otp_verifications.update({
+      where: { s_no: record.s_no },
+      data: { is_verified: true, verified_at: new Date() },
+    });
+
+    return ResponseUtil.success(
+      { phone, verified: true },
+      'Phone number verified successfully',
+    );
   }
 }

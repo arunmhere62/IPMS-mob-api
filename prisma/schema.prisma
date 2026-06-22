@@ -917,20 +917,30 @@ model tenant_fcm_tokens {
 }
 
 model app_settings {
-  s_no                        Int      @id @default(autoincrement())
-  is_maintenance_mode         Boolean  @default(false)
-  maintenance_message         String?  @db.VarChar(500)
-  is_registration_open        Boolean  @default(true)
-  force_update_android        Boolean  @default(false)
-  force_update_ios            Boolean  @default(false)
-  android_store_url           String?  @db.VarChar(500)
-  ios_store_url               String?  @db.VarChar(500)
-  max_login_attempts          Int      @default(5)
-  otp_expiry_seconds          Int      @default(300)
-  otp_resend_cooldown_seconds Int      @default(60)
-  created_at                  DateTime @default(now()) @db.Timestamp(0)
-  updated_at                  DateTime @default(now()) @db.Timestamp(0)
+  s_no                        Int       @id @default(autoincrement())
+  is_maintenance_mode         Boolean   @default(false)
+  maintenance_message         String?   @db.VarChar(500)
+  is_registration_open        Boolean   @default(true)
+  force_update_android        Boolean   @default(false)
+  force_update_ios            Boolean   @default(false)
+  android_store_url           String?   @db.VarChar(500)
+  ios_store_url               String?   @db.VarChar(500)
+  max_login_attempts          Int       @default(5)
+  otp_expiry_seconds          Int       @default(300)
+  otp_resend_cooldown_seconds Int       @default(60)
+  created_at                  DateTime  @default(now()) @db.Timestamp(0)
+  updated_at                  DateTime  @default(now()) @db.Timestamp(0)
   updated_by                  Int?
+  current_version_android     String?   @db.VarChar(20)
+  current_version_ios         String?   @db.VarChar(20)
+  minimum_version_android     String?   @db.VarChar(20)
+  minimum_version_ios         String?   @db.VarChar(20)
+  payment_gateway_enabled     Boolean?  @default(false)
+  announcement_title          String?   @db.VarChar(100)
+  announcement_message        String?   @db.Text
+  show_announcement           Boolean?  @default(false)
+  announcement_start_date     DateTime? @db.DateTime(0)
+  announcement_end_date       DateTime? @db.DateTime(0)
 }
 
 model tenant_tokens {

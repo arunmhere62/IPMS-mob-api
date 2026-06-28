@@ -6,9 +6,10 @@ import { RbacPermissionsController } from './permissions/rbac-permissions.contro
 import { UserPermissionOverridesController } from './overrides/user-permission-overrides.controller';
 import { UserPermissionOverridesService } from './overrides/user-permission-overrides.service';
 import { AuthModule } from '../auth/auth.module';
+import { OrganizationModule } from '../organization/organization.module';
 
 @Module({
-  imports: [PrismaModule, AuthModule],
+  imports: [PrismaModule, AuthModule, OrganizationModule],
   controllers: [RbacController, RbacPermissionsController, UserPermissionOverridesController],
   providers: [RbacService, UserPermissionOverridesService],
   exports: [RbacService, UserPermissionOverridesService],

@@ -66,8 +66,8 @@ export class CCavenueService {
     this.merchantId = this.configService.get<string>('CCAVENUE_MERCHANT_ID');
     this.accessCode = this.configService.get<string>('CCAVENUE_ACCESS_CODE');
     this.workingKey = this.configService.get<string>('CCAVENUE_WORKING_KEY');
-    this.ccavenueUrl = this.configService.get<string>('CCAVENUE_URL') || 
-                       'https://test.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
+    this.ccavenueUrl = this.configService.get<string>('CCAVENUE_PAYMENT_URL') || 
+                       'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
   }
 
   /**

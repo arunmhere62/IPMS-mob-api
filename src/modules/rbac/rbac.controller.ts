@@ -21,7 +21,10 @@ export class RbacController {
   @UseGuards(HeadersValidationGuard, JwtAuthGuard)
   @RequireHeaders({ user_id: true })
   async getMyPermissions(@ValidatedHeaders() headers: ValidatedHeaders) {
-    return this.rbacService.getEffectivePermissionsForUser(headers.user_id as number);
+    return this.rbacService.getEffectivePermissionsForUser(
+      headers.user_id as number,
+      headers.organization_id,
+    );
   }
 
   @Get('users/:userId/permissions')

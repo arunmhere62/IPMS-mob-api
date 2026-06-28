@@ -580,4 +580,53 @@ export class EmployeeService {
       employeesByRole,
     }, 'Employee statistics fetched successfully');
   }
+
+  /**
+   * Toggle employee account status (ACTIVE <-> INACTIVE).
+   * Revokes all tokens on deactivation for immediate forced logout.
+   */
+  async toggleStatus(id: number, organizationId: number, currentUserId: number) {
+    const target = await this.prisma.users.findFirst({
+      where: { s_no: id, organization_id: organizationId, is_deleted: false },
+      include: { roles: { select: { role_name: true } } },
+    });
+
+    if (!target) {
+      throw new NotFoundException('Employee not found');
+    }
+
+    if (target.s_no === currentUserId) {
+      throw new BadRequestException('You cannot change your own account status');
+    }
+
+    if (target.roles.role_name === 'SUPER_ADMIN') {
+      throw new BadRequestException('Super admin account status cannot be changed');
+    }
+
+    const newStatus = target.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+
+    const updated = await this.prisma.users.update({
+      where: { s_no: id },
+      data: { status: newStatus },
+      select: {
+        s_no: true,
+        name: true,
+        email: true,
+        status: true,
+        roles: { select: { role_name: true } },
+      },
+    });
+
+    if (newStatus === 'INACTIVE') {
+      await this.prisma.tokens.updateMany({
+        where: { user_id: id, is_revoked: false },
+        data: { is_revoked: true, revoked_at: new Date() },
+      });
+    }
+
+    return ResponseUtil.success(
+      { ...updated, role_name: updated.roles.role_name },
+      `Employee account ${newStatus === 'ACTIVE' ? 'activated' : 'deactivated'} successfully`,
+    );
+  }
 }

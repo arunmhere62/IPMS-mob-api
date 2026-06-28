@@ -855,6 +855,7 @@ export class SubscriptionService {
 
       return ResponseUtil.success({
         orderId,
+        orderStatus,
         trackingId,
         message: statusMessage,
       }, orderStatus === 'Success' ? 'Payment successful' : 'Payment failed');

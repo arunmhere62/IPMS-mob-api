@@ -135,6 +135,27 @@ export class EmployeeController {
     return this.employeeService.update(id, headers.organization_id!, headers.user_id!, updateDto);
   }
 
+  @Patch(':id/status')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Toggle employee account status (ACTIVE <-> INACTIVE)' })
+  @ApiResponse({ status: 200, description: 'Employee status updated successfully' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Insufficient permissions' })
+  @ApiResponse({ status: 404, description: 'Employee not found' })
+  @RequireHeaders({ organization_id: true, user_id: true })
+  async toggleStatus(
+    @ValidatedHeaders() headers: ValidatedHeaders,
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    const effectivePerms = await this.rbacService.getEffectivePermissionsForUser(headers.user_id!);
+    const result = effectivePerms.data as { permissions_map: Record<string, boolean> };
+
+    if (!result.permissions_map['employee_edit']) {
+      throw new ForbiddenException('You do not have permission to change employee status');
+    }
+
+    return this.employeeService.toggleStatus(id, headers.organization_id!, headers.user_id!);
+  }
+
   @Delete(':id')
   @ApiOperation({ summary: 'Delete an employee (soft delete)' })
   @ApiResponse({ status: 200, description: 'Employee deleted successfully' })

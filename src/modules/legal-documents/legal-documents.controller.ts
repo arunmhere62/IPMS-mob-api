@@ -66,6 +66,24 @@ export class LegalDocumentsController {
     return this.legalDocumentsService.findAll(query);
   }
 
+  // User: check whether they have accepted all currently required docs
+  // Public endpoint - no auth required (needed for login/signup screens)
+  // IMPORTANT: must be declared BEFORE @Get(':id') so 'required/status' is not matched as an :id param
+  @Get('required/status')
+  @ApiOperation({ summary: 'Get user acceptance status for all currently required legal documents (public)' })
+  @ApiHeader({ name: 'x-user-id', required: false, description: 'User to check acceptance for (optional)' })
+  @ApiHeader({ name: 'x-organization-id', required: false, description: 'Organization scope (optional)' })
+  @ApiQuery({ name: 'context', required: false, description: 'Optional context label (SIGNUP/LOGIN/INVOICE/etc) returned back in response' })
+  @ApiQuery({ name: 'type', required: false, description: 'Optional legal document type filter (e.g. PRIVACY_POLICY)' })
+  @ApiResponse({ status: HttpStatus.OK, description: 'Legal acceptance status fetched successfully' })
+  async requiredStatus(
+    @ValidatedHeaders() headers: ValidatedHeadersType,
+    @Query('context') context?: string,
+    @Query('type') type?: string,
+  ) {
+    return this.legalDocumentsService.requiredStatus(headers, context, type);
+  }
+
   @Get(':id')
   @RequireHeaders()
   @ApiOperation({ summary: 'Get a legal document by ID' })
@@ -141,22 +159,5 @@ export class LegalDocumentsController {
     @Body() dto: RevokeLegalAcceptanceDto,
   ) {
     return this.legalDocumentsService.revoke(headers, id, dto.reason);
-  }
-
-  // User: check whether they have accepted all currently required docs
-  // Public endpoint - no auth required (needed for login/signup screens)
-  @Get('required/status')
-  @ApiOperation({ summary: 'Get user acceptance status for all currently required legal documents (public)' })
-  @ApiHeader({ name: 'x-user-id', required: false, description: 'User to check acceptance for (optional)' })
-  @ApiHeader({ name: 'x-organization-id', required: false, description: 'Organization scope (optional)' })
-  @ApiQuery({ name: 'context', required: false, description: 'Optional context label (SIGNUP/LOGIN/INVOICE/etc) returned back in response' })
-  @ApiQuery({ name: 'type', required: false, description: 'Optional legal document type filter (e.g. PRIVACY_POLICY)' })
-  @ApiResponse({ status: HttpStatus.OK, description: 'Legal acceptance status fetched successfully' })
-  async requiredStatus(
-    @ValidatedHeaders() headers: ValidatedHeadersType,
-    @Query('context') context?: string,
-    @Query('type') type?: string,
-  ) {
-    return this.legalDocumentsService.requiredStatus(headers, context, type);
   }
 }

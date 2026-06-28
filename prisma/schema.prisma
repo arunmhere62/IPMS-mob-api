@@ -582,44 +582,45 @@ model tenant_rent_cycles {
 }
 
 model tenants {
-  s_no               Int                  @id @default(autoincrement())
-  tenant_id          String               @unique(map: "tenant_id") @db.VarChar(50)
-  name               String               @db.VarChar(100)
-  phone_no           String?              @db.VarChar(15)
-  whatsapp_number    String?              @db.VarChar(15)
-  email              String?              @db.VarChar(100)
-  pg_id              Int?
-  room_id            Int?
-  bed_id             Int?
-  check_in_date      DateTime             @db.DateTime(0)
-  check_out_date     DateTime?            @db.DateTime(0)
-  status             tenants_status?      @default(ACTIVE)
-  created_at         DateTime?            @default(now()) @db.Timestamp(0)
-  updated_at         DateTime?            @default(now()) @db.Timestamp(0)
-  images             Json?
-  proof_documents    Json?
-  is_deleted         Boolean?             @default(false)
-  occupation         String?              @db.VarChar(100)
-  tenant_address     String?              @db.VarChar(255)
-  city_id            Int?
-  state_id           Int?
-  deleted_at         DateTime?            @db.DateTime(0)
-  deleted_by         Int?
-  deleted_reason     String?              @db.VarChar(255)
-  advance_payments   advance_payments[]
-  current_bills      current_bills[]
-  refund_payments    refund_payments[]
-  rent_payments      rent_payments[]
-  tenant_allocations tenant_allocations[]
-  tenant_fcm_tokens  tenant_fcm_tokens[]
-  tenant_rent_cycles tenant_rent_cycles[]
-  tenant_tickets     tenant_tickets[]
-  tenant_tokens      tenant_tokens[]
-  city               city?                @relation(fields: [city_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_city")
-  state              state?               @relation(fields: [state_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_state")
-  pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_1")
-  rooms              rooms?               @relation(fields: [room_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_2")
-  beds               beds?                @relation(fields: [bed_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_3")
+  s_no                 Int                  @id @default(autoincrement())
+  tenant_id            String               @unique(map: "tenant_id") @db.VarChar(50)
+  name                 String               @db.VarChar(100)
+  phone_no             String?              @db.VarChar(15)
+  whatsapp_number      String?              @db.VarChar(15)
+  email                String?              @db.VarChar(100)
+  pg_id                Int?
+  room_id              Int?
+  bed_id               Int?
+  check_in_date        DateTime             @db.DateTime(0)
+  check_out_date       DateTime?            @db.DateTime(0)
+  expected_vacate_date DateTime?            @db.DateTime(0)
+  status               tenants_status?      @default(ACTIVE)
+  created_at           DateTime?            @default(now()) @db.Timestamp(0)
+  updated_at           DateTime?            @default(now()) @db.Timestamp(0)
+  images               Json?
+  proof_documents      Json?
+  is_deleted           Boolean?             @default(false)
+  occupation           String?              @db.VarChar(100)
+  tenant_address       String?              @db.VarChar(255)
+  city_id              Int?
+  state_id             Int?
+  deleted_at           DateTime?            @db.DateTime(0)
+  deleted_by           Int?
+  deleted_reason       String?              @db.VarChar(255)
+  advance_payments     advance_payments[]
+  current_bills        current_bills[]
+  refund_payments      refund_payments[]
+  rent_payments        rent_payments[]
+  tenant_allocations   tenant_allocations[]
+  tenant_fcm_tokens    tenant_fcm_tokens[]
+  tenant_rent_cycles   tenant_rent_cycles[]
+  tenant_tickets       tenant_tickets[]
+  tenant_tokens        tenant_tokens[]
+  city                 city?                @relation(fields: [city_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_city")
+  state                state?               @relation(fields: [state_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_state")
+  pg_locations         pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_1")
+  rooms                rooms?               @relation(fields: [room_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_2")
+  beds                 beds?                @relation(fields: [bed_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_3")
 
   @@index([bed_id], map: "bed_id")
   @@index([city_id], map: "fk_tenants_city")

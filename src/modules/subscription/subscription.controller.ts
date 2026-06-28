@@ -1,4 +1,5 @@
-import { Controller, Get, Post, Req, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Req, Res, Body, Query } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SubscriptionService } from './subscription.service';
 import { ResponseUtil } from '../../common/utils/response.util';
@@ -169,107 +170,53 @@ export class SubscriptionController {
   }
 
   /**
-   * Payment callback - Success (POST)
+   * Payment callback - Success (POST) - called by CCAvenue after payment
    */
   @Post('payment/callback')
   @ApiOperation({ summary: 'CCAvenue payment callback' })
-  async paymentCallback(@Body() body: Record<string, unknown>, @Req() _req: unknown) {
-    void _req;
-    console.log('💳 Payment callback received:', body);
-    
+  async paymentCallback(@Body() body: Record<string, unknown>, @Res() res: Response) {
+    console.log('💳 Payment callback received');
     try {
       const result = await this.subscriptionService.handlePaymentCallback(body);
-      
-      // Return HTML response to show success message
-      return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Payment Success</title>
-          <style>
-            body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
-            .success { background: #4CAF50; color: white; padding: 20px; border-radius: 10px; }
-            .button { background: #2196F3; color: white; padding: 15px 30px; text-decoration: none; 
-                     border-radius: 5px; display: inline-block; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="success">
-            <h1>✅ Payment Successful!</h1>
-            <p>Your subscription has been activated.</p>
-            <p>Order ID: ${result.orderId}</p>
-            <a href="pgmanagement://subscription/success" class="button">Return to App</a>
-          </div>
-        </body>
-        </html>
-      `;
+      const orderId = (result as any)?.data?.orderId ?? '';
+      const paymentStatus = (result as any)?.data?.orderStatus ?? 'Success';
+      const mappedStatus = paymentStatus === 'Success' ? 'Success' : paymentStatus === 'Aborted' ? 'Aborted' : 'Failure';
+      const deepLink = `pgapp://payment-result?orderId=${encodeURIComponent(orderId)}&status=${mappedStatus}`;
+      console.log('💳 Payment callback done, redirecting to:', deepLink);
+      return res.redirect(302, deepLink);
     } catch (error) {
       console.error('❌ Payment callback error:', error);
-      return `
-        <!DOCTYPE html>
-        <html>
-        <head>
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Payment Failed</title>
-          <style>
-            body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
-            .error { background: #f44336; color: white; padding: 20px; border-radius: 10px; }
-            .button { background: #2196F3; color: white; padding: 15px 30px; text-decoration: none; 
-                     border-radius: 5px; display: inline-block; margin-top: 20px; }
-          </style>
-        </head>
-        <body>
-          <div class="error">
-            <h1>❌ Payment Failed</h1>
-            <p>There was an error processing your payment.</p>
-            <a href="pgmanagement://subscription/failed" class="button">Return to App</a>
-          </div>
-        </body>
-        </html>
-      `;
+      const deepLink = `pgapp://payment-result?status=Failure`;
+      return res.redirect(302, deepLink);
     }
   }
 
   /**
-   * Payment callback - Success (GET - for CCAvenue redirect)
+   * Payment callback - GET (for CCAvenue redirect)
    */
   @Get('payment/callback')
   @ApiOperation({ summary: 'CCAvenue payment callback (GET)' })
-  async paymentCallbackGet(@Query() query: Record<string, unknown>) {
-    console.log('💳 Payment callback GET received:', query);
-    return this.paymentCallback({ encResp: query.encResp }, null);
+  async paymentCallbackGet(@Query() query: Record<string, unknown>, @Res() res: Response) {
+    console.log('💳 Payment callback GET received');
+    return this.paymentCallback({ encResp: query.encResp }, res);
   }
 
   /**
-   * Payment cancel
+   * Payment cancel - called by CCAvenue when user cancels
    */
   @Post('payment/cancel')
   @ApiOperation({ summary: 'CCAvenue payment cancel' })
-  async paymentCancel(@Body() body: Record<string, unknown>) {
-    console.log('🚫 Payment cancelled:', body);
-    
-    return `
-      <!DOCTYPE html>
-      <html>
-      <head>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <title>Payment Cancelled</title>
-        <style>
-          body { font-family: Arial; text-align: center; padding: 50px; background: #f0f0f0; }
-          .cancel { background: #ff9800; color: white; padding: 20px; border-radius: 10px; }
-          .button { background: #2196F3; color: white; padding: 15px 30px; text-decoration: none; 
-                   border-radius: 5px; display: inline-block; margin-top: 20px; }
-        </style>
-      </head>
-      <body>
-        <div class="cancel">
-          <h1>⚠️ Payment Cancelled</h1>
-          <p>You have cancelled the payment.</p>
-          <a href="pgmanagement://subscription/cancelled" class="button">Return to App</a>
-        </div>
-      </body>
-      </html>
-    `;
+  async paymentCancel(@Body() _body: Record<string, unknown>, @Res() res: Response) {
+    console.log('🚫 Payment cancelled by user');
+    const deepLink = `pgapp://payment-result?status=Aborted`;
+    return res.redirect(302, deepLink);
+  }
+
+  @Get('payment/cancel')
+  @ApiOperation({ summary: 'CCAvenue payment cancel (GET)' })
+  async paymentCancelGet(@Res() res: Response) {
+    console.log('🚫 Payment cancel GET');
+    const deepLink = `pgapp://payment-result?status=Aborted`;
+    return res.redirect(302, deepLink);
   }
 }

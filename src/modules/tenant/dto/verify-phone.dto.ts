@@ -1,11 +1,21 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, Length } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsString, IsNotEmpty, Length, IsOptional, IsInt } from 'class-validator';
 
 export class SendPhoneOtpDto {
   @ApiProperty({ example: '918248449609', description: 'Phone number with country code' })
   @IsString()
   @IsNotEmpty()
   phone: string;
+
+  @ApiPropertyOptional({ example: 1, description: 'PG location ID to scope the uniqueness check' })
+  @IsOptional()
+  @IsInt()
+  pg_id?: number;
+
+  @ApiPropertyOptional({ example: 1, description: 'Organization ID to scope the uniqueness check' })
+  @IsOptional()
+  @IsInt()
+  organization_id?: number;
 }
 
 export class VerifyPhoneOtpDto {

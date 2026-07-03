@@ -304,6 +304,7 @@ model pg_locations {
   advance_payments   advance_payments[]
   beds               beds[]
   current_bills      current_bills[]
+  electricity_bills  electricity_bills[]
   expenses           expenses[]
   city               city?                        @relation(fields: [city_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_city")
   organization       organization                 @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_pg_locations_organization")
@@ -451,6 +452,7 @@ model rooms {
   is_deleted         Boolean?             @default(false)
   advance_payments   advance_payments[]
   beds               beds[]
+  electricity_bills  electricity_bills[]
   refund_payments    refund_payments[]
   rent_payments      rent_payments[]
   pg_locations       pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "rooms_ibfk_1")
@@ -582,45 +584,46 @@ model tenant_rent_cycles {
 }
 
 model tenants {
-  s_no                 Int                  @id @default(autoincrement())
-  tenant_id            String               @unique(map: "tenant_id") @db.VarChar(50)
-  name                 String               @db.VarChar(100)
-  phone_no             String?              @db.VarChar(15)
-  whatsapp_number      String?              @db.VarChar(15)
-  email                String?              @db.VarChar(100)
-  pg_id                Int?
-  room_id              Int?
-  bed_id               Int?
-  check_in_date        DateTime             @db.DateTime(0)
-  check_out_date       DateTime?            @db.DateTime(0)
-  expected_vacate_date DateTime?            @db.DateTime(0)
-  status               tenants_status?      @default(ACTIVE)
-  created_at           DateTime?            @default(now()) @db.Timestamp(0)
-  updated_at           DateTime?            @default(now()) @db.Timestamp(0)
-  images               Json?
-  proof_documents      Json?
-  is_deleted           Boolean?             @default(false)
-  occupation           String?              @db.VarChar(100)
-  tenant_address       String?              @db.VarChar(255)
-  city_id              Int?
-  state_id             Int?
-  deleted_at           DateTime?            @db.DateTime(0)
-  deleted_by           Int?
-  deleted_reason       String?              @db.VarChar(255)
-  advance_payments     advance_payments[]
-  current_bills        current_bills[]
-  refund_payments      refund_payments[]
-  rent_payments        rent_payments[]
-  tenant_allocations   tenant_allocations[]
-  tenant_fcm_tokens    tenant_fcm_tokens[]
-  tenant_rent_cycles   tenant_rent_cycles[]
-  tenant_tickets       tenant_tickets[]
-  tenant_tokens        tenant_tokens[]
-  city                 city?                @relation(fields: [city_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_city")
-  state                state?               @relation(fields: [state_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_state")
-  pg_locations         pg_locations?        @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_1")
-  rooms                rooms?               @relation(fields: [room_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_2")
-  beds                 beds?                @relation(fields: [bed_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_3")
+  s_no                   Int                      @id @default(autoincrement())
+  tenant_id              String                   @unique(map: "tenant_id") @db.VarChar(50)
+  name                   String                   @db.VarChar(100)
+  phone_no               String?                  @db.VarChar(15)
+  whatsapp_number        String?                  @db.VarChar(15)
+  email                  String?                  @db.VarChar(100)
+  pg_id                  Int?
+  room_id                Int?
+  bed_id                 Int?
+  check_in_date          DateTime                 @db.DateTime(0)
+  check_out_date         DateTime?                @db.DateTime(0)
+  expected_vacate_date   DateTime?                @db.DateTime(0)
+  status                 tenants_status?          @default(ACTIVE)
+  created_at             DateTime?                @default(now()) @db.Timestamp(0)
+  updated_at             DateTime?                @default(now()) @db.Timestamp(0)
+  images                 Json?
+  proof_documents        Json?
+  is_deleted             Boolean?                 @default(false)
+  occupation             String?                  @db.VarChar(100)
+  tenant_address         String?                  @db.VarChar(255)
+  city_id                Int?
+  state_id               Int?
+  deleted_at             DateTime?                @db.DateTime(0)
+  deleted_by             Int?
+  deleted_reason         String?                  @db.VarChar(255)
+  advance_payments       advance_payments[]
+  current_bills          current_bills[]
+  electricity_bill_items electricity_bill_items[]
+  refund_payments        refund_payments[]
+  rent_payments          rent_payments[]
+  tenant_allocations     tenant_allocations[]
+  tenant_fcm_tokens      tenant_fcm_tokens[]
+  tenant_rent_cycles     tenant_rent_cycles[]
+  tenant_tickets         tenant_tickets[]
+  tenant_tokens          tenant_tokens[]
+  city                   city?                    @relation(fields: [city_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_city")
+  state                  state?                   @relation(fields: [state_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "fk_tenants_state")
+  pg_locations           pg_locations?            @relation(fields: [pg_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_1")
+  rooms                  rooms?                   @relation(fields: [room_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_2")
+  beds                   beds?                    @relation(fields: [bed_id], references: [s_no], onDelete: NoAction, onUpdate: NoAction, map: "tenants_ibfk_3")
 
   @@index([bed_id], map: "bed_id")
   @@index([city_id], map: "fk_tenants_city")
@@ -961,6 +964,54 @@ model tenant_tokens {
   @@index([tenant_id], map: "fk_tenant_tokens_tenant")
   @@index([is_revoked], map: "idx_tenant_is_revoked")
   @@index([refresh_token(length: 255)], map: "idx_tenant_refresh_token")
+}
+
+/// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model electricity_bill_items {
+  s_no                Int               @id @default(autoincrement())
+  electricity_bill_id Int
+  tenant_id           Int
+  share_amount        Decimal           @db.Decimal(10, 2)
+  share_percentage    Decimal           @db.Decimal(5, 2)
+  paid_amount         Decimal?          @default(0.00) @db.Decimal(10, 2)
+  status              String?           @default("PENDING") @db.VarChar(20)
+  allocation_basis    String?           @default("EQUAL") @db.VarChar(20)
+  billing_days        Int?
+  payment_date        DateTime?         @db.Timestamp(0)
+  payment_method      String?           @db.VarChar(50)
+  created_at          DateTime?         @default(now()) @db.Timestamp(0)
+  updated_at          DateTime?         @default(now()) @db.Timestamp(0)
+  electricity_bills   electricity_bills @relation(fields: [electricity_bill_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "electricity_bill_items_ibfk_1")
+  tenants             tenants           @relation(fields: [tenant_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "electricity_bill_items_ibfk_2")
+
+  @@unique([electricity_bill_id, tenant_id], map: "uk_bill_tenant")
+  @@index([electricity_bill_id], map: "idx_ebi_bill")
+  @@index([status], map: "idx_ebi_status")
+  @@index([tenant_id], map: "idx_ebi_tenant")
+}
+
+model electricity_bills {
+  s_no                   Int                      @id @default(autoincrement())
+  pg_id                  Int
+  room_id                Int
+  bill_period_start      DateTime                 @db.Date
+  bill_period_end        DateTime                 @db.Date
+  total_amount           Decimal                  @db.Decimal(10, 2)
+  units_consumed         Decimal?                 @db.Decimal(10, 2)
+  rate_per_unit          Decimal?                 @db.Decimal(10, 2)
+  meter_reading_start    Decimal?                 @db.Decimal(10, 2)
+  meter_reading_end      Decimal?                 @db.Decimal(10, 2)
+  status                 String?                  @default("PENDING") @db.VarChar(20)
+  due_date               DateTime?                @db.Date
+  created_at             DateTime?                @default(now()) @db.Timestamp(0)
+  updated_at             DateTime?                @default(now()) @db.Timestamp(0)
+  electricity_bill_items electricity_bill_items[]
+  pg_locations           pg_locations             @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "electricity_bills_ibfk_1")
+  rooms                  rooms                    @relation(fields: [room_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "electricity_bills_ibfk_2")
+
+  @@index([bill_period_start, bill_period_end], map: "idx_eb_period")
+  @@index([pg_id], map: "idx_eb_pg")
+  @@index([room_id], map: "idx_eb_room")
 }
 
 enum permissions_master_action {

@@ -1010,6 +1010,20 @@ export class TenantService {
       throw new NotFoundException(`Tenant with ID ${id} not found`);
     }
 
+    // Calculate advance and refund payment summaries
+    const advancePayments = (tenant as { advance_payments?: unknown[] }).advance_payments || [];
+    const refundPayments = (tenant as { refund_payments?: unknown[] }).refund_payments || [];
+    
+    const totalAdvancePaid = advancePayments.reduce((sum: number, p: any) => {
+      const amount = typeof p.amount_paid === 'number' ? p.amount_paid : parseFloat(String(p.amount_paid || 0));
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0) as number;
+    
+    const totalRefundGiven = refundPayments.reduce((sum: number, p: any) => {
+      const amount = typeof p.amount_paid === 'number' ? p.amount_paid : parseFloat(String(p.amount_paid || 0));
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0) as number;
+
     // Enrich tenant with status calculations using TenantStatusService
     const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
     // Merge rent summary into tenant before passing to status service
@@ -1020,6 +1034,16 @@ export class TenantService {
       partial_due_amount: rentSummary.partial_due_amount,
       pending_due_amount: rentSummary.pending_due_amount,
       unpaid_months: rentSummary.unpaid_months,
+      // Add advance/refund summaries
+      advance_payment_summary: {
+        total_advance_paid: totalAdvancePaid,
+        total_advance_count: advancePayments.length,
+      },
+      refund_payment_summary: {
+        total_refund_given: totalRefundGiven,
+        total_refund_count: refundPayments.length,
+      },
+      net_advance_remaining: totalAdvancePaid - totalRefundGiven,
     };
     const enrichedTenant = this.tenantStatusService.enrichTenantsWithStatus([tenantWithSummary])[0] as Record<string, unknown>;
 

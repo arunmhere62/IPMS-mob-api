@@ -33,8 +33,8 @@ export class AdvancePaymentService {
       throw new NotFoundException(`Tenant with ID ${createAdvancePaymentDto.tenant_id} not found`);
     }
 
-    // Check if tenant already has an advance payment
-    const existingAdvancePayment = await this.advancePayments.findFirst({
+    // Check if tenant already has 3 advance payments (excluding VOIDED)
+    const existingAdvancePaymentsCount = await this.prisma.advance_payments.count({
       where: {
         tenant_id: createAdvancePaymentDto.tenant_id,
         is_deleted: false,
@@ -42,9 +42,9 @@ export class AdvancePaymentService {
       },
     });
 
-    if (existingAdvancePayment) {
+    if (existingAdvancePaymentsCount >= 3) {
       throw new BadRequestException(
-        `Tenant already has an advance payment. Only one advance payment per tenant is allowed.`,
+        `Tenant already has 3 advance payments. Maximum 3 advance payments per tenant are allowed.`,
       );
     }
 

@@ -20,17 +20,62 @@ export class RefundPaymentService {
       throw new NotFoundException(`Tenant with ID ${createRefundPaymentDto.tenant_id} not found`);
     }
 
-    // Check if tenant already has a refund payment
-    const existingRefund = await this.prisma.refund_payments.findFirst({
+    // Check if tenant already has 3 refund payments
+    const existingRefundsCount = await this.prisma.refund_payments.count({
       where: {
         tenant_id: createRefundPaymentDto.tenant_id,
         is_deleted: false,
       },
     });
 
-    if (existingRefund) {
+    if (existingRefundsCount >= 3) {
       throw new BadRequestException(
-        `Tenant ${tenant.name} already has a refund payment. Only one refund payment is allowed per tenant.`,
+        `Tenant ${tenant.name} already has 3 refund payments. Maximum 3 refund payments per tenant are allowed.`,
+      );
+    }
+
+    // Calculate total advance paid by tenant
+    const advancePayments = await this.prisma.advance_payments.findMany({
+      where: {
+        tenant_id: createRefundPaymentDto.tenant_id,
+        is_deleted: false,
+        status: { not: 'VOIDED' },
+      },
+      select: {
+        amount_paid: true,
+      },
+    });
+
+    const totalAdvancePaid = advancePayments.reduce((sum, payment) => {
+      const amount = typeof payment.amount_paid === 'number' ? payment.amount_paid : parseFloat(String(payment.amount_paid || 0));
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+
+    // Calculate total refunds already given
+    const existingRefunds = await this.prisma.refund_payments.findMany({
+      where: {
+        tenant_id: createRefundPaymentDto.tenant_id,
+        is_deleted: false,
+      },
+      select: {
+        amount_paid: true,
+      },
+    });
+
+    const totalRefundsGiven = existingRefunds.reduce((sum, payment) => {
+      const amount = typeof payment.amount_paid === 'number' ? payment.amount_paid : parseFloat(String(payment.amount_paid || 0));
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0);
+
+    // Validate refund amount doesn't exceed available advance
+    const netAdvanceAvailable = totalAdvancePaid - totalRefundsGiven;
+    const refundAmount = typeof createRefundPaymentDto.amount_paid === 'number' 
+      ? createRefundPaymentDto.amount_paid 
+      : parseFloat(String(createRefundPaymentDto.amount_paid || 0));
+
+    if (netAdvanceAvailable > 0 && refundAmount > netAdvanceAvailable) {
+      throw new BadRequestException(
+        `Refund amount (${refundAmount}) cannot exceed available advance balance (${netAdvanceAvailable}). Total advance paid: ${totalAdvancePaid}, Total refunds given: ${totalRefundsGiven}`,
       );
     }
 

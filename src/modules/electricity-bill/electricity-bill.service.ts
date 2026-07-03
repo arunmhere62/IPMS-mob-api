@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { CreateElectricityBillDto, AllocationBasis, RecordPaymentDto } from './dto';
@@ -96,6 +97,22 @@ export class ElectricityBillService {
         throw new BadRequestException('Custom allocations are required when allocation_basis is CUSTOM');
       }
 
+      // Validate that custom allocation tenant_ids match active tenants
+      const customTenantIds = new Set(dto.custom_allocations.map((item) => item.tenant_id));
+      const activeTenantSet = new Set(activeTenantIds);
+      const unknownIds = [...customTenantIds].filter((id) => !activeTenantSet.has(id));
+      if (unknownIds.length > 0) {
+        throw new BadRequestException(
+          `Custom allocations contain tenant_ids not active in this room: ${unknownIds.join(', ')}`,
+        );
+      }
+      const missingIds = activeTenantIds.filter((id) => !customTenantIds.has(id));
+      if (missingIds.length > 0) {
+        throw new BadRequestException(
+          `Custom allocations missing active tenant_ids: ${missingIds.join(', ')}`,
+        );
+      }
+
       const customTotal = dto.custom_allocations.reduce((sum, item) => sum + Number(item.share_amount), 0);
       if (this.moneyRound2(customTotal) !== this.moneyRound2(totalAmount)) {
         throw new BadRequestException(
@@ -166,6 +183,62 @@ export class ElectricityBillService {
     }
 
     return items;
+  }
+
+  /**
+   * Get eligible tenants for a bill period with their occupancy details.
+   * This helps the UI show which tenants will be included before creating the bill.
+   */
+  async getEligibleTenantsForPeriod(roomId: number, pgId: number, periodStart: string, periodEnd: string) {
+    const start = this.toDateOnly(periodStart);
+    const end = this.toDateOnly(periodEnd);
+
+    if (start > end) {
+      throw new BadRequestException('bill_period_start cannot be after bill_period_end');
+    }
+
+    // Find active tenants
+    const activeTenants = await this.findActiveTenants(roomId, pgId, start, end);
+    const activeTenantIds = activeTenants.map((t) => t.tenant_id);
+
+    if (activeTenantIds.length === 0) {
+      return ResponseUtil.success([], 'No tenants were active in this room during the selected period');
+    }
+
+    // Get tenant details
+    const tenants = await this.prisma.tenants.findMany({
+      where: { s_no: { in: activeTenantIds }, is_deleted: false },
+      select: {
+        s_no: true,
+        tenant_id: true,
+        name: true,
+        phone_no: true,
+        check_in_date: true,
+        check_out_date: true,
+      },
+    });
+
+    // Calculate rent cycle days for each tenant
+    const daysMap = await this.calculateRentCycleDays(activeTenantIds, start, end);
+
+    // Build response with occupancy details
+    const eligibleTenants = tenants.map((tenant) => {
+      const occupancyDays = daysMap.get(tenant.s_no) || 0;
+      const wasCheckedOut = tenant.check_out_date && new Date(tenant.check_out_date) < end;
+      
+      return {
+        tenant_id: tenant.s_no,
+        tenant_display_id: tenant.tenant_id,
+        name: tenant.name,
+        phone_no: tenant.phone_no,
+        check_in_date: tenant.check_in_date,
+        check_out_date: tenant.check_out_date,
+        occupancy_days: occupancyDays,
+        status: wasCheckedOut ? 'CHECKED_OUT_DURING_PERIOD' : 'ACTIVE',
+      };
+    });
+
+    return ResponseUtil.success(eligibleTenants, 'Eligible tenants fetched successfully');
   }
 
   async create(dto: CreateElectricityBillDto) {
@@ -275,7 +348,7 @@ export class ElectricityBillService {
     const { pg_id, room_id, page = 1, limit = 20, status, year, month } = params;
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Prisma.electricity_billsWhereInput = {};
     if (pg_id) where.pg_id = pg_id;
     if (room_id) where.room_id = room_id;
     if (status) where.status = status;

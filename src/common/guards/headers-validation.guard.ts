@@ -5,9 +5,6 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
-import { validate } from 'class-validator';
-import { plainToClass } from 'class-transformer';
-import { CommonHeadersDto } from '../dto/common-headers.dto';
 
 export const REQUIRED_HEADERS_KEY = 'requiredHeaders';
 
@@ -56,17 +53,6 @@ export class HeadersValidationGuard implements CanActivate {
       organization_id: parseHeaderInt('x-organization-id'),
       user_id: parseHeaderInt('x-user-id'),
     };
-
-    // Transform to DTO and validate
-    const headersDto = plainToClass(CommonHeadersDto, headerData);
-    const errors = await validate(headersDto);
-
-    if (errors.length > 0) {
-      const errorMessages = errors
-        .map((error) => Object.values(error.constraints || {}).join(', '))
-        .join('; ');
-      throw new BadRequestException(`Invalid headers: ${errorMessages}`);
-    }
 
     // Check required headers
     if (requiredHeaders) {

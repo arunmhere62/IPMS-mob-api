@@ -11,7 +11,7 @@ import {
 } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse, ApiQuery } from '@nestjs/swagger';
 import { ElectricityBillService } from './electricity-bill.service';
-import { CreateElectricityBillDto, RecordPaymentDto } from './dto';
+import { CreateElectricityBillDto, RecordPaymentDto, GetEligibleTenantsDto } from './dto';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
@@ -66,13 +66,21 @@ export class ElectricityBillController {
     });
   }
 
-  @Get(':id')
+  @Get('eligible-tenants')
   @RequireHeaders({ pg_id: true })
-  @ApiOperation({ summary: 'Get an electricity bill by ID' })
-  @ApiResponse({ status: 200, description: 'Electricity bill details' })
-  @ApiResponse({ status: 404, description: 'Electricity bill not found' })
-  findOne(@Param('id', ParseIntPipe) id: number) {
-    return this.electricityBillService.findOne(id);
+  @ApiOperation({ summary: 'Get eligible tenants for a bill period with occupancy details' })
+  @ApiResponse({ status: 200, description: 'List of eligible tenants with occupancy details' })
+  @ApiResponse({ status: 400, description: 'Bad request' })
+  getEligibleTenantsForPeriod(
+    @Query() query: GetEligibleTenantsDto,
+    @ValidatedHeaders() headers: { pg_id: number; organization_id: number; user_id: number },
+  ) {
+    return this.electricityBillService.getEligibleTenantsForPeriod(
+      query.room_id,
+      headers.pg_id,
+      query.bill_period_start,
+      query.bill_period_end,
+    );
   }
 
   @Get('tenant/:tenant_id')
@@ -82,6 +90,15 @@ export class ElectricityBillController {
   @ApiResponse({ status: 404, description: 'Tenant not found' })
   getPendingItemsByTenant(@Param('tenant_id', ParseIntPipe) tenant_id: number) {
     return this.electricityBillService.findPendingItemsByTenant(tenant_id);
+  }
+
+  @Get(':id')
+  @RequireHeaders({ pg_id: true })
+  @ApiOperation({ summary: 'Get an electricity bill by ID' })
+  @ApiResponse({ status: 200, description: 'Electricity bill details' })
+  @ApiResponse({ status: 404, description: 'Electricity bill not found' })
+  findOne(@Param('id', ParseIntPipe) id: number) {
+    return this.electricityBillService.findOne(id);
   }
 
   @Post('payments')

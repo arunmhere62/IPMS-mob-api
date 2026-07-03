@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsNumber, IsString, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min } from 'class-validator';
+import { IsNotEmpty, IsNumber, IsString, IsOptional, IsEnum, IsDateString, IsArray, ValidateNested, Min, Max } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
 
@@ -24,13 +24,14 @@ export class CustomAllocationItemDto {
   @ApiProperty({ description: 'Share amount for this tenant' })
   @IsNotEmpty()
   @IsNumber()
-  @Min(0)
+  @Min(0.01)
   share_amount: number;
 
   @ApiProperty({ description: 'Share percentage (0-100)' })
   @IsNotEmpty()
   @IsNumber()
   @Min(0)
+  @Max(100)
   share_percentage: number;
 }
 
@@ -58,7 +59,7 @@ export class CreateElectricityBillDto {
   @ApiProperty({ description: 'Total bill amount' })
   @IsNotEmpty()
   @IsNumber()
-  @Min(0)
+  @Min(0.01)
   total_amount: number;
 
   @ApiProperty({ description: 'Units consumed', required: false })

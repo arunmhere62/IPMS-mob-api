@@ -396,9 +396,13 @@ export class CheckoutService {
         is_deleted: false,
       },
       include: {
+        pg_locations: {
+          select: { rent_cycle_type: true },
+        },
         tenant_allocations: {
           orderBy: { effective_from: 'asc' },
           select: {
+            s_no: true,
             effective_from: true,
             effective_to: true,
             bed_price_snapshot: true,
@@ -432,10 +436,14 @@ export class CheckoutService {
       },
     });
 
+    if (!tenant) {
+      throw new NotFoundException(`Tenant with ID ${id} not found`);
+    }
+
     let updateData: Record<string, unknown> = {};
 
     if (updateCheckoutDateDto.clear_checkout) {
-      // Clear checkout date and reactivate tenant (no validation needed for clearing)
+      // Clear checkout date and reactivate tenant
       updateData = {
         check_out_date: null,
         status: 'ACTIVE',
@@ -488,14 +496,128 @@ export class CheckoutService {
       throw new BadRequestException('Either provide check_out_date or set clear_checkout to true');
     }
 
-    const updatedTenant = await this.prisma.tenants.update({
-      where: { s_no: id },
-      data: updateData,
-      include: {
-        pg_locations: true,
-        rooms: true,
-        beds: true,
-      },
+    const checkoutUtc = updateCheckoutDateDto.check_out_date
+      ? this.toDateOnlyUtc(new Date(updateCheckoutDateDto.check_out_date))
+      : null;
+
+    const updatedTenant = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
+      // Update tenant check_out_date and status
+      const updated = await tx.tenants.update({
+        where: { s_no: id },
+        data: updateData,
+        include: {
+          pg_locations: true,
+          rooms: true,
+          beds: true,
+        },
+      });
+
+      if (updateCheckoutDateDto.clear_checkout) {
+        // Reopen: clear effective_to on the latest allocation
+        const lastAllocation = tenant.tenant_allocations?.[tenant.tenant_allocations.length - 1];
+        if (lastAllocation && lastAllocation.effective_to) {
+          await tx.tenant_allocations.update({
+            where: { s_no: lastAllocation.s_no },
+            data: {
+              effective_to: null,
+              updated_at: new Date(),
+            },
+          });
+        }
+
+        // Un-clamp the last rent cycle: restore cycle_end to end of month (CALENDAR) or next anchor day - 1 (MIDMONTH)
+        const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+        const lastCycle = tenant.tenant_rent_cycles?.[tenant.tenant_rent_cycles.length - 1];
+        if (lastCycle) {
+          const computed = this.computeCycleWindow({
+            cycleType,
+            tenantCheckInDate: new Date(tenant.check_in_date),
+            referenceDate: new Date(lastCycle.cycle_start),
+          });
+          await tx.tenant_rent_cycles.update({
+            where: { s_no: lastCycle.s_no },
+            data: {
+              cycle_end: computed.cycleEnd,
+              updated_at: new Date(),
+            },
+          });
+        }
+      } else if (checkoutUtc) {
+        // Update effective_to on the active allocation
+        const activeAllocation = tenant.tenant_allocations?.find((a) => !a.effective_to);
+        if (activeAllocation) {
+          await tx.tenant_allocations.update({
+            where: { s_no: activeAllocation.s_no },
+            data: {
+              effective_to: checkoutUtc,
+              updated_at: new Date(),
+            },
+          });
+        } else {
+          // If all allocations already have effective_to, update the last one
+          const lastAllocation = tenant.tenant_allocations?.[tenant.tenant_allocations.length - 1];
+          if (lastAllocation) {
+            await tx.tenant_allocations.update({
+              where: { s_no: lastAllocation.s_no },
+              data: {
+                effective_to: checkoutUtc,
+                updated_at: new Date(),
+              },
+            });
+          }
+        }
+
+        // Clamp rent cycle_end to the new checkout date
+        const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
+        const checkInUtc = this.toDateOnlyUtc(new Date(tenant.check_in_date));
+
+        let cursor = new Date(checkInUtc);
+        let iterations = 0;
+        const maxIterations = 240;
+
+        while (iterations < maxIterations) {
+          iterations++;
+
+          const computed = this.computeCycleWindow({
+            cycleType,
+            tenantCheckInDate: new Date(tenant.check_in_date),
+            referenceDate: cursor,
+          });
+
+          const endClamped = computed.cycleEnd > checkoutUtc ? checkoutUtc : computed.cycleEnd;
+
+          await tx.tenant_rent_cycles.upsert({
+            where: {
+              tenant_id_cycle_start: {
+                tenant_id: id,
+                cycle_start: computed.cycleStart,
+              },
+            },
+            create: {
+              tenant_id: id,
+              cycle_type: cycleType,
+              anchor_day: computed.anchorDay,
+              cycle_start: computed.cycleStart,
+              cycle_end: endClamped,
+            },
+            update: {
+              cycle_type: cycleType,
+              anchor_day: computed.anchorDay,
+              cycle_end: endClamped,
+              updated_at: new Date(),
+            },
+            select: { s_no: true },
+          });
+
+          if (endClamped.getTime() >= checkoutUtc.getTime()) break;
+
+          const next = new Date(endClamped);
+          next.setUTCDate(next.getUTCDate() + 1);
+          cursor = next;
+        }
+      }
+
+      return updated;
     });
 
     const message = updateCheckoutDateDto.clear_checkout

@@ -25,6 +25,8 @@ export class ElectricityBillService {
 
   /**
    * Find all tenants who were active in the room during the bill period.
+   * Uses tenant_allocations for bed/room assignment dates AND tenants table
+   * check_in_date/check_out_date to ensure the tenant was actually present.
    */
   private async findActiveTenants(roomId: number, pgId: number, periodStart: Date, periodEnd: Date) {
     return this.prisma.tenant_allocations.findMany({
@@ -33,6 +35,11 @@ export class ElectricityBillService {
         pg_id: pgId,
         effective_from: { lte: periodEnd },
         OR: [{ effective_to: null }, { effective_to: { gte: periodStart } }],
+        tenants: {
+          is_deleted: false,
+          check_in_date: { lte: periodEnd },
+          OR: [{ check_out_date: null }, { check_out_date: { gte: periodStart } }],
+        },
       },
       distinct: ['tenant_id'],
       select: {
@@ -43,6 +50,8 @@ export class ElectricityBillService {
 
   /**
    * Calculate rent-cycle days for each tenant within the bill period.
+   * Also caps overlap using tenant check_in_date / check_out_date so
+   * occupancy_days never exceeds the tenant's actual stay.
    */
   private async calculateRentCycleDays(
     tenantIds: number[],
@@ -62,14 +71,38 @@ export class ElectricityBillService {
       },
     });
 
+    // Fetch tenant check_in/check_out to cap overlap accurately
+    const tenants = await this.prisma.tenants.findMany({
+      where: { s_no: { in: tenantIds }, is_deleted: false },
+      select: { s_no: true, check_in_date: true, check_out_date: true },
+    });
+    const tenantMap = new Map<number, { checkIn: Date | null; checkOut: Date | null }>();
+    for (const t of tenants) {
+      tenantMap.set(t.s_no, {
+        checkIn: t.check_in_date ? this.toDateOnly(t.check_in_date) : null,
+        checkOut: t.check_out_date ? this.toDateOnly(t.check_out_date) : null,
+      });
+    }
+
     const daysMap = new Map<number, number>();
     for (const cycle of cycles) {
       const start = this.toDateOnly(cycle.cycle_start);
       const end = this.toDateOnly(cycle.cycle_end);
-      const overlapStart = start > periodStart ? start : periodStart;
-      const overlapEnd = end < periodEnd ? end : periodEnd;
-      const days = Math.max(0, this.getDaysBetween(overlapStart, overlapEnd));
+      let overlapStart = start > periodStart ? start : periodStart;
+      let overlapEnd = end < periodEnd ? end : periodEnd;
 
+      // Cap to tenant's actual occupancy dates
+      const tenantDates = tenantMap.get(cycle.tenant_id);
+      if (tenantDates) {
+        if (tenantDates.checkIn && tenantDates.checkIn > overlapStart) {
+          overlapStart = tenantDates.checkIn;
+        }
+        if (tenantDates.checkOut && tenantDates.checkOut < overlapEnd) {
+          overlapEnd = tenantDates.checkOut;
+        }
+      }
+
+      const days = Math.max(0, this.getDaysBetween(overlapStart, overlapEnd));
       const existing = daysMap.get(cycle.tenant_id) || 0;
       daysMap.set(cycle.tenant_id, existing + days);
     }

@@ -13,6 +13,7 @@ import { ApiTags } from '@nestjs/swagger';
 import { BedService } from './bed.service';
 import { CreateBedDto } from './dto/create-bed.dto';
 import { UpdateBedDto } from './dto/update-bed.dto';
+import { BulkCreateBedDto } from './dto/bulk-create-bed.dto';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
@@ -36,6 +37,23 @@ export class BedController {
     @Body() createBedDto: CreateBedDto,
   ) {
     return this.bedService.create(createBedDto);
+  }
+
+  /**
+   * Bulk create multiple beds in a room
+   * POST /api/v1/beds/bulk
+   * Headers: pg_id, organization_id, user_id
+   */
+  @Post('bulk')
+  @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
+  async bulkCreate(
+    @ValidatedHeaders() headers: ValidatedHeaders,
+    @Body() dto: BulkCreateBedDto,
+  ) {
+    if (!dto.pg_id) {
+      dto.pg_id = headers.pg_id;
+    }
+    return this.bedService.bulkCreate(dto);
   }
 
   /**

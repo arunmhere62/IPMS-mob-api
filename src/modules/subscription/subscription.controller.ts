@@ -148,6 +148,20 @@ export class SubscriptionController {
   }
 
   /**
+   * Prepare payment URL with selected payment method
+   */
+  @Post('payment/prepare')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Regenerate CCAvenue payment URL with selected payment method' })
+  async preparePayment(@Body() body: { order_id: string; payment_method: string }) {
+    const { order_id, payment_method } = body;
+
+    console.log('📦 Prepare payment request:', { order_id, payment_method });
+
+    return this.subscriptionService.preparePayment(order_id, payment_method);
+  }
+
+  /**
    * Test CCAvenue configuration
    */
   @Get('test-ccavenue')

@@ -1,6 +1,8 @@
 import {
   Controller,
   Get,
+  Patch,
+  Body,
   UseGuards,
   Query,
   ParseIntPipe,
@@ -67,5 +69,20 @@ export class TenantPortalController {
   @ApiResponse({ status: 403, description: 'Forbidden - Not a tenant' })
   async getTicketStats(@TenantHeadersDecorator() headers: TenantHeaders) {
     return this.tenantPortalService.getTenantTicketDashboardStats({ tenant_id: headers.tenant_id });
+  }
+
+  @Patch('expected-vacate-date')
+  @ApiOperation({ summary: 'Update tenant expected vacate date' })
+  @ApiResponse({ status: 200, description: 'Expected vacate date updated successfully' })
+  @ApiResponse({ status: 401, description: 'Unauthorized' })
+  @ApiResponse({ status: 403, description: 'Forbidden - Not a tenant' })
+  @ApiResponse({ status: 404, description: 'Tenant not found' })
+  async updateExpectedVacateDate(
+    @TenantHeadersDecorator() headers: TenantHeaders,
+    @Body() body: { expected_vacate_date: string | null },
+  ) {
+    return this.tenantService.update(headers.tenant_id, {
+      expected_vacate_date: body.expected_vacate_date,
+    });
   }
 }

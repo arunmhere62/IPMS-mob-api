@@ -29,6 +29,7 @@ import { RentCycleCronModule } from './crons/rent-cycle/rent-cycle-cron.module';
 import { TenantPortalModule } from './modules/tenant-portal/tenant-portal.module';
 import { TenantTicketsModule } from './modules/tenant-tickets/tenant-tickets.module';
 import { AppSettingsModule } from './modules/app-settings/app-settings.module';
+import { ElectricityBillModule } from './modules/electricity-bill/electricity-bill.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config';
@@ -71,6 +72,7 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
     TenantPortalModule,
     TenantTicketsModule,
     AppSettingsModule,
+    ElectricityBillModule,
   ],
   controllers: [AppController],
   providers: [

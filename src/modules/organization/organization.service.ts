@@ -381,4 +381,56 @@ export class OrganizationService {
 
     return ResponseUtil.success(updated, 'Organization updated successfully');
   }
+
+  /**
+   * Core onboarding data — single source of truth, returns raw object.
+   * Used by checkOnboardingStatus() and RbacService.
+   */
+  async getOnboardingData(organizationId: number) {
+    const organization = await this.prisma.organization.findUnique({
+      where: { s_no: organizationId, is_deleted: false },
+      select: { s_no: true, created_at: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    const [pgLocationsCount, roomsCount, bedsCount, tenantsCount, paymentsCount] = await Promise.all([
+      this.prisma.pg_locations.count({ where: { organization_id: organizationId, is_deleted: false } }),
+      this.prisma.rooms.count({ where: { pg_locations: { organization_id: organizationId }, is_deleted: false } }),
+      this.prisma.beds.count({ where: { pg_locations: { organization_id: organizationId }, is_deleted: false } }),
+      this.prisma.tenants.count({ where: { pg_locations: { organization_id: organizationId }, is_deleted: false } }),
+      this.prisma.rent_payments.count({ where: { pg_locations: { organization_id: organizationId }, is_deleted: false } }),
+    ]);
+
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const isRecent = organization.created_at >= thirtyDaysAgo;
+    const isNew = isRecent && paymentsCount === 0;
+
+    return {
+      is_new: isNew,
+      is_recent: isRecent,
+      has_pg_locations: pgLocationsCount > 0,
+      has_rooms: roomsCount > 0,
+      has_beds: bedsCount > 0,
+      has_tenants: tenantsCount > 0,
+      has_payments: paymentsCount > 0,
+      pg_locations_count: pgLocationsCount,
+      rooms_count: roomsCount,
+      beds_count: bedsCount,
+      tenants_count: tenantsCount,
+      payments_count: paymentsCount,
+      created_at: organization.created_at,
+    };
+  }
+
+  /**
+   * Check organization onboarding status (HTTP endpoint handler)
+   */
+  async checkOnboardingStatus(organizationId: number) {
+    const data = await this.getOnboardingData(organizationId);
+    return ResponseUtil.success(data, 'Onboarding status checked successfully');
+  }
 }

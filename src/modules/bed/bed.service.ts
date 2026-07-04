@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { CreateBedDto } from './dto/create-bed.dto';
 import { UpdateBedDto } from './dto/update-bed.dto';
+import { BulkCreateBedDto } from './dto/bulk-create-bed.dto';
 import { PrismaService } from '../../prisma/prisma.service';
 import { S3DeletionService } from '../common/s3-deletion.service';
 import { ResponseUtil } from '../../common/utils/response.util';
@@ -68,6 +69,83 @@ export class BedService {
     });
 
     return ResponseUtil.created(bed, 'Bed created successfully');
+  }
+
+  /**
+   * Bulk create multiple beds in a room
+   */
+  async bulkCreate(dto: BulkCreateBedDto) {
+    // Verify room exists
+    const room = await this.prisma.rooms.findFirst({
+      where: {
+        s_no: dto.room_id,
+        is_deleted: false,
+      },
+    });
+
+    if (!room) {
+      throw new NotFoundException(`Room with ID ${dto.room_id} not found`);
+    }
+
+    // Check for duplicate bed_nos within the payload itself
+    const bedNos = dto.beds.map((b) => b.bed_no.trim());
+    const duplicatesInPayload = bedNos.filter((no, idx) => bedNos.indexOf(no) !== idx);
+    if (duplicatesInPayload.length > 0) {
+      throw new BadRequestException(
+        `Duplicate bed numbers in request: ${[...new Set(duplicatesInPayload)].join(', ')}`,
+      );
+    }
+
+    // Check for existing active beds with same bed_no in this room
+    const existingBeds = await this.prisma.beds.findMany({
+      where: {
+        room_id: dto.room_id,
+        bed_no: { in: bedNos },
+        is_deleted: false,
+      },
+      select: { bed_no: true },
+    });
+
+    if (existingBeds.length > 0) {
+      const existingNos = existingBeds.map((b) => b.bed_no).join(', ');
+      throw new BadRequestException(
+        `Bed numbers already exist in this room: ${existingNos}`,
+      );
+    }
+
+    // Create all beds in a transaction
+    const createdBeds = await this.prisma.$transaction(
+      dto.beds.map((item) =>
+        this.prisma.beds.create({
+          data: {
+            room_id: dto.room_id,
+            bed_no: item.bed_no.trim(),
+            pg_id: dto.pg_id,
+            images: item.images,
+            bed_price: item.bed_price,
+          },
+          include: {
+            rooms: {
+              select: {
+                s_no: true,
+                room_no: true,
+                pg_locations: {
+                  select: {
+                    s_no: true,
+                    location_name: true,
+                  },
+                },
+              },
+            },
+          },
+        }),
+      ),
+    );
+
+    return ResponseUtil.created(
+      createdBeds,
+      `${createdBeds.length} bed${createdBeds.length > 1 ? 's' : ''} created successfully`,
+    );
   }
 
   /**

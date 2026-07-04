@@ -96,6 +96,25 @@ export class TenantController {
   }
 
   /**
+   * Get upcoming vacancies
+   * GET /api/v1/tenants/upcoming-vacancies
+   * Headers: pg_id
+   * Query: days (optional, default 30)
+   */
+  @Get('upcoming-vacancies')
+  @RequireHeaders({ pg_id: true })
+  @ApiOperation({ summary: 'Get upcoming vacancies (ACTIVE tenants with expected_vacate_date within N days)' })
+  @ApiQuery({ name: 'days', required: false, example: 30, description: 'Look-ahead window in days (default 30)' })
+  @ApiResponse({ status: 200, description: 'Upcoming vacancies fetched successfully' })
+  async getUpcomingVacancies(
+    @ValidatedHeaders() headers: ValidatedHeaders,
+    @Query('days') days?: string,
+  ) {
+    const daysNumber = days ? parseInt(days, 10) : 30;
+    return this.tenantService.getUpcomingVacancies(headers.pg_id!, daysNumber);
+  }
+
+  /**
    * Get tenant by ID
    * GET /api/v1/tenants/:id
    * Headers: pg_id, organization_id, user_id
@@ -178,11 +197,14 @@ export class TenantController {
    * POST /api/v1/tenants/send-otp
    */
   @Post('send-otp')
+  @RequireHeaders({ user_id: true })
   @ApiOperation({ summary: 'Send OTP to phone/WhatsApp for tenant verification' })
   @ApiResponse({ status: 200, description: 'OTP sent successfully' })
   @ApiResponse({ status: 400, description: 'Phone already registered or invalid' })
-  async sendOtp(@Body() dto: SendPhoneOtpDto) {
-    return this.tenantService.sendPhoneOtp(dto.phone);
+  async sendOtp(@Body() dto: SendPhoneOtpDto, @ValidatedHeaders() headers: ValidatedHeaders) {
+    const pgId = headers.pg_id ?? dto.pg_id;
+    const organizationId = headers.organization_id ?? dto.organization_id;
+    return this.tenantService.sendPhoneOtp(dto.phone, pgId, organizationId);
   }
 
   /**

@@ -78,4 +78,15 @@ export class OrganizationController {
   ) {
     return this.organizationService.updateOrganization(id, updateDto, headers, req.user);
   }
+
+  @Get(':id/onboarding-status')
+  @UseGuards(HeadersValidationGuard, JwtAuthGuard)
+  @RequireHeaders({ organization_id: true, user_id: true })
+  @ApiOperation({ summary: 'Check if organization needs onboarding/demo' })
+  @ApiResponse({ status: 200, description: 'Onboarding status checked successfully' })
+  async checkOnboardingStatus(
+    @Param('id', ParseIntPipe) id: number,
+  ) {
+    return this.organizationService.checkOnboardingStatus(id);
+  }
 }

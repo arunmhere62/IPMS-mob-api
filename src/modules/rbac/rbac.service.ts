@@ -1,16 +1,20 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
+import { OrganizationService } from '../organization/organization.service';
 
 @Injectable()
 export class RbacService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private organizationService: OrganizationService,
+  ) {}
 
   private buildPermissionKey(screenName: string, action: string) {
     return `${screenName}_${String(action).toLowerCase()}`;
   }
 
-  async getEffectivePermissionsForUser(userId: number) {
+  async getEffectivePermissionsForUser(userId: number, organizationId?: number) {
     const user = await this.prisma.users.findUnique({
       where: { s_no: userId },
       select: {
@@ -18,6 +22,7 @@ export class RbacService {
         role_id: true,
         is_deleted: true,
         status: true,
+        organization_id: true,
       },
     });
 
@@ -25,7 +30,10 @@ export class RbacService {
       throw new NotFoundException('User not found');
     }
 
-    const [allPermissions, rolePermissionRows, overrideRows] = await Promise.all([
+    const resolvedOrgId = organizationId ?? (user as any).organization_id ?? null;
+    const now = new Date();
+
+    const [allPermissions, rolePermissionRows, overrideRows, activeSubscription] = await Promise.all([
       this.prisma.permissions_master.findMany({
         select: {
           s_no: true,
@@ -43,11 +51,21 @@ export class RbacService {
         where: { user_id: userId },
         select: { permission_id: true, effect: true, expires_at: true },
       }),
+      resolvedOrgId
+        ? this.prisma.user_subscriptions.findFirst({
+            where: {
+              organization_id: resolvedOrgId,
+              status: 'ACTIVE',
+              end_date: { gte: now },
+            },
+            include: { subscription_plans: true },
+            orderBy: { end_date: 'desc' },
+          })
+        : Promise.resolve(null),
     ]);
 
     const roleGranted = new Set(rolePermissionRows.map((r) => r.permission_id));
 
-    const now = new Date();
     const overridesByPermissionId = new Map<number, { effect: string }>();
     for (const o of overrideRows) {
       if (o.expires_at && new Date(o.expires_at) <= now) continue;
@@ -76,12 +94,45 @@ export class RbacService {
       .filter(([, allowed]) => allowed)
       .map(([key]) => key);
 
+    const plan = activeSubscription
+      ? (activeSubscription as any).subscription_plans ?? null
+      : null;
+
+    let daysRemaining = 0;
+    if (activeSubscription?.end_date) {
+      const diffMs = new Date(activeSubscription.end_date).getTime() - now.getTime();
+      daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
+    }
+
+    const subscription = {
+      has_active_plan: !!activeSubscription,
+      is_free_plan: plan ? Boolean(plan.is_free) : false,
+      is_trial: activeSubscription ? Boolean((activeSubscription as any).is_trial) : false,
+      is_expired: !activeSubscription,
+      days_remaining: daysRemaining,
+      plan_name: plan?.name ?? null,
+    };
+
+    // Reuse the single-source-of-truth logic from OrganizationService
+    let isOnboardingComplete = true;
+    if (resolvedOrgId) {
+      try {
+        const onboarding = await this.organizationService.getOnboardingData(resolvedOrgId);
+        // is_onboarding_complete = true means onboarding is DONE (no checklist needed)
+        isOnboardingComplete = !onboarding.is_new;
+      } catch {
+        isOnboardingComplete = true;
+      }
+    }
+
     return ResponseUtil.success(
       {
         user_id: userId,
         role_id: user.role_id,
         permissions_map: permissionsMap,
         permissions,
+        subscription,
+        is_onboarding_complete: isOnboardingComplete,
       },
       'Effective permissions retrieved successfully',
     );

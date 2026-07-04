@@ -36,6 +36,10 @@ export class CreateTenantDto {
   check_out_date?: string;
 
   @IsOptional()
+  @IsDateString()
+  expected_vacate_date?: string;
+
+  @IsOptional()
   @IsEnum(tenants_status)
   status?: tenants_status;
 

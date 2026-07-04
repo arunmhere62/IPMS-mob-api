@@ -577,6 +577,39 @@ export class TenantService {
   }
 
   /**
+   * Get upcoming vacancies — ACTIVE tenants with expected_vacate_date within the next N days
+   */
+  async getUpcomingVacancies(pg_id: number, days: number = 30) {
+    const now = new Date();
+    const future = new Date();
+    future.setDate(future.getDate() + days);
+
+    const tenants = await this.prisma.tenants.findMany({
+      where: {
+        pg_id,
+        is_deleted: false,
+        status: 'ACTIVE',
+        expected_vacate_date: {
+          gte: now,
+          lte: future,
+        },
+      },
+      orderBy: { expected_vacate_date: 'asc' },
+      select: {
+        s_no: true,
+        name: true,
+        phone_no: true,
+        expected_vacate_date: true,
+        check_in_date: true,
+        rooms: { select: { s_no: true, room_no: true } },
+        beds: { select: { s_no: true, bed_no: true } },
+      },
+    });
+
+    return ResponseUtil.success(tenants, 'Upcoming vacancies fetched successfully');
+  }
+
+  /**
    * Get all tenants with filters and rent cycle information
    */
   async findAll(params: {
@@ -977,6 +1010,20 @@ export class TenantService {
       throw new NotFoundException(`Tenant with ID ${id} not found`);
     }
 
+    // Calculate advance and refund payment summaries
+    const advancePayments = (tenant as { advance_payments?: unknown[] }).advance_payments || [];
+    const refundPayments = (tenant as { refund_payments?: unknown[] }).refund_payments || [];
+    
+    const totalAdvancePaid = advancePayments.reduce((sum: number, p: any) => {
+      const amount = typeof p.amount_paid === 'number' ? p.amount_paid : parseFloat(String(p.amount_paid || 0));
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0) as number;
+    
+    const totalRefundGiven = refundPayments.reduce((sum: number, p: any) => {
+      const amount = typeof p.amount_paid === 'number' ? p.amount_paid : parseFloat(String(p.amount_paid || 0));
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0) as number;
+
     // Enrich tenant with status calculations using TenantStatusService
     const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
     // Merge rent summary into tenant before passing to status service
@@ -987,6 +1034,16 @@ export class TenantService {
       partial_due_amount: rentSummary.partial_due_amount,
       pending_due_amount: rentSummary.pending_due_amount,
       unpaid_months: rentSummary.unpaid_months,
+      // Add advance/refund summaries
+      advance_payment_summary: {
+        total_advance_paid: totalAdvancePaid,
+        total_advance_count: advancePayments.length,
+      },
+      refund_payment_summary: {
+        total_refund_given: totalRefundGiven,
+        total_refund_count: refundPayments.length,
+      },
+      net_advance_remaining: totalAdvancePaid - totalRefundGiven,
     };
     const enrichedTenant = this.tenantStatusService.enrichTenantsWithStatus([tenantWithSummary])[0] as Record<string, unknown>;
 
@@ -1381,6 +1438,12 @@ export class TenantService {
         check_in_date: updateTenantDto.check_in_date ? new Date(updateTenantDto.check_in_date) : undefined,
 
         check_out_date: updateTenantDto.check_out_date ? new Date(updateTenantDto.check_out_date) : undefined,
+
+        expected_vacate_date: updateTenantDto.expected_vacate_date
+          ? new Date(updateTenantDto.expected_vacate_date)
+          : updateTenantDto.expected_vacate_date === null
+            ? null
+            : undefined,
 
         status: updateTenantDto.status,
 
@@ -1820,23 +1883,32 @@ export class TenantService {
    * Send OTP to phone number for tenant verification
    * Checks if phone exists and sends OTP via SMS
    */
-  async sendPhoneOtp(phone: string) {
+  async sendPhoneOtp(phone: string, pgId?: number, organizationId?: number) {
     // Normalize phone number (ensure it has + prefix for comparison)
     const normalizedPhone = phone.startsWith('+') ? phone : `+${phone}`;
 
-    // Check if phone/WhatsApp already registered
+    // Block only if an ACTIVE tenant in the same organization/PG already holds this number.
+    // CHECKED_OUT and INACTIVE tenants are allowed so the owner can re-admit them.
+    // If organizationId is available, scope by organization via pg_locations; otherwise scope by pgId.
+    const orgFilter = organizationId
+      ? { pg_locations: { organization_id: organizationId } }
+      : pgId
+        ? { pg_id: pgId }
+        : {};
+
     const existing = await this.prisma.tenants.findFirst({
       where: {
         OR: [{ phone_no: normalizedPhone }, { whatsapp_number: normalizedPhone }],
         is_deleted: false,
-        status: { not: 'CHECKED_OUT' },
+        status: 'ACTIVE',
+        ...orgFilter,
       },
       select: { s_no: true, name: true },
     });
 
     if (existing) {
       throw new BadRequestException(
-        `Phone number "${phone}" is already registered to tenant "${existing.name}" (ID: ${existing.s_no})`,
+        `Phone number "${phone}" is already registered to an active tenant "${existing.name}" (ID: ${existing.s_no})`,
       );
     }
 

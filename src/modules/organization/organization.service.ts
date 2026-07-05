@@ -407,7 +407,7 @@ export class OrganizationService {
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
     const isRecent = organization.created_at >= thirtyDaysAgo;
-    const isNew = isRecent && paymentsCount === 0;
+    const isNew = isRecent && (roomsCount === 0 || tenantsCount === 0);
 
     return {
       is_new: isNew,

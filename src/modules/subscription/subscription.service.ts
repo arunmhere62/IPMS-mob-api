@@ -647,19 +647,6 @@ export class SubscriptionService {
       throw new NotFoundException('User not found for this payment');
     }
 
-    // Map frontend payment method to CCAvenue payment_option
-    const paymentOptionMap: Record<string, string> = {
-      upi: 'OPTUPI',
-      card: 'OPTCRDC',
-      debitcard: 'OPTDBTC',
-      netbanking: 'OPTNBK',
-      wallet: 'OPTWLT',
-      emi: 'OPTEMI',
-      cash: 'OPTCASH',
-    };
-
-    const paymentOption = paymentOptionMap[paymentMethod?.toLowerCase()] || '';
-
     const paymentData: Record<string, string> = {
       merchant_id: this.CCAVENUE_MERCHANT_ID,
       order_id: orderId,
@@ -682,10 +669,6 @@ export class SubscriptionService {
       merchant_param4: payment.plan_id.toString(),
     };
 
-    if (paymentOption) {
-      paymentData.payment_option = paymentOption;
-    }
-
     const queryString = Object.entries(paymentData)
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
       .join('&');
@@ -696,7 +679,6 @@ export class SubscriptionService {
     console.log('💳 Prepared payment URL:', {
       orderId,
       paymentMethod,
-      paymentOption,
       paymentUrlLength: paymentUrl.length,
     });
 
@@ -704,7 +686,6 @@ export class SubscriptionService {
       payment_url: paymentUrl,
       order_id: orderId,
       payment_method: paymentMethod,
-      payment_option: paymentOption,
     }, 'Payment prepared successfully');
   }
 

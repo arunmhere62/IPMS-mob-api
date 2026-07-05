@@ -115,11 +115,15 @@ export class RbacService {
 
     // Reuse the single-source-of-truth logic from OrganizationService
     let isOnboardingComplete = true;
+    let onboardingHasRooms = false;
+    let onboardingHasTenants = false;
     if (resolvedOrgId) {
       try {
         const onboarding = await this.organizationService.getOnboardingData(resolvedOrgId);
         // is_onboarding_complete = true means onboarding is DONE (no checklist needed)
         isOnboardingComplete = !onboarding.is_new;
+        onboardingHasRooms = onboarding.has_rooms;
+        onboardingHasTenants = onboarding.has_tenants;
       } catch {
         isOnboardingComplete = true;
       }
@@ -133,6 +137,8 @@ export class RbacService {
         permissions,
         subscription,
         is_onboarding_complete: isOnboardingComplete,
+        onboarding_has_rooms: onboardingHasRooms,
+        onboarding_has_tenants: onboardingHasTenants,
       },
       'Effective permissions retrieved successfully',
     );

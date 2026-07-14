@@ -21,8 +21,7 @@ export class CheckoutController {
   @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
   @ApiOperation({
     summary: 'Checkout tenant',
-    description:
-      'Mark tenant as checked out. Checkout date is required and must be provided from frontend.',
+    description: 'Mark tenant as checked out. Checkout date is required and must be provided from frontend.',
   })
   @ApiParam({
     name: 'id',
@@ -62,18 +61,6 @@ export class CheckoutController {
       example: {
         statusCode: 400,
         message: 'Checkout date is required. Please provide a valid checkout date.',
-        error: 'Bad Request',
-      },
-    },
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'Cannot checkout tenant - has PARTIAL or unpaid payments',
-    schema: {
-      example: {
-        statusCode: 400,
-        message:
-          'Cannot checkout tenant. Tenant has 1 payment(s) in PARTIAL status: 1 rent payment(s) with PARTIAL status. Please complete or mark all PARTIAL payments as PAID before checkout.',
         error: 'Bad Request',
       },
     },

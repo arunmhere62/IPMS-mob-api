@@ -84,13 +84,9 @@ export class CheckoutService {
 
   private makeUtcDateClamped(year: number, month: number, day: number): Date {
     const firstOfMonth = new Date(Date.UTC(year, month, 1));
-    const lastDay = new Date(
-      Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth() + 1, 0),
-    ).getUTCDate();
+    const lastDay = new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth() + 1, 0)).getUTCDate();
     const clampedDay = Math.min(Math.max(day, 1), lastDay);
-    return new Date(
-      Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth(), clampedDay),
-    );
+    return new Date(Date.UTC(firstOfMonth.getUTCFullYear(), firstOfMonth.getUTCMonth(), clampedDay));
   }
 
   private computeCycleWindow(params: {
@@ -108,8 +104,7 @@ export class CheckoutService {
 
     if (params.cycleType === 'CALENDAR') {
       const isCheckInMonth =
-        ref.getUTCFullYear() === checkIn.getUTCFullYear() &&
-        ref.getUTCMonth() === checkIn.getUTCMonth();
+        ref.getUTCFullYear() === checkIn.getUTCFullYear() && ref.getUTCMonth() === checkIn.getUTCMonth();
       const cycleStart = isCheckInMonth ? checkIn : new Date(Date.UTC(refY, refM, 1));
       const cycleEnd = new Date(Date.UTC(refY, refM + 1, 0));
       return { cycleStart, cycleEnd, anchorDay };
@@ -117,11 +112,7 @@ export class CheckoutService {
 
     const startMonth = refD >= anchorDay ? refM : refM - 1;
     const cycleStart = this.makeUtcDateClamped(refY, startMonth, anchorDay);
-    const nextStart = this.makeUtcDateClamped(
-      cycleStart.getUTCFullYear(),
-      cycleStart.getUTCMonth() + 1,
-      anchorDay,
-    );
+    const nextStart = this.makeUtcDateClamped(cycleStart.getUTCFullYear(), cycleStart.getUTCMonth() + 1, anchorDay);
     const cycleEnd = new Date(nextStart);
     cycleEnd.setUTCDate(cycleEnd.getUTCDate() - 1);
 
@@ -134,17 +125,13 @@ export class CheckoutService {
   async checkout(id: number, checkoutDto: CheckoutTenantDto) {
     // Checkout date is required - must be provided from frontend
     if (!checkoutDto.check_out_date) {
-      throw new BadRequestException(
-        'Checkout date is required. Please provide a valid checkout date.',
-      );
+      throw new BadRequestException('Checkout date is required. Please provide a valid checkout date.');
     }
 
     const checkoutDate = new Date(checkoutDto.check_out_date);
 
     if (Number.isNaN(checkoutDate.getTime())) {
-      throw new BadRequestException(
-        'Checkout date is invalid. Please provide a valid checkout date.',
-      );
+      throw new BadRequestException('Checkout date is invalid. Please provide a valid checkout date.');
     }
 
     const result = await this.prisma.$transaction(async (tx: Prisma.TransactionClient) => {
@@ -235,9 +222,7 @@ export class CheckoutService {
         });
       }
 
-      const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as
-        | 'CALENDAR'
-        | 'MIDMONTH';
+      const cycleType = (tenant.pg_locations?.rent_cycle_type || 'CALENDAR') as 'CALENDAR' | 'MIDMONTH';
       const checkInUtc = this.toDateOnlyUtc(new Date(tenant.check_in_date));
       const checkoutUtc = this.toDateOnlyUtc(new Date(checkoutDate));
 
@@ -342,35 +327,6 @@ export class CheckoutService {
         throw new NotFoundException(`Tenant with ID ${id} not found`);
       }
 
-      // Do not calculate dynamically. Only check if any rent cycles up to checkout date
-      // do not have a PAID rent_payment entry.
-      const cyclesUpToCheckout = await tx.tenant_rent_cycles.findMany({
-        where: {
-          tenant_id: id,
-          cycle_end: { lte: checkoutUtc },
-        },
-        select: { s_no: true },
-      });
-
-      if (cyclesUpToCheckout.length > 0) {
-        const cycleIds = cyclesUpToCheckout.map((c) => c.s_no);
-        const paidForCycles = await tx.rent_payments.findMany({
-          where: {
-            is_deleted: false,
-            status: 'PAID',
-            cycle_id: { in: cycleIds },
-          },
-          select: { cycle_id: true },
-        });
-        const paidSet = new Set((paidForCycles || []).map((p) => p.cycle_id).filter(Boolean));
-        const pendingCycles = cyclesUpToCheckout.filter((c) => !paidSet.has(c.s_no));
-        if (pendingCycles.length > 0) {
-          throw new BadRequestException(
-            `Cannot checkout tenant. Pending rent cycles exist (${pendingCycles.length}). Please clear them before checkout.`,
-          );
-        }
-      }
-
       const updatedTenant = await tx.tenants.findFirst({
         where: { s_no: id },
         include: {
@@ -457,35 +413,6 @@ export class CheckoutService {
         throw new BadRequestException(
           `Checkout date must be the same as or after check-in date. Check-in date: ${checkInDate.toISOString().split('T')[0]}, Checkout date: ${checkoutDate.toISOString().split('T')[0]}`,
         );
-      }
-
-      // Do not calculate dynamically. Only check if any rent cycles up to checkout date
-      // do not have a PAID rent_payment entry.
-      const cyclesUpToCheckout = await this.prisma.tenant_rent_cycles.findMany({
-        where: {
-          tenant_id: tenant.s_no,
-          cycle_end: { lte: new Date(checkoutDate.toISOString().split('T')[0] + 'T00:00:00.000Z') },
-        },
-        select: { s_no: true },
-      });
-
-      if (cyclesUpToCheckout.length > 0) {
-        const cycleIds = cyclesUpToCheckout.map((c) => c.s_no);
-        const paidForCycles = await this.prisma.rent_payments.findMany({
-          where: {
-            is_deleted: false,
-            status: 'PAID',
-            cycle_id: { in: cycleIds },
-          },
-          select: { cycle_id: true },
-        });
-        const paidSet = new Set((paidForCycles || []).map((p) => p.cycle_id).filter(Boolean));
-        const pendingCycles = cyclesUpToCheckout.filter((c) => !paidSet.has(c.s_no));
-        if (pendingCycles.length > 0) {
-          throw new BadRequestException(
-            `Cannot update checkout date. Pending rent cycles exist (${pendingCycles.length}). Please clear them before checkout.`,
-          );
-        }
       }
 
       updateData = {

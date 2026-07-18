@@ -710,14 +710,23 @@ export class SubscriptionService {
    */
   private getAESKey(): Buffer {
     const workingKey = (this.CCAVENUE_WORKING_KEY || '').trim();
-    // CCAvenue now provides the working key as a 32-char hex string that is the AES key.
-    // Older integrations provide a plain text working key that must be MD5 hashed.
+    // CCAvenue's AesCryptUtil uses key.getBytes() which gives raw string bytes.
+    // For a 32-char working key, this means 32 bytes → AES-256-CBC.
+    // For older plain-text keys, MD5 hash gives 16 bytes → AES-128-CBC.
     if (workingKey.length === 32 && /^[0-9a-fA-F]+$/.test(workingKey)) {
-      console.log('🔑 Using 32-char hex working key directly as AES key');
-      return Buffer.from(workingKey, 'hex');
+      console.log('🔑 Using 32-char working key as raw bytes (AES-256)');
+      return Buffer.from(workingKey, 'utf8');
     }
-    console.log('🔑 Using MD5 of working key as AES key (legacy format)');
+    console.log('🔑 Using MD5 of working key as AES key (legacy format, AES-128)');
     return crypto.createHash('md5').update(workingKey).digest();
+  }
+
+  private getAESAlgorithm(): string {
+    const workingKey = (this.CCAVENUE_WORKING_KEY || '').trim();
+    if (workingKey.length === 32 && /^[0-9a-fA-F]+$/.test(workingKey)) {
+      return 'aes-256-cbc';
+    }
+    return 'aes-128-cbc';
   }
 
   private ccavenueEncrypt(plainText: string): string {
@@ -725,7 +734,7 @@ export class SubscriptionService {
       const key = this.getAESKey();
       const iv = Buffer.from('0123456789abcdef', 'utf8');
       
-      const cipher = crypto.createCipheriv('aes-128-cbc', key, iv);
+      const cipher = crypto.createCipheriv(this.getAESAlgorithm(), key, iv);
       let encrypted = cipher.update(plainText, 'utf8', 'hex');
       encrypted += cipher.final('hex');
       
@@ -744,7 +753,7 @@ export class SubscriptionService {
       const key = this.getAESKey();
       const iv = Buffer.from('0123456789abcdef', 'utf8');
       
-      const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+      const decipher = crypto.createDecipheriv(this.getAESAlgorithm(), key, iv);
       let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
       decrypted += decipher.final('utf8');
       

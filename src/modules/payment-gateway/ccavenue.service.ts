@@ -73,11 +73,19 @@ export class CCavenueService {
   private getAESKey(): Buffer {
     const workingKey = (this.workingKey || '').trim();
     if (workingKey.length === 32 && /^[0-9a-fA-F]+$/.test(workingKey)) {
-      this.logger.log('Using 32-char hex working key directly as AES key');
-      return Buffer.from(workingKey, 'hex');
+      this.logger.log('Using 32-char working key as raw bytes (AES-256)');
+      return Buffer.from(workingKey, 'utf8');
     }
-    this.logger.log('Using MD5 of working key as AES key (legacy format)');
+    this.logger.log('Using MD5 of working key as AES key (legacy format, AES-128)');
     return crypto.createHash('md5').update(workingKey).digest();
+  }
+
+  private getAESAlgorithm(): string {
+    const workingKey = (this.workingKey || '').trim();
+    if (workingKey.length === 32 && /^[0-9a-fA-F]+$/.test(workingKey)) {
+      return 'aes-256-cbc';
+    }
+    return 'aes-128-cbc';
   }
 
   /**
@@ -87,7 +95,7 @@ export class CCavenueService {
     try {
       const key = this.getAESKey();
       const iv = Buffer.from('0123456789abcdef', 'utf8');
-      const cipher = crypto.createCipheriv('aes-128-cbc', key, iv);
+      const cipher = crypto.createCipheriv(this.getAESAlgorithm(), key, iv);
       let encoded = cipher.update(plainText, 'utf8', 'hex');
       encoded += cipher.final('hex');
       return encoded;
@@ -104,7 +112,7 @@ export class CCavenueService {
     try {
       const key = this.getAESKey();
       const iv = Buffer.from('0123456789abcdef', 'utf8');
-      const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
+      const decipher = crypto.createDecipheriv(this.getAESAlgorithm(), key, iv);
       let decoded = decipher.update(encText, 'hex', 'utf8');
       decoded += decipher.final('utf8');
       return decoded;

@@ -704,9 +704,21 @@ export class SubscriptionService {
   /**
    * CCAvenue encryption
    */
+  private getAESKey(): Buffer {
+    const workingKey = (this.CCAVENUE_WORKING_KEY || '').trim();
+    // CCAvenue now provides the working key as a 32-char hex string that is the AES key.
+    // Older integrations provide a plain text working key that must be MD5 hashed.
+    if (workingKey.length === 32 && /^[0-9a-fA-F]+$/.test(workingKey)) {
+      console.log('🔑 Using 32-char hex working key directly as AES key');
+      return Buffer.from(workingKey, 'hex');
+    }
+    console.log('🔑 Using MD5 of working key as AES key (legacy format)');
+    return crypto.createHash('md5').update(workingKey).digest();
+  }
+
   private ccavenueEncrypt(plainText: string): string {
     try {
-      const key = crypto.createHash('md5').update(this.CCAVENUE_WORKING_KEY).digest();
+      const key = this.getAESKey();
       const iv = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f]);
       
       const cipher = crypto.createCipheriv('aes-128-cbc', key, iv);
@@ -725,7 +737,7 @@ export class SubscriptionService {
    */
   private ccavenueDecrypt(encryptedText: string): string {
     try {
-      const key = crypto.createHash('md5').update(this.CCAVENUE_WORKING_KEY).digest();
+      const key = this.getAESKey();
       const iv = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f]);
       
       const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);

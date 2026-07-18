@@ -669,6 +669,18 @@ export class SubscriptionService {
       merchant_param4: payment.plan_id.toString(),
     };
 
+    // Map selected payment method to CCAvenue payment_option codes for pre-selection
+    const paymentOptionMap: Record<string, string> = {
+      upi: 'OPTUPI',
+      card: 'OPTCRDC',
+      netbanking: 'OPTNBK',
+      wallet: 'OPTWLT',
+    };
+    const paymentOption = paymentMethod ? paymentOptionMap[paymentMethod.toLowerCase()] : '';
+    if (paymentOption) {
+      paymentData.payment_option = paymentOption;
+    }
+
     const queryString = Object.entries(paymentData)
       .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
       .join('&');

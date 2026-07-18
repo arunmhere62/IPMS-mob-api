@@ -161,7 +161,9 @@ export class CCavenueService {
     if (paymentData.promoCode) params.append('promo_code', paymentData.promoCode);
     if (paymentData.customerIdentifier) params.append('customer_identifier', paymentData.customerIdentifier);
 
-    const plainText = params.toString();
+    const plainText = Array.from(params.keys())
+      .map(key => `${key}=${params.get(key)}`)
+      .join('&');
     this.logger.log(`Payment request for order ${paymentData.orderId}: ${paymentData.amount} ${paymentData.currency}`);
 
     const encRequest = this.encrypt(plainText);

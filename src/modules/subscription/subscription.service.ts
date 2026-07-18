@@ -370,6 +370,7 @@ export class SubscriptionService {
     // Get user details
     const user = await this.prisma.users.findUnique({
       where: { s_no: userId },
+      include: { city: true, state: true },
     });
 
     if (!user) {
@@ -417,13 +418,13 @@ export class SubscriptionService {
       redirect_url: this.CCAVENUE_REDIRECT_URL,
       cancel_url: this.CCAVENUE_CANCEL_URL,
       language: 'EN',
-      billing_name: user.name || 'User',
-      billing_email: user.email,
-      billing_tel: user.phone || '',
-      billing_address: '',
-      billing_city: '',
-      billing_state: '',
-      billing_zip: '',
+      billing_name: (user.name || 'User').replace(/[^\x20-\x7E]/g, '').slice(0, 100) || 'User',
+      billing_email: (user.email && user.email.includes('@') ? user.email : 'user@example.com').slice(0, 100),
+      billing_tel: (user.phone || '9999999999').toString().replace(/\D/g, '').slice(0, 20) || '9999999999',
+      billing_address: (user.address || 'Not Provided').toString().slice(0, 200),
+      billing_city: (user.city?.name || 'Not Provided').toString().slice(0, 50),
+      billing_state: (user.state?.name || 'Not Provided').toString().slice(0, 50),
+      billing_zip: (user.pincode || '000000').toString().slice(0, 20),
       billing_country: 'India',
       merchant_param1: subscription.s_no.toString(),
       merchant_param2: userId.toString(),
@@ -433,7 +434,7 @@ export class SubscriptionService {
 
     // Convert to query string
     const queryString = Object.entries(paymentData)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
     console.log('📝 Payment data query string length:', queryString.length);
@@ -445,7 +446,7 @@ export class SubscriptionService {
     console.log('🔐 Encrypted data length:', encryptedData.length);
 
     // Generate payment URL
-    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&enc_val=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
     // Update subscription with order ID
     await this.prisma.user_subscriptions.update({
@@ -510,6 +511,7 @@ export class SubscriptionService {
 
     const user = await this.prisma.users.findUnique({
       where: { s_no: userId },
+      include: { city: true, state: true },
     });
 
     if (!user) {
@@ -583,13 +585,13 @@ export class SubscriptionService {
       redirect_url: this.CCAVENUE_REDIRECT_URL,
       cancel_url: this.CCAVENUE_CANCEL_URL,
       language: 'EN',
-      billing_name: user.name || 'User',
-      billing_email: user.email,
-      billing_tel: user.phone || '',
-      billing_address: '',
-      billing_city: '',
-      billing_state: '',
-      billing_zip: '',
+      billing_name: (user.name || 'User').replace(/[^\x20-\x7E]/g, '').slice(0, 100) || 'User',
+      billing_email: (user.email && user.email.includes('@') ? user.email : 'user@example.com').slice(0, 100),
+      billing_tel: (user.phone || '9999999999').toString().replace(/\D/g, '').slice(0, 20) || '9999999999',
+      billing_address: (user.address || 'Not Provided').toString().slice(0, 200),
+      billing_city: (user.city?.name || 'Not Provided').toString().slice(0, 50),
+      billing_state: (user.state?.name || 'Not Provided').toString().slice(0, 50),
+      billing_zip: (user.pincode || '000000').toString().slice(0, 20),
       billing_country: 'India',
       merchant_param1: subscription.s_no.toString(),
       merchant_param2: userId.toString(),
@@ -598,11 +600,11 @@ export class SubscriptionService {
     };
 
     const queryString = Object.entries(paymentData)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
     const encryptedData = this.ccavenueEncrypt(queryString);
-    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&enc_val=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
     return ResponseUtil.success({
       subscription,
@@ -641,6 +643,7 @@ export class SubscriptionService {
 
     const user = await this.prisma.users.findUnique({
       where: { s_no: payment.user_id },
+      include: { city: true, state: true },
     });
 
     if (!user) {
@@ -655,13 +658,13 @@ export class SubscriptionService {
       redirect_url: this.CCAVENUE_REDIRECT_URL,
       cancel_url: this.CCAVENUE_CANCEL_URL,
       language: 'EN',
-      billing_name: user.name || 'User',
-      billing_email: user.email,
-      billing_tel: user.phone || '',
-      billing_address: '',
-      billing_city: '',
-      billing_state: '',
-      billing_zip: '',
+      billing_name: (user.name || 'User').replace(/[^\x20-\x7E]/g, '').slice(0, 100) || 'User',
+      billing_email: (user.email && user.email.includes('@') ? user.email : 'user@example.com').slice(0, 100),
+      billing_tel: (user.phone || '9999999999').toString().replace(/\D/g, '').slice(0, 20) || '9999999999',
+      billing_address: (user.address || 'Not Provided').toString().slice(0, 200),
+      billing_city: (user.city?.name || 'Not Provided').toString().slice(0, 50),
+      billing_state: (user.state?.name || 'Not Provided').toString().slice(0, 50),
+      billing_zip: (user.pincode || '000000').toString().slice(0, 20),
       billing_country: 'India',
       merchant_param1: payment.subscription_id?.toString() || '',
       merchant_param2: payment.user_id.toString(),
@@ -682,11 +685,11 @@ export class SubscriptionService {
     }
 
     const queryString = Object.entries(paymentData)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
     const encryptedData = this.ccavenueEncrypt(queryString);
-    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&enc_val=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
     console.log('💳 Prepared payment URL:', {
       orderId,

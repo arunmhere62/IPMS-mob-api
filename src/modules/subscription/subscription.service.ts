@@ -437,6 +437,7 @@ export class SubscriptionService {
       .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
+    console.log('📝 Payment data query string:', queryString.substring(0, 200));
     console.log('📝 Payment data query string length:', queryString.length);
     console.log('🔑 Working key available:', !!this.CCAVENUE_WORKING_KEY);
     console.log('🔑 Working key length:', this.CCAVENUE_WORKING_KEY?.length);
@@ -446,7 +447,7 @@ export class SubscriptionService {
     console.log('🔐 Encrypted data length:', encryptedData.length);
 
     // Generate payment URL
-    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&enc_val=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
     // Update subscription with order ID
     await this.prisma.user_subscriptions.update({
@@ -604,7 +605,7 @@ export class SubscriptionService {
       .join('&');
 
     const encryptedData = this.ccavenueEncrypt(queryString);
-    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&enc_val=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
     return ResponseUtil.success({
       subscription,
@@ -689,7 +690,7 @@ export class SubscriptionService {
       .join('&');
 
     const encryptedData = this.ccavenueEncrypt(queryString);
-    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&enc_val=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
     console.log('💳 Prepared payment URL:', {
       orderId,

@@ -70,11 +70,13 @@ export class CCavenueService {
   }
 
   private getAESKey(): Buffer {
-    return Buffer.from((this.workingKey || '').trim(), 'utf8');
+    const m = crypto.createHash('md5');
+    m.update(this.workingKey);
+    return m.digest();
   }
 
   private getAESAlgorithm(): string {
-    return 'aes-256-cbc';
+    return 'aes-128-cbc';
   }
 
   /**
@@ -158,9 +160,7 @@ export class CCavenueService {
     if (paymentData.promoCode) params.append('promo_code', paymentData.promoCode);
     if (paymentData.customerIdentifier) params.append('customer_identifier', paymentData.customerIdentifier);
 
-    const plainText = Array.from(params.keys())
-      .map(key => `${key}=${params.get(key)}`)
-      .join('&');
+    const plainText = params.toString();
     this.logger.log(`Payment request for order ${paymentData.orderId}: ${paymentData.amount} ${paymentData.currency}`);
 
     const encRequest = this.encrypt(plainText);

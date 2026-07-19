@@ -3,7 +3,6 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
-const nodeCCAvenue = require('node-ccavenue');
 
 const isRecord = (value: unknown): value is Record<string, unknown> => {
   return typeof value === 'object' && value !== null;
@@ -54,10 +53,26 @@ export class SubscriptionService {
   private readonly CCAVENUE_CANCEL_URL = 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/cancel';
   private readonly CCAVENUE_PAYMENT_URL = 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
 
-  private ccav = new nodeCCAvenue.Configure({
-    merchant_id: this.CCAVENUE_MERCHANT_ID,
-    working_key: this.CCAVENUE_WORKING_KEY,
-  });
+  // CCAvenue AES encryption (matches Java AesCryptUtil exactly)
+  // Key: workingKey.getBytes() → 32 raw bytes → AES-256-CBC
+  // IV: [0x00, 0x01, ... 0x0f] (fixed, matches Java IvParameterSpec)
+  private ccavEncrypt(plainText: string): string {
+    const key = Buffer.from(this.CCAVENUE_WORKING_KEY, 'utf8');
+    const iv = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f]);
+    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+    let encrypted = cipher.update(plainText, 'utf8', 'hex');
+    encrypted += cipher.final('hex');
+    return encrypted;
+  }
+
+  private ccavDecrypt(encryptedText: string): string {
+    const key = Buffer.from(this.CCAVENUE_WORKING_KEY, 'utf8');
+    const iv = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f]);
+    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
+    decrypted += decipher.final('utf8');
+    return decrypted;
+  }
 
   /**
    * Validate CCAvenue configuration
@@ -449,7 +464,7 @@ export class SubscriptionService {
     console.log('🔑 Working key length:', this.CCAVENUE_WORKING_KEY?.length);
 
     // Encrypt the data
-    const encryptedData = this.ccav.encrypt(queryString);
+    const encryptedData = this.ccavEncrypt(queryString);
     console.log('🔐 Encrypted data length:', encryptedData.length);
 
     // Generate payment URL
@@ -613,7 +628,7 @@ export class SubscriptionService {
     console.log('📝 [Upgrade] Payment data query string:', queryString.substring(0, 200));
     console.log('📝 [Upgrade] Query string length:', queryString.length);
 
-    const encryptedData = this.ccav.encrypt(queryString);
+    const encryptedData = this.ccavEncrypt(queryString);
     console.log('🔐 [Upgrade] Encrypted data length:', encryptedData.length);
 
     const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
@@ -701,7 +716,7 @@ export class SubscriptionService {
       .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
-    const encryptedData = this.ccav.encrypt(queryString);
+    const encryptedData = this.ccavEncrypt(queryString);
     const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
     console.log('💳 Prepared payment URL:', {
@@ -785,7 +800,7 @@ export class SubscriptionService {
         throw new Error('No encrypted response received');
       }
 
-      const decryptedData = this.ccav.decrypt(encResponse);
+      const decryptedData = this.ccavDecrypt(encResponse);
       console.log('🔓 Decrypted payment response:', decryptedData);
 
       // Parse the response

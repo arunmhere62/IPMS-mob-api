@@ -610,8 +610,14 @@ export class SubscriptionService {
       .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
+    console.log('📝 [Upgrade] Payment data query string:', queryString.substring(0, 200));
+    console.log('📝 [Upgrade] Query string length:', queryString.length);
+
     const encryptedData = this.ccav.encrypt(queryString);
+    console.log('🔐 [Upgrade] Encrypted data length:', encryptedData.length);
+
     const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    console.log('💳 [Upgrade] Payment URL generated:', { orderId, paymentUrlLength: paymentUrl.length });
 
     return ResponseUtil.success({
       subscription,

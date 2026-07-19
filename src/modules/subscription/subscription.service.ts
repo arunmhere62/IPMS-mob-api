@@ -453,9 +453,9 @@ export class SubscriptionService {
       merchant_param4: planId.toString(),
     };
 
-    // Convert to query string
+    // Convert to query string (no encodeURIComponent - matches CCAvenue demo)
     const queryString = Object.entries(paymentData)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
     console.log('📝 Payment data query string:', queryString.substring(0, 200));
@@ -468,7 +468,7 @@ export class SubscriptionService {
     console.log('🔐 Encrypted data length:', encryptedData.length);
 
     // Generate payment URL
-    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encryptedData}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
     // Update subscription with order ID
     await this.prisma.user_subscriptions.update({
@@ -622,7 +622,7 @@ export class SubscriptionService {
     };
 
     const queryString = Object.entries(paymentData)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
     console.log('📝 [Upgrade] Payment data query string:', queryString.substring(0, 200));
@@ -631,7 +631,7 @@ export class SubscriptionService {
     const encryptedData = this.ccavEncrypt(queryString);
     console.log('🔐 [Upgrade] Encrypted data length:', encryptedData.length);
 
-    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encryptedData}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
     console.log('💳 [Upgrade] Payment URL generated:', { orderId, paymentUrlLength: paymentUrl.length });
 
     return ResponseUtil.success({
@@ -713,11 +713,11 @@ export class SubscriptionService {
     }
 
     const queryString = Object.entries(paymentData)
-      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
+      .map(([key, value]) => `${key}=${value}`)
       .join('&');
 
     const encryptedData = this.ccavEncrypt(queryString);
-    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encodeURIComponent(encryptedData)}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
+    const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encryptedData}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
 
     console.log('💳 Prepared payment URL:', {
       orderId,

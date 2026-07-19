@@ -46,11 +46,11 @@ export class SubscriptionService {
   }
 
   // CCAvenue configuration (hardcoded for debugging)
-  private readonly CCAVENUE_MERCHANT_ID = '1769853';
-  private readonly CCAVENUE_ACCESS_CODE = 'AVZZ74JL11BA01ZZAB';
-  private readonly CCAVENUE_WORKING_KEY = 'C29D419AD84465EC3362A84B9EE73AA2';
-  private readonly CCAVENUE_REDIRECT_URL = 'https://www.tnyadavs.com/api/v1/subscription/payment/callback';
-  private readonly CCAVENUE_CANCEL_URL = 'https://www.tnyadavs.com/api/v1/subscription/payment/cancel';
+  private readonly CCAVENUE_MERCHANT_ID = '4422142';
+  private readonly CCAVENUE_ACCESS_CODE = 'AVAE94NG00AB68EABA';
+  private readonly CCAVENUE_WORKING_KEY = 'B2779D53659D72AD12DD229F49FE01B4';
+  private readonly CCAVENUE_REDIRECT_URL = 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/callback';
+  private readonly CCAVENUE_CANCEL_URL = 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/cancel';
   private readonly CCAVENUE_PAYMENT_URL = 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
 
   // CCAvenue AES encryption (matches Java AesCryptUtil exactly)

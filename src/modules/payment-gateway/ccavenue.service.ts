@@ -63,9 +63,9 @@ export class CCavenueService {
   private readonly ccavenueUrl: string;
 
   constructor(private configService: ConfigService) {
-    this.merchantId = '4422142';
-    this.accessCode = 'AVAE94NG00AB68EABA';
-    this.workingKey = 'B2779D53659D72AD12DD229F49FE01B4';
+    this.merchantId = '1769853';
+    this.accessCode = 'AVZZ74JL11BA01ZZAB';
+    this.workingKey = 'C29D419AD84465EC3362A84B9EE73AA2';
     this.ccavenueUrl = 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
   }
 

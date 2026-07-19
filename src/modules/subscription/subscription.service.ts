@@ -46,29 +46,29 @@ export class SubscriptionService {
   }
 
   // CCAvenue configuration (hardcoded for debugging)
-  private readonly CCAVENUE_MERCHANT_ID = '1769853';
-  private readonly CCAVENUE_ACCESS_CODE = 'AVZZ74JL11BA01ZZAB';
-  private readonly CCAVENUE_WORKING_KEY = 'C29D419AD84465EC3362A84B9EE73AA2';
-  private readonly CCAVENUE_REDIRECT_URL = 'https://www.tnyadavs.com/api/v1/subscription/payment/callback';
-  private readonly CCAVENUE_CANCEL_URL = 'https://www.tnyadavs.com/api/v1/subscription/payment/cancel';
+  private readonly CCAVENUE_MERCHANT_ID = '4422142';
+  private readonly CCAVENUE_ACCESS_CODE = 'AVAE94NG00AB68EABA';
+  private readonly CCAVENUE_WORKING_KEY = 'B2779D53659D72AD12DD229F49FE01B4';
+  private readonly CCAVENUE_REDIRECT_URL = 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/callback';
+  private readonly CCAVENUE_CANCEL_URL = 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/cancel';
   private readonly CCAVENUE_PAYMENT_URL = 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
 
-  // CCAvenue AES encryption (matches Java AesCryptUtil exactly)
-  // Key: workingKey.getBytes() → 32 raw bytes → AES-256-CBC
-  // IV: [0x00, 0x01, ... 0x0f] (fixed, matches Java IvParameterSpec)
+  // CCAvenue AES encryption (matches old working implementation)
+  // Key: MD5(working_key) → 16 bytes → AES-128-CBC
+  // IV: [0x00, 0x01, ... 0x0f] (fixed)
   private ccavEncrypt(plainText: string): string {
-    const key = Buffer.from(this.CCAVENUE_WORKING_KEY, 'utf8');
+    const key = crypto.createHash('md5').update(this.CCAVENUE_WORKING_KEY).digest();
     const iv = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f]);
-    const cipher = crypto.createCipheriv('aes-256-cbc', key, iv);
+    const cipher = crypto.createCipheriv('aes-128-cbc', key, iv);
     let encrypted = cipher.update(plainText, 'utf8', 'hex');
     encrypted += cipher.final('hex');
     return encrypted;
   }
 
   private ccavDecrypt(encryptedText: string): string {
-    const key = Buffer.from(this.CCAVENUE_WORKING_KEY, 'utf8');
+    const key = crypto.createHash('md5').update(this.CCAVENUE_WORKING_KEY).digest();
     const iv = Buffer.from([0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08, 0x09, 0x0a, 0x0b, 0x0c, 0x0d, 0x0e, 0x0f]);
-    const decipher = crypto.createDecipheriv('aes-256-cbc', key, iv);
+    const decipher = crypto.createDecipheriv('aes-128-cbc', key, iv);
     let decrypted = decipher.update(encryptedText, 'hex', 'utf8');
     decrypted += decipher.final('utf8');
     return decrypted;
@@ -455,7 +455,7 @@ export class SubscriptionService {
 
     // Convert to query string
     const queryString = Object.entries(paymentData)
-      .map(([key, value]) => `${key}=${value}`)
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
       .join('&');
 
     console.log('📝 Payment data query string:', queryString.substring(0, 200));
@@ -622,7 +622,7 @@ export class SubscriptionService {
     };
 
     const queryString = Object.entries(paymentData)
-      .map(([key, value]) => `${key}=${value}`)
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
       .join('&');
 
     console.log('📝 [Upgrade] Payment data query string:', queryString.substring(0, 200));
@@ -713,7 +713,7 @@ export class SubscriptionService {
     }
 
     const queryString = Object.entries(paymentData)
-      .map(([key, value]) => `${key}=${value}`)
+      .map(([key, value]) => `${key}=${encodeURIComponent(value)}`)
       .join('&');
 
     const encryptedData = this.ccavEncrypt(queryString);

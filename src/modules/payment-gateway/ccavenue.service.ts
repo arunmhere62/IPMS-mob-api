@@ -63,18 +63,20 @@ export class CCavenueService {
   private readonly ccavenueUrl: string;
 
   constructor(private configService: ConfigService) {
-    this.merchantId = '1769853';
-    this.accessCode = 'AVZZ74JL11BA01ZZAB';
-    this.workingKey = 'C29D419AD84465EC3362A84B9EE73AA2';
+    this.merchantId = '4422142';
+    this.accessCode = 'AVAE94NG00AB68EABA';
+    this.workingKey = 'B2779D53659D72AD12DD229F49FE01B4';
     this.ccavenueUrl = 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
   }
 
   private getAESKey(): Buffer {
-    return Buffer.from((this.workingKey || '').trim(), 'utf8');
+    const m = crypto.createHash('md5');
+    m.update(this.workingKey);
+    return m.digest();
   }
 
   private getAESAlgorithm(): string {
-    return 'aes-256-cbc';
+    return 'aes-128-cbc';
   }
 
   /**
@@ -158,9 +160,7 @@ export class CCavenueService {
     if (paymentData.promoCode) params.append('promo_code', paymentData.promoCode);
     if (paymentData.customerIdentifier) params.append('customer_identifier', paymentData.customerIdentifier);
 
-    const plainText = Array.from(params.keys())
-      .map(key => `${key}=${params.get(key)}`)
-      .join('&');
+    const plainText = params.toString();
     this.logger.log(`Payment request for order ${paymentData.orderId}: ${paymentData.amount} ${paymentData.currency}`);
 
     const encRequest = this.encrypt(plainText);

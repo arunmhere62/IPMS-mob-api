@@ -63,11 +63,10 @@ export class CCavenueService {
   private readonly ccavenueUrl: string;
 
   constructor(private configService: ConfigService) {
-    this.merchantId = this.configService.get<string>('CCAVENUE_MERCHANT_ID');
-    this.accessCode = this.configService.get<string>('CCAVENUE_ACCESS_CODE');
-    this.workingKey = this.configService.get<string>('CCAVENUE_WORKING_KEY');
-    this.ccavenueUrl = this.configService.get<string>('CCAVENUE_PAYMENT_URL') || 
-                       'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
+    this.merchantId = '4422142';
+    this.accessCode = 'AVAE94NG00AB68EABA';
+    this.workingKey = 'B2779D53659D72AD12DD229F49FE01B4';
+    this.ccavenueUrl = 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
   }
 
   private getAESKey(): Buffer {

@@ -6,6 +6,7 @@ import {
   BadRequestException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { ConfigService } from '@nestjs/config';
 import { TenantSendOtpDto } from './dto/tenant-send-otp.dto';
 import { TenantVerifyOtpDto } from './dto/tenant-verify-otp.dto';
 import { UserRole } from '../../../common/enums/user-role.enum';
@@ -15,12 +16,26 @@ import { OtpStrategyFactory } from '../../auth/strategies/otp-strategy.factory';
 @Injectable()
 export class TenantAuthService {
   private readonly logger = new Logger(TenantAuthService.name);
+  private readonly TEST_OTP_PHONE_LAST10 = '8248449609';
+  private readonly TEST_OTP_CODE = '5555';
 
   constructor(
     private prisma: PrismaService,
     private jwtService: JwtService,
     private otpStrategyFactory: OtpStrategyFactory,
+    private configService: ConfigService,
   ) {}
+
+  private isTestOtpEnabled(): boolean {
+    const allow = String(this.configService.get<string>('ALLOW_TEST_OTP') ?? '').toLowerCase();
+    return allow === 'true' || allow === '1' || allow === 'yes';
+  }
+
+  private isTestOtpPhone(phone: string): boolean {
+    const digits = String(phone ?? '').replace(/[^0-9]/g, '');
+    const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
+    return last10 === this.TEST_OTP_PHONE_LAST10;
+  }
 
   async sendOtp(dto: TenantSendOtpDto) {
     const { phone } = dto;
@@ -60,7 +75,10 @@ export class TenantAuthService {
     // }
 
     // Generate 4-digit OTP
-    const otp = Math.floor(1000 + Math.random() * 9000).toString();
+    let otp = Math.floor(1000 + Math.random() * 9000).toString();
+    if (this.isTestOtpEnabled() && this.isTestOtpPhone(normalizedPhone)) {
+      otp = this.TEST_OTP_CODE;
+    }
 
     // Store OTP in database with normalized phone
     await this.prisma.otp_verifications.create({

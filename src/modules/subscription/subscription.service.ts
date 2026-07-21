@@ -1,6 +1,8 @@
-import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
+import { EmailService } from '../email/email.service';
+import { OWNER_NOTIFICATION_EMAILS } from '../email/email.constants';
 import { Prisma } from '@prisma/client';
 import * as crypto from 'crypto';
 
@@ -12,7 +14,12 @@ type DecimalLike = Prisma.Decimal | { toNumber(): number };
 
 @Injectable()
 export class SubscriptionService {
-  constructor(private prisma: PrismaService) {}
+  private readonly logger = new Logger(SubscriptionService.name);
+
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
 
   private normalizePrice(price: DecimalLike | number | string | null | undefined): number {
     if (price && typeof price === 'object' && 'toNumber' in price && typeof (price as DecimalLike).toNumber === 'function') {
@@ -512,6 +519,9 @@ export class SubscriptionService {
         status: 'ACTIVE',
         end_date: { gte: new Date() },
       },
+      include: {
+        subscription_plans: true,
+      },
       orderBy: { end_date: 'desc' },
     });
 
@@ -633,6 +643,24 @@ export class SubscriptionService {
 
     const paymentUrl = `${this.CCAVENUE_PAYMENT_URL}&encRequest=${encryptedData}&access_code=${this.CCAVENUE_ACCESS_CODE}`;
     console.log('💳 [Upgrade] Payment URL generated:', { orderId, paymentUrlLength: paymentUrl.length });
+
+    // Notify owner about the upgrade attempt
+    try {
+      await this.sendUpgradeInitiatedNotification({
+        user,
+        orderId,
+        organizationId,
+        currentPlanName: (currentSubscription.subscription_plans as unknown as { name?: string } | null)?.name || 'Unknown Plan',
+        newPlanName: plan.name || 'Unknown Plan',
+        amount: totalPriceIncludingGst,
+        currency: plan.currency,
+        currentEndDate: currentSubscription.end_date,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to send upgrade initiated notification for order ${orderId}: ${(error as Error).message}`,
+      );
+    }
 
     return ResponseUtil.success({
       subscription,
@@ -928,6 +956,39 @@ export class SubscriptionService {
         });
       }
 
+      // Send subscription confirmation email on successful payment
+      if (orderStatus === 'Success' && payment.subscription_id) {
+        try {
+          const subscriptionDetails = await this.prisma.user_subscriptions.findUnique({
+            where: { s_no: payment.subscription_id },
+            include: { subscription_plans: true },
+          });
+
+          if (subscriptionDetails) {
+            const user = await this.prisma.users.findUnique({
+              where: { s_no: payment.user_id },
+              select: { name: true, email: true, phone: true },
+            });
+
+            await this.sendSubscriptionConfirmationEmail({
+              name: user?.name || 'User',
+              email: user?.email,
+              phone: user?.phone,
+              planName: subscriptionDetails.subscription_plans?.name || 'Selected Plan',
+              amount: Number(payment.amount || 0),
+              currency: payment.currency,
+              startDate: subscriptionDetails.start_date,
+              endDate: subscriptionDetails.end_date,
+              orderId,
+            });
+          }
+        } catch (error) {
+          this.logger.error(
+            `Failed to send subscription confirmation email for order ${orderId}: ${(error as Error).message}`,
+          );
+        }
+      }
+
       return ResponseUtil.success({
         orderId,
         orderStatus,
@@ -938,5 +999,154 @@ export class SubscriptionService {
       console.error('❌ Payment callback processing error:', error);
       throw error;
     }
+  }
+
+  /**
+   * Send subscription purchase/activation confirmation email
+   */
+  private async sendSubscriptionConfirmationEmail(args: {
+    name: string;
+    email?: string | null;
+    phone?: string | null;
+    planName: string;
+    amount: number;
+    currency: string;
+    startDate: Date;
+    endDate: Date;
+    orderId: string;
+  }) {
+    const { name, email, phone, planName, amount, currency, startDate, endDate, orderId } = args;
+
+    const start = new Date(startDate).toLocaleDateString('en-IN');
+    const end = new Date(endDate).toLocaleDateString('en-IN');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #0f172a; padding: 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0;">IPGM Subscription Confirmed</h1>
+        </div>
+        <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
+          <p style="font-size: 16px;">Hi ${name},</p>
+          <p>Thank you for subscribing to IPGM. Your payment was successful and your subscription is now active.</p>
+
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Plan</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${planName}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Amount Paid</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${currency} ${amount.toFixed(2)}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Order ID</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${orderId}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Start Date</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${start}</td></tr>
+            <tr><td style="padding: 8px; color: #6b7280;">End Date</td><td style="padding: 8px; font-weight: 600;">${end}</td></tr>
+          </table>
+
+          <p>You can continue using all the features of IPGM until the end date shown above.</p>
+          <p style="margin-top: 24px; font-size: 14px; color: #6b7280;">If you have any questions, please contact support.</p>
+        </div>
+      </div>
+    `;
+
+    if (email) {
+      await this.emailService.sendMail({
+        to: email,
+        subject: 'IPGM Subscription Confirmation',
+        html,
+      });
+
+      this.logger.log(`Subscription confirmation email sent to ${email} for order ${orderId}`);
+      return;
+    }
+
+    // User has no email on record — notify owners directly
+    const ownerHtml = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #0f172a; padding: 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0;">IPGM Subscription Activated</h1>
+        </div>
+        <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
+          <p>A user's subscription was activated. The user does not have an email on record, so this notification is being sent to you.</p>
+
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">User</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${name}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Phone</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${phone || 'N/A'}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Plan</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${planName}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Amount Paid</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${currency} ${amount.toFixed(2)}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Order ID</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${orderId}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Start Date</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${start}</td></tr>
+            <tr><td style="padding: 8px; color: #6b7280;">End Date</td><td style="padding: 8px; font-weight: 600;">${end}</td></tr>
+          </table>
+        </div>
+      </div>
+    `;
+
+    await this.emailService.sendMail({
+      to: OWNER_NOTIFICATION_EMAILS,
+      subject: `IPGM Subscription Activated - ${name}`,
+      html: ownerHtml,
+    });
+
+    this.logger.log(`Owner subscription activation notification sent for order ${orderId}`);
+  }
+
+  /**
+   * Notify owners when a user initiates a subscription upgrade
+   */
+  private async sendUpgradeInitiatedNotification(args: {
+    user: {
+      name?: string | null;
+      email?: string | null;
+      phone?: string | null;
+      address?: string | null;
+      pincode?: string | null;
+      city?: { name?: string | null } | null;
+      state?: { name?: string | null } | null;
+    };
+    orderId: string;
+    organizationId: number;
+    currentPlanName: string;
+    newPlanName: string;
+    amount: number;
+    currency: string;
+    currentEndDate: Date;
+  }) {
+    const { user, orderId, organizationId, currentPlanName, newPlanName, amount, currency, currentEndDate } = args;
+
+    const endDate = new Date(currentEndDate).toLocaleDateString('en-IN');
+
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #0f172a; padding: 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0;">Subscription Upgrade Attempted</h1>
+        </div>
+        <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
+          <p>A user has initiated a subscription upgrade. Details below:</p>
+
+          <h3 style="margin-top: 24px; margin-bottom: 8px; color: #111827;">User Details</h3>
+          <table style="width: 100%; border-collapse: collapse; margin-bottom: 20px;">
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${user.name || 'N/A'}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Email</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${user.email || 'N/A'}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Phone</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${user.phone || 'N/A'}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Address</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${[user.address, user.city?.name, user.state?.name, user.pincode].filter(Boolean).join(', ') || 'N/A'}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Organization ID</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${organizationId}</td></tr>
+          </table>
+
+          <h3 style="margin-top: 24px; margin-bottom: 8px; color: #111827;">Upgrade Details</h3>
+          <table style="width: 100%; border-collapse: collapse;">
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Order ID</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${orderId}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Current Plan</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${currentPlanName}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">New Plan</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${newPlanName}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Amount to Pay</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${currency} ${amount.toFixed(2)}</td></tr>
+            <tr><td style="padding: 8px; color: #6b7280;">Current Plan Ends On</td><td style="padding: 8px; font-weight: 600;">${endDate}</td></tr>
+          </table>
+
+          <p style="margin-top: 24px; font-size: 14px; color: #6b7280;">This is an automated notification. The user is being redirected to the payment gateway.</p>
+        </div>
+      </div>
+    `;
+
+    await this.emailService.sendMail({
+      to: OWNER_NOTIFICATION_EMAILS,
+      subject: `Subscription Upgrade Attempted - ${user.name || 'User'}`,
+      html,
+    });
+
+    this.logger.log(`Upgrade initiated notification sent for order ${orderId}`);
   }
 }

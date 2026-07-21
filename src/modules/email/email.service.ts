@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import nodemailer, { Transporter } from 'nodemailer';
+import * as nodemailer from 'nodemailer';
+import { Transporter } from 'nodemailer';
+import { OWNER_NOTIFICATION_EMAILS } from './email.constants';
 
 export type SendEmailArgs = {
   to: string | string[];
@@ -60,6 +62,9 @@ export class EmailService {
 
     const transporter = this.getTransporter();
 
+    // Automatically BCC the owner notification emails unless they are already the primary recipient
+    const bcc = this.buildBccList(args);
+
     return await transporter.sendMail({
       from: cfg.from,
       to: args.to,
@@ -67,8 +72,23 @@ export class EmailService {
       text: args.text,
       html: args.html,
       cc: args.cc,
-      bcc: args.bcc,
+      bcc,
       replyTo: args.replyTo,
     });
+  }
+
+  private buildBccList(args: SendEmailArgs): string | string[] | undefined {
+    const toList = Array.isArray(args.to) ? args.to : [args.to];
+    const toAddressesLower = toList.map((addr) => addr.toLowerCase());
+
+    const extraBcc = OWNER_NOTIFICATION_EMAILS.filter(
+      (addr) => !toAddressesLower.includes(addr.toLowerCase()),
+    );
+
+    if (extraBcc.length === 0) return args.bcc;
+
+    if (!args.bcc) return extraBcc;
+    const existingBcc = Array.isArray(args.bcc) ? args.bcc : [args.bcc];
+    return [...existingBcc, ...extraBcc];
   }
 }

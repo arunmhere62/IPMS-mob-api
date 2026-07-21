@@ -1,5 +1,6 @@
 import {
   Injectable,
+  Logger,
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
@@ -17,11 +18,14 @@ import { ChangePasswordDto } from './dto/change-password.dto';
 import { RefreshTokenDto } from './dto/refresh-token.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { S3DeletionService } from '../common/s3-deletion.service';
+import { EmailService } from '../email/email.service';
+import { OWNER_NOTIFICATION_EMAILS } from '../email/email.constants';
 import { normalizePhoneNumber } from '../../common/utils/phone.utils';
 import { Prisma } from '@prisma/client';
 
 @Injectable()
 export class AuthDbService {
+  private readonly logger = new Logger(AuthDbService.name);
   private readonly OTP_EXPIRY_MINUTES: number;
   private readonly MAX_ATTEMPTS: number;
   private readonly TEST_OTP_PHONE_LAST10 = '8248449609';
@@ -34,6 +38,7 @@ export class AuthDbService {
     private configService: ConfigService,
     private otpStrategyFactory: OtpStrategyFactory,
     private s3DeletionService: S3DeletionService,
+    private emailService: EmailService,
   ) {
     // Get configuration based on environment
     this.OTP_EXPIRY_MINUTES = this.configService.get<number>('app.auth.otpExpiryMinutes', 5);
@@ -569,6 +574,7 @@ export class AuthDbService {
       organizationName,
       name,
       phone,
+      email,
       pgName,
       rentCycleType,
       rentCycleStart,
@@ -576,6 +582,7 @@ export class AuthDbService {
     } = signupDto;
 
     const normalizedPhone = normalizePhoneNumber(phone);
+    let signupSucceeded = false;
 
     try {
       const result = await this.prisma.$transaction(async (prisma) => {
@@ -623,6 +630,7 @@ export class AuthDbService {
           data: {
             name,
             phone: normalizedPhone,
+            email: email || undefined,
             status: 'ACTIVE', // User needs admin approval
             organization_users_organization_idToorganization: {
               connect: { s_no: organization.s_no },
@@ -696,6 +704,7 @@ export class AuthDbService {
         };
       });
 
+      signupSucceeded = true;
       return ResponseUtil.success(result, 'Account created successfully. Please login.');
     } catch (error) {
       console.error('Signup error:', error);
@@ -706,7 +715,96 @@ export class AuthDbService {
       // Provide more specific error message for database/transaction errors
       const message = (error as { message?: string } | null)?.message || 'Failed to create account. Please try again.';
       throw new BadRequestException(message);
+    } finally {
+      // Send welcome/notification email on successful signup
+      if (signupSucceeded) {
+        try {
+          await this.sendSignupNotificationEmail({
+            name,
+            email,
+            organizationName,
+            pgName,
+            phone: normalizedPhone,
+          });
+        } catch (error) {
+          this.logger.error(
+            `Failed to send signup notification email: ${(error as Error).message}`,
+          );
+        }
+      }
     }
+  }
+
+  /**
+   * Send welcome email to newly registered owner, or owner-only notification if user has no email
+   */
+  private async sendSignupNotificationEmail(args: {
+    name: string;
+    email?: string;
+    organizationName: string;
+    pgName: string;
+    phone: string;
+  }) {
+    const { name, email, organizationName, pgName, phone } = args;
+
+    if (email) {
+      const html = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
+          <div style="background: #0f172a; padding: 24px; text-align: center;">
+            <h1 style="color: #ffffff; margin: 0;">Welcome to IPGM</h1>
+          </div>
+          <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
+            <p style="font-size: 16px;">Hi ${name},</p>
+            <p>Thank you for signing up with <strong>IPGM</strong>. Your account has been created successfully.</p>
+
+            <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+              <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Organization</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${organizationName}</td></tr>
+              <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">PG Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${pgName}</td></tr>
+              <tr><td style="padding: 8px; color: #6b7280;">Phone</td><td style="padding: 8px; font-weight: 600;">${phone}</td></tr>
+            </table>
+
+            <p>You can now log in to the IPGM app using your mobile number and start managing your PG.</p>
+            <p style="margin-top: 24px; font-size: 14px; color: #6b7280;">If you did not create this account, please contact support.</p>
+          </div>
+        </div>
+      `;
+
+      await this.emailService.sendMail({
+        to: email,
+        subject: 'Welcome to IPGM - Account Created',
+        html,
+      });
+
+      this.logger.log(`Welcome email sent to ${email}`);
+      return;
+    }
+
+    // User did not provide an email — notify owners directly
+    const html = `
+      <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; color: #1f2937;">
+        <div style="background: #0f172a; padding: 24px; text-align: center;">
+          <h1 style="color: #ffffff; margin: 0;">New IPGM Signup</h1>
+        </div>
+        <div style="padding: 24px; border: 1px solid #e5e7eb; border-top: none;">
+          <p>A new user signed up without an email address. Details below:</p>
+
+          <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${name}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Phone</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${phone}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Organization</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${organizationName}</td></tr>
+            <tr><td style="padding: 8px; color: #6b7280;">PG Name</td><td style="padding: 8px; font-weight: 600;">${pgName}</td></tr>
+          </table>
+        </div>
+      </div>
+    `;
+
+    await this.emailService.sendMail({
+      to: OWNER_NOTIFICATION_EMAILS,
+      subject: 'New IPGM Signup - No Email Provided',
+      html,
+    });
+
+    this.logger.log(`Owner signup notification sent for ${name} (${phone})`);
   }
 
   /**

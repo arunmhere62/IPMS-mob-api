@@ -18,12 +18,8 @@ if ! docker image inspect "${PREVIOUS_IMAGE}" >/dev/null 2>&1; then
   exit 1
 fi
 
-# Detect whether Docker Compose V2 plugin is available
-if docker compose version >/dev/null 2>&1; then
-  COMPOSE_CMD="docker compose"
-else
-  COMPOSE_CMD="docker-compose"
-fi
+# Use Docker Compose V2 plugin
+COMPOSE_CMD="docker compose"
 
 echo "Rolling back ${APP_NAME} to ${PREVIOUS_IMAGE}..."
 

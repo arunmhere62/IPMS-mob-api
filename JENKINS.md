@@ -322,7 +322,7 @@ A previous deployment must have run successfully for `ipms-mob-api:previous` to 
 
 ### `docker compose` not found
 
-The pipeline and scripts automatically fall back to `docker-compose` if the Docker Compose V2 plugin is not installed.
+The pipeline and helper scripts require the Docker Compose V2 plugin (`docker compose`). Make sure the Jenkins agent has Docker Compose V2 installed, not the legacy `docker-compose` v1 binary.
 
 ---
 

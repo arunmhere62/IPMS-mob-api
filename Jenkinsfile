@@ -302,9 +302,8 @@ def setDeploymentConfig(String branch) {
 }
 
 def composeCommand() {
-    // Prefer Docker Compose V2 plugin, fall back to legacy docker-compose binary.
-    def v2 = sh(returnStatus: true, script: 'docker compose version >/dev/null 2>&1')
-    return v2 == 0 ? 'docker compose' : 'docker-compose'
+    // The pipeline requires the Docker Compose V2 plugin (`docker compose`).
+    return 'docker compose'
 }
 
 def npmScriptExists(String scriptName) {

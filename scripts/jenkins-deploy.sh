@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ---------------------------------------------------------------------------
-# Deploy IPMS Mobile API using docker-compose.
+# Deploy IPMS Mobile API using docker compose.
 # The deployed image is tagged with the short Git commit SHA.
 # The previous running image is saved as <APP_IMAGE>:previous for rollback.
 # Intended for Jenkins CI/CD, but can be run manually.
@@ -22,12 +22,8 @@ if ! [ -f ".env" ]; then
   exit 1
 fi
 
-# Detect whether Docker Compose V2 plugin is available
-if docker compose version >/dev/null 2>&1; then
-  COMPOSE_CMD="docker compose"
-else
-  COMPOSE_CMD="docker-compose"
-fi
+# Use Docker Compose V2 plugin
+COMPOSE_CMD="docker compose"
 
 echo "Deploying ${APP_NAME} from ${COMPOSE_FILE} (project: ${COMPOSE_PROJECT})"
 echo "Image: ${IMAGE_FQN}"

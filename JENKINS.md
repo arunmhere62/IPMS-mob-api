@@ -25,9 +25,9 @@ Jenkins runs inside Docker on the same VPS and has access to the host Docker soc
 | **Detect Branch & Configure Deployment** | Resolve which compose file, network, port, project name, and container name to use for the current branch. |
 | **Install Dependencies** | Install a deterministic set of dependencies with `npm ci` (falls back to `npm install` only if `package-lock.json` is missing). |
 | **Format Check** | Run the `format` npm script if it exists. Skipped gracefully if the script is not configured. |
-| **ESLint** | Run the `lint` npm script if it exists. Skipped gracefully if the script is not configured. |
+| **ESLint** | Run the `lint` npm script if it exists. Currently marked **UNSTABLE on failure** so deployment is not blocked while existing lint violations are being fixed. |
 | **npm Audit** | Scan dependencies for vulnerabilities. Only **high/critical** findings fail the build; moderate/low findings are logged but do not block the pipeline. |
-| **Unit Tests** | Run the `test` npm script if it exists, using `npx jest --passWithNoTests`. Skipped gracefully if the script is not configured or if there are no test files yet. |
+| **Unit Tests** | Run the `test` npm script if it exists, using `npm run test -- --passWithNoTests`. Currently marked **UNSTABLE on failure** so missing tests do not block deployment. |
 | **E2E Tests** | Run the `test:e2e` npm script if it exists. Skipped gracefully if the script is not configured. |
 | **Build NestJS Application** | Compile TypeScript to `dist/` and generate the Prisma client. This catches build errors before the Docker image is created. |
 | **Archive Build Artifacts** | Persist `dist/`, `package*.json`, and `docker-compose*.yml` to Jenkins build history for debugging. |

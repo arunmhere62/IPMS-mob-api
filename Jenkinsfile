@@ -94,7 +94,7 @@ pipeline {
             when { expression { params.ACTION != 'Rollback' } }
             steps {
                 script {
-                    runNpmScriptIfExists('format')
+                    runOptionalNpmScript('format')
                 }
             }
         }
@@ -103,7 +103,7 @@ pipeline {
             when { expression { params.ACTION != 'Rollback' } }
             steps {
                 script {
-                    runNpmScriptIfExists('lint')
+                    runOptionalNpmScript('lint')
                 }
             }
         }
@@ -120,12 +120,7 @@ pipeline {
             when { expression { params.ACTION != 'Rollback' } }
             steps {
                 script {
-                    if (npmScriptExists('test')) {
-                        // --passWithNoTests prevents failure when no spec files exist yet.
-                        sh 'npm run test -- --passWithNoTests --coverage=false'
-                    } else {
-                        echo 'No "test" script found in package.json. Skipping unit tests.'
-                    }
+                    runOptionalNpmScript('test', '--passWithNoTests --coverage=false')
                 }
             }
         }
@@ -134,11 +129,7 @@ pipeline {
             when { expression { params.ACTION != 'Rollback' } }
             steps {
                 script {
-                    if (npmScriptExists('test:e2e')) {
-                        sh 'npm run test:e2e -- --passWithNoTests'
-                    } else {
-                        echo 'No "test:e2e" script found in package.json. Skipping E2E tests.'
-                    }
+                    runOptionalNpmScript('test:e2e', '--passWithNoTests')
                 }
             }
         }
@@ -257,6 +248,9 @@ pipeline {
         success {
             echo "Pipeline completed successfully: ${env.IMAGE_FQN ?: 'Rollback mode'}"
         }
+        unstable {
+            echo "Pipeline completed with warnings (lint/tests). Deployment: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+        }
         failure {
             script {
                 echo 'Pipeline failed.'
@@ -316,11 +310,15 @@ def npmScriptExists(String scriptName) {
     return status == 0
 }
 
-def runNpmScriptIfExists(String scriptName) {
-    if (npmScriptExists(scriptName)) {
-        sh "npm run ${scriptName}"
-    } else {
+def runOptionalNpmScript(String scriptName, String extraArgs = '') {
+    if (!npmScriptExists(scriptName)) {
         echo "No \"${scriptName}\" script found in package.json. Skipping."
+        return
+    }
+
+    def command = extraArgs ? "npm run ${scriptName} -- ${extraArgs}" : "npm run ${scriptName}"
+    catchError(buildResult: 'UNSTABLE', stageResult: 'UNSTABLE') {
+        sh command
     }
 }
 

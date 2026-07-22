@@ -122,7 +122,7 @@ pipeline {
                 script {
                     if (npmScriptExists('test')) {
                         // --passWithNoTests prevents failure when no spec files exist yet.
-                        sh 'npx jest --passWithNoTests --coverage=false'
+                        sh 'npm run test -- --passWithNoTests --coverage=false'
                     } else {
                         echo 'No "test" script found in package.json. Skipping unit tests.'
                     }
@@ -134,7 +134,11 @@ pipeline {
             when { expression { params.ACTION != 'Rollback' } }
             steps {
                 script {
-                    runNpmScriptIfExists('test:e2e')
+                    if (npmScriptExists('test:e2e')) {
+                        sh 'npm run test:e2e -- --passWithNoTests'
+                    } else {
+                        echo 'No "test:e2e" script found in package.json. Skipping E2E tests.'
+                    }
                 }
             }
         }

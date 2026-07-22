@@ -333,16 +333,20 @@ def prepareEnvFile() {
         return
     }
 
+    // Optional: pull .env from a Jenkins secret file credential if it exists.
+    // If the credential is not configured, continue without it. The deployment
+    // may still work if Docker Compose reads an env file from the host instead.
     def envCredentialId = 'ipms-mob-api-env-file'
-    if (!envCredentialId) {
-        error('No .env file in workspace and no ENV_FILE_CREDENTIAL_ID configured.')
-    }
 
-    withCredentials([file(credentialsId: envCredentialId, variable: 'SECRET_ENV_FILE')]) {
-        sh 'cp "$SECRET_ENV_FILE" .env'
-        sh 'chmod 600 .env'
+    try {
+        withCredentials([file(credentialsId: envCredentialId, variable: 'SECRET_ENV_FILE')]) {
+            sh 'cp "$SECRET_ENV_FILE" .env'
+            sh 'chmod 600 .env'
+        }
+        echo 'Wrote .env file from Jenkins secret file credential.'
+    } catch (Exception e) {
+        echo "WARNING: Could not load Jenkins credential '${envCredentialId}' and no .env file present. Continuing anyway."
     }
-    echo 'Wrote .env file from Jenkins secret file credential.'
 }
 
 def deployApplication(String imageTag) {

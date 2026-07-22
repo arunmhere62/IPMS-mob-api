@@ -186,7 +186,7 @@ Create these credentials in **Manage Jenkins → Credentials**:
 | Credential ID | Type | Required? | Purpose |
 | --- | --- | --- | --- |
 | `github-token` | Secret text | Optional | Used if the repository is private or if you want to authenticate GitHub API calls. |
-| `ipms-mob-api-env-file` | Secret file | **Recommended** | The production `.env` file that the compose project reads. If you keep `.env` in the workspace instead, this is not required, but committing `.env` is strongly discouraged. |
+| `ipms-mob-api-env-file` | Secret file | Optional | The `.env` file that the compose project reads. If `.env` already exists in the workspace, or if you inject environment variables through Docker Compose, this credential is not required. |
 | `vps-ssh-credentials` | SSH Username with private key | Optional | Reserved for future use if Jenkins is ever separated from the deployment host. The current pipeline deploys locally via the Docker socket. |
 
 > **Security note:** Never commit secrets to Git. Store environment variables either in this Jenkins secret file or in a secrets manager.

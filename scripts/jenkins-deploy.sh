@@ -25,6 +25,19 @@ fi
 # Use Docker Compose V2 plugin
 COMPOSE_CMD="docker compose"
 
+# Determine network name from the compose file or use a sensible default
+if [ "${COMPOSE_FILE}" = "docker-compose.yml" ]; then
+  NETWORK_NAME="${NETWORK_NAME:-ipms_mob_api}"
+else
+  NETWORK_NAME="${NETWORK_NAME:-ipms_mob_api_dev}"
+fi
+
+# Ensure the external network exists
+if ! docker network inspect "${NETWORK_NAME}" >/dev/null 2>&1; then
+  docker network create "${NETWORK_NAME}"
+  echo "Created network ${NETWORK_NAME}"
+fi
+
 echo "Deploying ${APP_NAME} from ${COMPOSE_FILE} (project: ${COMPOSE_PROJECT})"
 echo "Image: ${IMAGE_FQN}"
 
@@ -43,7 +56,7 @@ export APP_IMAGE
 export APP_TAG="${COMMIT_SHORT}"
 
 echo "Restarting containers..."
-${COMPOSE_CMD} -f "${COMPOSE_FILE}" -p "${COMPOSE_PROJECT}" down || true
+${COMPOSE_CMD} -f "${COMPOSE_FILE}" -p "${COMPOSE_PROJECT}" down --remove-orphans
 ${COMPOSE_CMD} -f "${COMPOSE_FILE}" -p "${COMPOSE_PROJECT}" up -d --force-recreate
 
 echo "Deployment complete."

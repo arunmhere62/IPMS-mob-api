@@ -43,4 +43,5 @@ services:
 
 networks:
   default:
+    external: true
     name: ipms_mob_api_dev

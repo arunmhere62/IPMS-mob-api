@@ -287,15 +287,15 @@ def setDeploymentConfig(String branch) {
         env.COMPOSE_FILE = 'docker-compose.yml'
         env.NETWORK_NAME = 'ipms_mob_api'
         env.APP_PORT = '3000'
-        env.CONTAINER_NAME = "${env.APP_NAME}-main-backend-1"
-        env.COMPOSE_PROJECT = "${env.APP_NAME}-main"
+        env.COMPOSE_PROJECT = "${env.APP_NAME}-prod"
+        env.CONTAINER_NAME = "${env.APP_NAME}-prod-backend-1"
         env.DEPLOYMENT_ENV = 'production'
     } else {
         env.COMPOSE_FILE = 'docker-compose.dev.yml'
         env.NETWORK_NAME = 'ipms_mob_api_dev'
         env.APP_PORT = '3001'
-        env.CONTAINER_NAME = "${env.APP_NAME}-development-backend-1"
-        env.COMPOSE_PROJECT = "${env.APP_NAME}-development"
+        env.COMPOSE_PROJECT = "${env.APP_NAME}-dev"
+        env.CONTAINER_NAME = "${env.APP_NAME}-dev-backend-1"
         env.DEPLOYMENT_ENV = 'development'
     }
     echo "Configured ${env.DEPLOYMENT_ENV} deployment using ${env.COMPOSE_FILE}"
@@ -304,6 +304,25 @@ def setDeploymentConfig(String branch) {
 def composeCommand() {
     // The pipeline requires the Docker Compose V2 plugin (`docker compose`).
     return 'docker compose'
+}
+
+def ensureNetworkExists(String networkName) {
+    def exists = sh(returnStatus: true, script: "docker network inspect ${networkName} >/dev/null 2>&1")
+    if (exists == 0) {
+        echo "Network ${networkName} already exists."
+    } else {
+        sh "docker network create ${networkName}"
+        echo "Created network ${networkName}."
+    }
+}
+
+def cleanupLegacyContainers() {
+    // One-time cleanup for the fixed container_name used before we switched to generated names.
+    def legacyName = env.DEPLOYMENT_ENV == 'production' ? 'ipms-mob-api' : 'ipms-mob-api-dev'
+    sh """
+        docker stop ${legacyName} ${legacyName}-backend-1 2>/dev/null || true
+        docker rm -f ${legacyName} ${legacyName}-backend-1 2>/dev/null || true
+    """
 }
 
 def npmScriptExists(String scriptName) {
@@ -351,6 +370,12 @@ def prepareEnvFile() {
 def deployApplication(String imageTag) {
     prepareEnvFile()
 
+    // Ensure the external network exists before Compose tries to use it.
+    ensureNetworkExists(env.NETWORK_NAME)
+
+    // Remove any containers left over from before we removed fixed container_name values.
+    cleanupLegacyContainers()
+
     // Tag the currently running image so we can roll back if the new deployment fails.
     def runningContainer = sh(
         returnStdout: true,
@@ -373,7 +398,7 @@ def deployApplication(String imageTag) {
     sh """
         export APP_IMAGE=${env.APP_IMAGE}
         export APP_TAG=${env.GIT_COMMIT_SHORT}
-        ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} down || true
+        ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} down --remove-orphans
         ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --force-recreate
     """
 
@@ -388,9 +413,12 @@ def rollbackDeployment() {
         error("Rollback image ${previousImage} not found. Cannot rollback.")
     }
 
+    ensureNetworkExists(env.NETWORK_NAME)
+
     sh """
         export APP_IMAGE=${env.APP_IMAGE}
         export APP_TAG=previous
+        ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} down --remove-orphans
         ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --force-recreate
     """
 

@@ -287,15 +287,15 @@ def setDeploymentConfig(String branch) {
         env.COMPOSE_FILE = 'docker-compose.yml'
         env.NETWORK_NAME = 'ipms_mob_api'
         env.APP_PORT = '3000'
-        env.COMPOSE_PROJECT = "${env.APP_NAME}-prod"
-        env.CONTAINER_NAME = "${env.APP_NAME}-prod-backend-1"
+        env.COMPOSE_PROJECT = "${env.APP_NAME}-main"
+        env.CONTAINER_NAME = "${env.APP_NAME}-main-backend-1"
         env.DEPLOYMENT_ENV = 'production'
     } else {
         env.COMPOSE_FILE = 'docker-compose.dev.yml'
         env.NETWORK_NAME = 'ipms_mob_api_dev'
         env.APP_PORT = '3001'
-        env.COMPOSE_PROJECT = "${env.APP_NAME}-dev"
-        env.CONTAINER_NAME = "${env.APP_NAME}-dev-backend-1"
+        env.COMPOSE_PROJECT = "${env.APP_NAME}-development"
+        env.CONTAINER_NAME = "${env.APP_NAME}-development-backend-1"
         env.DEPLOYMENT_ENV = 'development'
     }
     echo "Configured ${env.DEPLOYMENT_ENV} deployment using ${env.COMPOSE_FILE}"
@@ -316,12 +316,16 @@ def ensureNetworkExists(String networkName) {
     }
 }
 
-def cleanupLegacyContainers() {
-    // One-time cleanup for the fixed container_name used before we switched to generated names.
-    def legacyName = env.DEPLOYMENT_ENV == 'production' ? 'ipms-mob-api' : 'ipms-mob-api-dev'
+def cleanupConflictingContainers() {
+    // Remove any container that is still bound to the deployment port, regardless of its name.
+    // This handles old fixed-name containers or containers from previous project-name changes.
     sh """
-        docker stop ${legacyName} ${legacyName}-backend-1 2>/dev/null || true
-        docker rm -f ${legacyName} ${legacyName}-backend-1 2>/dev/null || true
+        STALE_CONTAINERS=\$(docker ps -q --filter publish=${env.APP_PORT} || true)
+        if [ -n "\${STALE_CONTAINERS}" ]; then
+            echo "Removing stale containers using port ${env.APP_PORT}: \${STALE_CONTAINERS}"
+            docker stop \${STALE_CONTAINERS} 2>/dev/null || true
+            docker rm -f \${STALE_CONTAINERS} 2>/dev/null || true
+        fi
     """
 }
 
@@ -373,8 +377,8 @@ def deployApplication(String imageTag) {
     // Ensure the external network exists before Compose tries to use it.
     ensureNetworkExists(env.NETWORK_NAME)
 
-    // Remove any containers left over from before we removed fixed container_name values.
-    cleanupLegacyContainers()
+    // Remove any stale container still bound to this deployment port, regardless of its name.
+    cleanupConflictingContainers()
 
     // Tag the currently running image so we can roll back if the new deployment fails.
     def runningContainer = sh(
@@ -414,6 +418,7 @@ def rollbackDeployment() {
     }
 
     ensureNetworkExists(env.NETWORK_NAME)
+    cleanupConflictingContainers()
 
     sh """
         export APP_IMAGE=${env.APP_IMAGE}

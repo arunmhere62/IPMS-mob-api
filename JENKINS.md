@@ -153,7 +153,7 @@ Branch    : development
 Commit    : a13bc82
 Image     : ipms-mob-api:a13bc82
 
-Container : ipms-mob-api-dev-backend-1
+Container : ipms-mob-api-development-backend-1
 
 Time      : 2026-07-22 21:50
 
@@ -252,7 +252,7 @@ You can also run the helper script directly on the VPS:
 ```bash
 APP_IMAGE=ipms-mob-api \
 COMPOSE_FILE=docker-compose.yml \
-COMPOSE_PROJECT=ipms-mob-api-prod \
+COMPOSE_PROJECT=ipms-mob-api-main \
 ./scripts/jenkins-rollback.sh
 ```
 
@@ -261,7 +261,7 @@ For development:
 ```bash
 APP_IMAGE=ipms-mob-api \
 COMPOSE_FILE=docker-compose.dev.yml \
-COMPOSE_PROJECT=ipms-mob-api-dev \
+COMPOSE_PROJECT=ipms-mob-api-development \
 ./scripts/jenkins-rollback.sh
 ```
 
@@ -284,7 +284,7 @@ The `scripts/` folder contains reusable shell scripts for manual operations:
 export APP_IMAGE=ipms-mob-api
 export GIT_COMMIT_SHORT=$(git rev-parse --short HEAD)
 export COMPOSE_FILE=docker-compose.yml
-export COMPOSE_PROJECT=ipms-mob-api-prod
+export COMPOSE_PROJECT=ipms-mob-api-main
 
 ./scripts/jenkins-build.sh
 ./scripts/jenkins-deploy.sh
@@ -312,7 +312,7 @@ export COMPOSE_PROJECT=ipms-mob-api-prod
 
 ### Health check fails repeatedly
 
-- Check the container logs: `docker logs ipms-mob-api-prod-backend-1` or `docker logs ipms-mob-api-dev-backend-1`.
+- Check the container logs: `docker logs ipms-mob-api-main-backend-1` or `docker logs ipms-mob-api-development-backend-1`.
 - Verify the database is reachable from the container.
 - Ensure `.env` has the correct `DATABASE_URL` and other secrets.
 

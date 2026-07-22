@@ -220,6 +220,7 @@ pipeline {
             steps {
                 script {
                     waitForHealthyApplication()
+                    env.DEPLOY_SUCCESSFUL = 'true'
                 }
             }
         }
@@ -259,8 +260,8 @@ pipeline {
         failure {
             script {
                 echo 'Pipeline failed.'
-                if (params.ACTION != 'Rollback' && env.DEPLOY_HAPPENED == 'true') {
-                    echo 'Attempting automatic rollback to previous image...'
+                if (params.ACTION != 'Rollback' && env.DEPLOY_HAPPENED == 'true' && env.DEPLOY_SUCCESSFUL != 'true') {
+                    echo 'Deployment did not reach healthy state. Attempting automatic rollback to previous image...'
                     rollbackDeployment()
                 }
             }
@@ -329,6 +330,31 @@ def cleanupConflictingContainers() {
     """
 }
 
+def tagPreviousImage() {
+    // Tag the image from the currently running backend container so we can roll back.
+    def runningContainer = sh(
+        returnStdout: true,
+        script: "docker ps -q --filter publish=${env.APP_PORT} --filter ancestor=${env.APP_IMAGE} || true"
+    ).trim()
+
+    if (!runningContainer) {
+        echo 'No running backend container found; skipping previous-image tag.'
+        return
+    }
+
+    def currentImage = sh(
+        returnStdout: true,
+        script: "docker inspect --format='{{.Config.Image}}' ${runningContainer} || true"
+    ).trim()
+
+    if (currentImage) {
+        sh "docker tag ${currentImage} ${env.APP_IMAGE}:previous"
+        echo "Tagged previous image: ${currentImage} -> ${env.APP_IMAGE}:previous"
+    } else {
+        echo "WARNING: Could not determine image of running container ${runningContainer}."
+    }
+}
+
 def npmScriptExists(String scriptName) {
     def status = sh(
         returnStatus: true,
@@ -377,25 +403,11 @@ def deployApplication(String imageTag) {
     // Ensure the external network exists before Compose tries to use it.
     ensureNetworkExists(env.NETWORK_NAME)
 
+    // Tag the currently running image so we can roll back if the new deployment fails.
+    tagPreviousImage()
+
     // Remove any stale container still bound to this deployment port, regardless of its name.
     cleanupConflictingContainers()
-
-    // Tag the currently running image so we can roll back if the new deployment fails.
-    def runningContainer = sh(
-        returnStdout: true,
-        script: "docker ps -q --filter name=^/${env.COMPOSE_PROJECT}-backend-1\$ || true"
-    ).trim()
-
-    if (runningContainer) {
-        def currentImage = sh(
-            returnStdout: true,
-            script: "docker inspect --format='{{.Config.Image}}' ${runningContainer} || true"
-        ).trim()
-        if (currentImage) {
-            sh "docker tag ${currentImage} ${env.APP_IMAGE}:previous || true"
-            echo "Tagged previous image: ${currentImage} -> ${env.APP_IMAGE}:previous"
-        }
-    }
 
     env.DEPLOY_HAPPENED = 'true'
 
@@ -414,7 +426,8 @@ def rollbackDeployment() {
     def imageExists = sh(returnStatus: true, script: "docker image inspect ${previousImage} >/dev/null 2>&1")
 
     if (imageExists != 0) {
-        error("Rollback image ${previousImage} not found. Cannot rollback.")
+        echo "WARNING: Rollback image ${previousImage} not found. Skipping rollback."
+        return
     }
 
     ensureNetworkExists(env.NETWORK_NAME)
@@ -460,7 +473,7 @@ def waitForHealthyApplication() {
 }
 
 def printDeploymentSummary() {
-    def timestamp = new Date().format('yyyy-MM-dd HH:mm', TimeZone.getDefault())
+    def timestamp = sh(returnStdout: true, script: 'date "+%Y-%m-%d %H:%M"').trim()
     echo """
 ==================================
 Deployment Successful

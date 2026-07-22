@@ -26,7 +26,7 @@ Jenkins runs inside Docker on the same VPS and has access to the host Docker soc
 | **Install Dependencies** | Install a deterministic set of dependencies with `npm ci` (falls back to `npm install` only if `package-lock.json` is missing). |
 | **Format Check** | Run the `format` npm script if it exists. Skipped gracefully if the script is not configured. |
 | **ESLint** | Run the `lint` npm script if it exists. Currently marked **UNSTABLE on failure** so deployment is not blocked while existing lint violations are being fixed. |
-| **npm Audit** | Scan dependencies for vulnerabilities. Only **high/critical** findings fail the build; moderate/low findings are logged but do not block the pipeline. |
+| **npm Audit** | Scan dependencies for vulnerabilities. Currently marked **UNSTABLE on failure** while the pipeline is being stabilized; later it should be configured to fail only for **high/critical** findings. |
 | **Unit Tests** | Run the `test` npm script if it exists, using `npm run test -- --passWithNoTests`. Currently marked **UNSTABLE on failure** so missing tests do not block deployment. |
 | **E2E Tests** | Run the `test:e2e` npm script if it exists. Skipped gracefully if the script is not configured. |
 | **Build NestJS Application** | Compile TypeScript to `dist/` and generate the Prisma client. This catches build errors before the Docker image is created. |

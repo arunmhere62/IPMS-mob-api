@@ -3,6 +3,7 @@ version: "3.8"
 services:
   backend:
     build: .
+    image: ${APP_IMAGE:-ipms-mob-api}:${APP_TAG:-latest}
     container_name: ipms-mob-api
     restart: unless-stopped
     extra_hosts:

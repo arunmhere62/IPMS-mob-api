@@ -1,0 +1,62 @@
+# Dependencies
+node_modules
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build output
+dist
+build
+coverage
+.nyc_output
+
+# Environment and secrets
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+.env.test
+
+# Version control
+.git
+.gitignore
+.gitattributes
+.github
+
+# IDE and editor files
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+logs
+*.log
+
+# Testing (not needed at runtime; test runner config is kept)
+*.spec.ts
+*.test.ts
+coverage
+
+# CI/CD and deployment (not needed inside the image)
+Jenkinsfile
+scripts/
+docker-compose.yml
+docker-compose.dev.yml
+docker-compose.*.yml
+docker-compose.override.yml
+
+# Documentation (not needed at runtime)
+README.md
+JENKINS.md
+CHANGELOG.md
+*.md
+
+# Lint/format config (not needed at runtime)
+.prettierrc
+.eslintrc*
+.eslintignore

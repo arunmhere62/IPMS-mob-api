@@ -153,7 +153,7 @@ Branch    : development
 Commit    : a13bc82
 Image     : ipms-mob-api:a13bc82
 
-Container : ipms-mob-api-dev
+Container : ipms-mob-api-development-backend-1
 
 Time      : 2026-07-22 21:50
 
@@ -312,7 +312,7 @@ export COMPOSE_PROJECT=ipms-mob-api-main
 
 ### Health check fails repeatedly
 
-- Check the container logs: `docker logs ipms-mob-api` or `docker logs ipms-mob-api-dev`.
+- Check the container logs: `docker logs ipms-mob-api-main-backend-1` or `docker logs ipms-mob-api-development-backend-1`.
 - Verify the database is reachable from the container.
 - Ensure `.env` has the correct `DATABASE_URL` and other secrets.
 

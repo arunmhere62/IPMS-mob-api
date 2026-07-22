@@ -287,14 +287,14 @@ def setDeploymentConfig(String branch) {
         env.COMPOSE_FILE = 'docker-compose.yml'
         env.NETWORK_NAME = 'ipms_mob_api'
         env.APP_PORT = '3000'
-        env.CONTAINER_NAME = 'ipms-mob-api'
+        env.CONTAINER_NAME = "${env.APP_NAME}-main-backend-1"
         env.COMPOSE_PROJECT = "${env.APP_NAME}-main"
         env.DEPLOYMENT_ENV = 'production'
     } else {
         env.COMPOSE_FILE = 'docker-compose.dev.yml'
         env.NETWORK_NAME = 'ipms_mob_api_dev'
         env.APP_PORT = '3001'
-        env.CONTAINER_NAME = 'ipms-mob-api-dev'
+        env.CONTAINER_NAME = "${env.APP_NAME}-development-backend-1"
         env.COMPOSE_PROJECT = "${env.APP_NAME}-development"
         env.DEPLOYMENT_ENV = 'development'
     }

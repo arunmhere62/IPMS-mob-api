@@ -1011,15 +1011,19 @@ export class TenantService {
     }
 
     // Calculate advance and refund payment summaries
-    const advancePayments = (tenant as { advance_payments?: unknown[] }).advance_payments || [];
-    const refundPayments = (tenant as { refund_payments?: unknown[] }).refund_payments || [];
-    
-    const totalAdvancePaid = advancePayments.reduce((sum: number, p: any) => {
+    interface PaymentWithAmount {
+      amount_paid: unknown;
+    }
+
+    const advancePayments = (tenant as { advance_payments?: PaymentWithAmount[] }).advance_payments || [];
+    const refundPayments = (tenant as { refund_payments?: PaymentWithAmount[] }).refund_payments || [];
+
+    const totalAdvancePaid = advancePayments.reduce((sum: number, p: PaymentWithAmount) => {
       const amount = typeof p.amount_paid === 'number' ? p.amount_paid : parseFloat(String(p.amount_paid || 0));
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0) as number;
-    
-    const totalRefundGiven = refundPayments.reduce((sum: number, p: any) => {
+
+    const totalRefundGiven = refundPayments.reduce((sum: number, p: PaymentWithAmount) => {
       const amount = typeof p.amount_paid === 'number' ? p.amount_paid : parseFloat(String(p.amount_paid || 0));
       return sum + (isNaN(amount) ? 0 : amount);
     }, 0) as number;

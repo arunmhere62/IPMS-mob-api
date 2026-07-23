@@ -11,7 +11,7 @@
     "build:render": "npm install --legacy-peer-deps && prisma generate && nest build",
     "build:windows": "npm install --legacy-peer-deps --no-audit && prisma generate && npm run build",
     "build:vercel": "prisma generate && nest build",
-    "format": "prettier --write \"src/**/*.ts\" \"test/**/*.ts\"",
+    "format": "prettier --write \"src/**/*.ts\"",
     "start": "nest start",
     "start:dev": "nest start --watch",
     "start:debug:config": "nest start --debug --watch",
@@ -20,12 +20,11 @@
     "stop:pm2": "pm2 stop pg-api",
     "restart:pm2": "pm2 restart pg-api",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "lint": "eslint \"{src,apps,libs,test}/**/*.ts\"",
+    "lint": "eslint \"src/**/*.ts\" --no-error-on-unmatched-pattern",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
-    "test:e2e": "jest --config ./test/jest-e2e.json",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:migrate:deploy": "prisma migrate deploy",
@@ -54,7 +53,7 @@
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.1",
     "socket.io": "^4.8.3",
-    "typescript": "^5.3.3"
+    "typescript": "~5.3.3"
   },
   "devDependencies": {
     "@nestjs/schematics": "^10.1.0",

@@ -10,7 +10,7 @@ export class ApiException extends HttpException {
   constructor(
     errorCode: ErrorCode,
     customMessage?: string,
-    details?: any,
+    details?: unknown,
     statusCode?: number,
   ) {
     const message = customMessage || ErrorMessages[errorCode];
@@ -23,7 +23,7 @@ export class ApiException extends HttpException {
         message,
         error: {
           code: errorCode,
-          details: details || null,
+          details: details ?? null,
         },
         timestamp: new Date().toISOString(),
       },
@@ -36,7 +36,7 @@ export class ApiException extends HttpException {
  * Specific exception for validation errors
  */
 export class ValidationException extends ApiException {
-  constructor(message?: string, details?: any) {
+  constructor(message?: string, details?: unknown) {
     super(ErrorCode.VALIDATION_FAILED, message, details);
   }
 }
@@ -45,7 +45,7 @@ export class ValidationException extends ApiException {
  * Specific exception for not found errors
  */
 export class NotFoundException extends ApiException {
-  constructor(message?: string, details?: any) {
+  constructor(message?: string, details?: unknown) {
     super(ErrorCode.RESOURCE_NOT_FOUND, message, details);
   }
 }
@@ -54,7 +54,7 @@ export class NotFoundException extends ApiException {
  * Specific exception for unauthorized access
  */
 export class UnauthorizedException extends ApiException {
-  constructor(message?: string, details?: any) {
+  constructor(message?: string, details?: unknown) {
     super(ErrorCode.UNAUTHORIZED, message, details);
   }
 }
@@ -63,7 +63,7 @@ export class UnauthorizedException extends ApiException {
  * Specific exception for forbidden access
  */
 export class ForbiddenException extends ApiException {
-  constructor(message?: string, details?: any) {
+  constructor(message?: string, details?: unknown) {
     super(ErrorCode.FORBIDDEN, message, details);
   }
 }
@@ -72,7 +72,7 @@ export class ForbiddenException extends ApiException {
  * Specific exception for business logic errors
  */
 export class BusinessLogicException extends ApiException {
-  constructor(message?: string, details?: any) {
+  constructor(message?: string, details?: unknown) {
     super(ErrorCode.BUSINESS_LOGIC_ERROR, message, details);
   }
 }
@@ -81,7 +81,7 @@ export class BusinessLogicException extends ApiException {
  * Specific exception for conflict/already exists
  */
 export class ConflictException extends ApiException {
-  constructor(message?: string, details?: any) {
+  constructor(message?: string, details?: unknown) {
     super(ErrorCode.ALREADY_EXISTS, message, details);
   }
 }
@@ -90,7 +90,7 @@ export class ConflictException extends ApiException {
  * Specific exception for rate limiting
  */
 export class RateLimitException extends ApiException {
-  constructor(message?: string, details?: any) {
+  constructor(message?: string, details?: unknown) {
     super(ErrorCode.RATE_LIMIT_EXCEEDED, message, details);
   }
 }

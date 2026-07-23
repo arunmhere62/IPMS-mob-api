@@ -1,0 +1,25 @@
+# Auto detect text files and normalize line endings to LF on checkout.
+* text=auto
+
+# Shell scripts must always use LF line endings, even on Windows.
+*.sh text eol=lf
+
+# Jenkinsfile is plain text and should use LF.
+Jenkinsfile text eol=lf
+
+# YAML and JSON files should use LF.
+*.yml text eol=lf
+*.yaml text eol=lf
+*.json text eol=lf
+
+# Avoid normalizing binary files.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.tar binary
+*.gz binary

@@ -30,7 +30,7 @@ export class RbacService {
       throw new NotFoundException('User not found');
     }
 
-    const resolvedOrgId = organizationId ?? (user as any).organization_id ?? null;
+    const resolvedOrgId = organizationId ?? (user as { organization_id?: number }).organization_id ?? null;
     const now = new Date();
 
     const [allPermissions, rolePermissionRows, overrideRows, activeSubscription] = await Promise.all([
@@ -75,7 +75,7 @@ export class RbacService {
     const permissionsMap: Record<string, boolean> = {};
 
     for (const p of allPermissions) {
-      const key = this.buildPermissionKey(p.screen_name, p.action as any);
+      const key = this.buildPermissionKey(p.screen_name, p.action as string);
       const override = overridesByPermissionId.get(p.s_no);
 
       let allowed = false;
@@ -95,7 +95,7 @@ export class RbacService {
       .map(([key]) => key);
 
     const plan = activeSubscription
-      ? (activeSubscription as any).subscription_plans ?? null
+      ? activeSubscription.subscription_plans ?? null
       : null;
 
     let daysRemaining = 0;
@@ -107,7 +107,7 @@ export class RbacService {
     const subscription = {
       has_active_plan: !!activeSubscription,
       is_free_plan: plan ? Boolean(plan.is_free) : false,
-      is_trial: activeSubscription ? Boolean((activeSubscription as any).is_trial) : false,
+      is_trial: activeSubscription ? Boolean((activeSubscription as { is_trial?: boolean }).is_trial) : false,
       is_expired: !activeSubscription,
       days_remaining: daysRemaining,
       plan_name: plan?.name ?? null,

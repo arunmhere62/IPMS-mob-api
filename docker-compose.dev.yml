@@ -38,8 +38,38 @@ services:
       CCAVENUE_CANCEL_URL: ${CCAVENUE_CANCEL_URL}
       ALLOW_TEST_OTP: ${ALLOW_TEST_OTP}
       FORCE_REAL_SMS_IN_DEV: ${FORCE_REAL_SMS_IN_DEV}
+    expose:
+      - "3000"
+
+  nginx:
+    image: nginx:1.27-alpine
+    container_name: ipms-mob-api-development-nginx
+    restart: unless-stopped
+    depends_on:
+      - backend
     ports:
-      - "3001:3001"
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx/conf.d:/etc/nginx/conf.d
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+
+  certbot:
+    image: certbot/certbot:latest
+    container_name: ipms-mob-api-development-certbot
+    restart: unless-stopped
+    volumes:
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+    entrypoint: ["sh", "-c"]
+    command:
+      - |
+        trap exit TERM;
+        while :; do
+          certbot renew --webroot -w /var/www/certbot --quiet;
+          sleep 12h & wait $${!};
+        done
 
 networks:
   default:

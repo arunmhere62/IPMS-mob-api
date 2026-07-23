@@ -292,7 +292,7 @@ def setDeploymentConfig(String branch) {
     } else {
         env.COMPOSE_FILE = 'docker-compose.dev.yml'
         env.NETWORK_NAME = 'ipms_mob_api_dev'
-        env.APP_PORT = '3001'
+        env.APP_PORT = '3000'
         env.COMPOSE_PROJECT = "${env.APP_NAME}-development"
         env.CONTAINER_NAME = "${env.APP_NAME}-development-backend-1"
         env.DEPLOYMENT_ENV = 'development'
@@ -415,6 +415,12 @@ def deployApplication(String imageTag) {
         ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} down --remove-orphans
         ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --force-recreate
     """
+
+    if (env.DEPLOYMENT_ENV == 'development') {
+        sh """
+            ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --force-recreate nginx
+        """
+    }
 
     echo "Deployed ${imageTag} to ${env.DEPLOYMENT_ENV}"
 }

@@ -53,7 +53,6 @@ pipeline {
             when { expression { params.ACTION != 'Rollback' } }
             steps {
                 script {
-                    cleanWs()
                     checkout scm
 
                     env.GIT_COMMIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
@@ -265,7 +264,8 @@ pipeline {
             }
         }
         cleanup {
-            cleanWs()
+            // Workspace intentionally not cleaned because running containers mount
+            // nginx config and certbot data from this directory.
         }
     }
 }

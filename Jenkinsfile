@@ -12,8 +12,8 @@ pipeline {
     parameters {
         choice(
             name: 'ACTION',
-            choices: ['Development', 'Production', 'Rollback'],
-            description: 'Select the action to perform: deploy Development, deploy Production, or Rollback'
+            choices: ['Production', 'Development', 'Rollback'],
+            description: 'Select the action to perform: deploy Production, deploy Development, or Rollback'
         )
     }
 

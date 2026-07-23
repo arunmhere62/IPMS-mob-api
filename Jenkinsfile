@@ -165,18 +165,6 @@ pipeline {
             }
         }
 
-        stage('Production Approval') {
-            when {
-                allOf {
-                    expression { env.GIT_BRANCH_NAME == 'main' }
-                    expression { params.ACTION == 'Production' }
-                }
-            }
-            steps {
-                input message: 'Approve deployment to production?', ok: 'Deploy to Production'
-            }
-        }
-
         stage('Deploy Development') {
             when {
                 allOf {

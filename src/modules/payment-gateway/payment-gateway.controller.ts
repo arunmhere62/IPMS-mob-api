@@ -10,7 +10,8 @@ import {
   UseGuards,
   Req,
 } from '@nestjs/common';
-import { Response } from 'express';
+import { Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CCavenueService } from './ccavenue.service';
 import { InitiatePaymentDto } from './dto/initiate-payment.dto';
@@ -36,7 +37,7 @@ export class PaymentGatewayController {
   @ApiOperation({ summary: 'Initiate subscription payment transaction' })
   async initiatePayment(
     @Body() initiatePaymentDto: InitiatePaymentDto,
-    @Req() req: any,
+    @Req() req: Request,
   ) {
     this.logger.log(`Initiating subscription payment for order: ${initiatePaymentDto.orderId}`);
 
@@ -54,7 +55,7 @@ export class PaymentGatewayController {
       currency: initiatePaymentDto.currency,
       paymentType: initiatePaymentDto.paymentType,
       status: 'INITIATED',
-      metadata: initiatePaymentDto.metadata,
+      metadata: initiatePaymentDto.metadata as Prisma.InputJsonValue,
     });
 
     // Generate encrypted payment request

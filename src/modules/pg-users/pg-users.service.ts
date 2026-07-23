@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -126,7 +127,7 @@ export class PgUsersService {
    * Get all PG locations assigned to a user
    */
   async getUserPGs(userId: number, isActive: boolean = true) {
-    const whereClause: any = { user_id: userId };
+    const whereClause: Prisma.pg_usersWhereInput = { user_id: userId };
     if (isActive !== undefined) {
       whereClause.is_active = isActive;
     }
@@ -161,7 +162,7 @@ export class PgUsersService {
    * Get all users assigned to a PG location
    */
   async getPGUsers(pgId: number, isActive: boolean = true) {
-    const whereClause: any = { pg_id: pgId };
+    const whereClause: Prisma.pg_usersWhereInput = { pg_id: pgId };
     if (isActive !== undefined) {
       whereClause.is_active = isActive;
     }

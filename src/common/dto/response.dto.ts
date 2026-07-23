@@ -3,7 +3,7 @@
  * All API responses follow this structure for consistency
  */
 
-export interface ApiResponse<T = unknown> {
+export interface ApiResponse {
   success: boolean;
   statusCode: number;
   message: string;
@@ -16,7 +16,7 @@ export interface ApiResponse<T = unknown> {
   [key: string]: unknown; // Allow spreading data properties directly
 }
 
-export class ApiResponseDto<T = unknown> implements ApiResponse<T> {
+export class ApiResponseDto<T = unknown> implements ApiResponse {
   success: boolean;
   statusCode: number;
   message: string;

@@ -192,8 +192,9 @@ export class SubscriptionController {
     console.log('💳 Payment callback received');
     try {
       const result = await this.subscriptionService.handlePaymentCallback(body);
-      const orderId = (result as any)?.data?.orderId ?? '';
-      const paymentStatus = (result as any)?.data?.orderStatus ?? 'Success';
+      const responseData = (result as { data?: { orderId?: string; orderStatus?: string } }).data;
+      const orderId = responseData?.orderId ?? '';
+      const paymentStatus = responseData?.orderStatus ?? 'Success';
       const mappedStatus = paymentStatus === 'Success' ? 'Success' : paymentStatus === 'Aborted' ? 'Aborted' : 'Failure';
       const deepLink = `pgapp://payment-result?orderId=${encodeURIComponent(orderId)}&status=${mappedStatus}`;
       console.log('💳 Payment callback done, redirecting to:', deepLink);

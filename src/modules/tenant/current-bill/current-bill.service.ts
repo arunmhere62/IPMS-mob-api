@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { CreateCurrentBillDto, UpdateCurrentBillDto } from './dto';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -68,7 +69,7 @@ export class CurrentBillService {
     pg_id: number,
     total_bill_amount: number,
     bill_date?: string,
-    remarks?: string,
+    _remarks?: string,
   ) {
     // Verify room exists
     const room = await this.prisma.rooms.findFirst({
@@ -165,7 +166,7 @@ export class CurrentBillService {
     pg_id: number,
     bill_amount: number,
     bill_date?: string,
-    remarks?: string,
+    _remarks?: string,
   ) {
     try {
       // Verify tenant exists
@@ -239,7 +240,7 @@ export class CurrentBillService {
     limit: number = 10,
   ) {
     try {
-      const where: any = {
+      const where: Prisma.current_billsWhereInput = {
         pg_id: pg_id,
         is_deleted: false,
       };
@@ -367,7 +368,7 @@ export class CurrentBillService {
         throw new NotFoundException(`Current bill with ID ${id} not found`);
       }
 
-      const updateData: any = {};
+      const updateData: Prisma.current_billsUpdateInput = {};
 
       if (updateCurrentBillDto.bill_amount !== undefined) {
         if (updateCurrentBillDto.bill_amount <= 0) {
@@ -378,10 +379,6 @@ export class CurrentBillService {
 
       if (updateCurrentBillDto.bill_date) {
         updateData.bill_date = new Date(updateCurrentBillDto.bill_date);
-      }
-
-      if (updateCurrentBillDto.remarks !== undefined) {
-        updateData.remarks = updateCurrentBillDto.remarks;
       }
 
       updateData.updated_at = new Date();
@@ -457,7 +454,7 @@ export class CurrentBillService {
       const startOfMonth = new Date(year, month - 1, 1);
       const endOfMonth = new Date(year, month, 0);
 
-      const where: any = {
+      const where: Prisma.current_billsWhereInput = {
         pg_id: pg_id,
         is_deleted: false,
         bill_date: {

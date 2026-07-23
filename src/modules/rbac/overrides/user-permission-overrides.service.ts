@@ -1,7 +1,10 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseUtil } from '../../../common/utils/response.util';
-import { UpsertUserPermissionOverrideDto } from './dto/upsert-user-permission-override.dto';
+import {
+  UpsertUserPermissionOverrideDto,
+  UserPermissionOverrideEffect,
+} from './dto/upsert-user-permission-override.dto';
 import { RemoveUserPermissionOverrideDto } from './dto/remove-user-permission-override.dto';
 import { ListUserPermissionOverridesQueryDto } from './dto/list-user-permission-overrides.query.dto';
 import { BulkUpsertUserPermissionOverridesDto } from './dto/bulk-upsert-user-permission-overrides.dto';
@@ -52,12 +55,12 @@ export class UserPermissionOverridesService {
       create: {
         user_id: dto.user_id,
         permission_id: dto.permission_id,
-        effect: dto.effect as any,
+        effect: dto.effect as UserPermissionOverrideEffect,
         created_by: createdBy,
         expires_at: expiresAt,
       },
       update: {
-        effect: dto.effect as any,
+        effect: dto.effect as UserPermissionOverrideEffect,
         expires_at: expiresAt,
         updated_at: new Date(),
       },
@@ -99,12 +102,12 @@ export class UserPermissionOverridesService {
           create: {
             user_id: o.user_id,
             permission_id: o.permission_id,
-            effect: o.effect as any,
+            effect: o.effect as UserPermissionOverrideEffect,
             created_by: createdBy,
             expires_at: expiresAt,
           },
           update: {
-            effect: o.effect as any,
+            effect: o.effect as UserPermissionOverrideEffect,
             expires_at: expiresAt,
             updated_at: new Date(),
           },

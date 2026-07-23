@@ -1,4 +1,9 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Prisma,
+  refund_payments_payment_method,
+  refund_payments_status,
+} from '@prisma/client';
 import { PrismaService } from '../../../prisma/prisma.service';
 import { ResponseUtil } from '../../../common/utils/response.util';
 import { CreateRefundPaymentDto, UpdateRefundPaymentDto } from './dto';
@@ -116,8 +121,8 @@ export class RefundPaymentService {
         payment_date: createRefundPaymentDto.payment_date
           ? new Date(createRefundPaymentDto.payment_date)
           : new Date(),
-        payment_method: createRefundPaymentDto.payment_method as any,
-        status: createRefundPaymentDto.status as any,
+        payment_method: createRefundPaymentDto.payment_method as refund_payments_payment_method,
+        status: createRefundPaymentDto.status as refund_payments_status,
         remarks: createRefundPaymentDto.remarks,
       },
       include: {
@@ -166,7 +171,7 @@ export class RefundPaymentService {
     page: number = 1,
     limit: number = 10,
   ) {
-    const where: any = {
+    const where: Prisma.refund_paymentsWhereInput = {
       pg_id,
       is_deleted: false,
     };
@@ -176,7 +181,7 @@ export class RefundPaymentService {
     }
 
     if (status) {
-      where.status = status;
+      where.status = status as refund_payments_status;
     }
 
     if (room_id) {
@@ -344,7 +349,7 @@ export class RefundPaymentService {
       throw new NotFoundException(`Refund payment with ID ${id} not found`);
     }
 
-    const updateData: any = {};
+    const updateData: Prisma.refund_paymentsUpdateInput = {};
 
     if (updateRefundPaymentDto.amount_paid !== undefined) {
       updateData.amount_paid = updateRefundPaymentDto.amount_paid;

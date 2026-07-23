@@ -1,4 +1,4 @@
-import { IsOptional, IsNumber, IsString, IsDateString, IsBoolean } from 'class-validator';
+import { IsOptional, IsNumber, IsString, IsDateString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class UpdateCurrentBillDto {

@@ -1,4 +1,5 @@
 import { IsString, IsNumber, IsOptional, IsEnum, IsObject } from 'class-validator';
+import { Prisma } from '@prisma/client';
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 
 export enum SubscriptionPaymentType {
@@ -78,5 +79,5 @@ export class InitiatePaymentDto {
   @ApiPropertyOptional({ description: 'Additional metadata' })
   @IsOptional()
   @IsObject()
-  metadata?: Record<string, any>;
+  metadata?: Prisma.InputJsonValue;
 }

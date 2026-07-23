@@ -28,5 +28,5 @@ export class TenantAuthResponseDto {
   message: string;
 
   @ApiProperty({ required: false })
-  data?: any;
+  data?: unknown;
 }

@@ -263,10 +263,6 @@ pipeline {
                 }
             }
         }
-        cleanup {
-            // Workspace intentionally not cleaned because running containers mount
-            // nginx config and certbot data from this directory.
-        }
     }
 }
 

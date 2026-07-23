@@ -10,7 +10,7 @@ This document describes the production-ready Jenkins CI/CD pipeline for the Nest
 - **Branches:** `development`, `main`
 - **Deployment target:** Ubuntu VPS (same host as Jenkins)
 - **Runtime:** Docker + Docker Compose
-- **Container orchestration:** `docker-compose.dev.yml` (development) / `docker-compose.yml` (production)
+- **Container orchestration:** `docker-compose.dev.yml` (development) / `docker-compose.prod.yml` (production)
 - **Health endpoint:** `/api/v1/health`
 
 Jenkins runs inside Docker on the same VPS and has access to the host Docker socket, so pipeline steps can build, deploy, and health-check containers directly on the host.
@@ -76,7 +76,7 @@ Since Jenkins and the application run on the **same VPS**, there is no need to p
 Images are tagged with the short commit SHA instead of `latest`/`dev-latest`:
 
 ```text
-ipms-mob-api:a1b2c3d
+ipgm-mobapi-prod:a1b2c3d
 ```
 
 This makes every deployment fully traceable, prevents accidental reuse of stale `latest` tags, and makes rollbacks deterministic.
@@ -134,7 +134,7 @@ The pipeline defines four post-build handlers:
 
 ### 11. Rollback Support
 
-Before each deployment, the currently running container's image is inspected and saved as `ipms-mob-api:previous`. If the health check fails, Jenkins automatically rolls back to that image. You can also trigger a manual rollback by running the pipeline with the **Rollback** action selected.
+Before each deployment, the currently running container's image is inspected and saved as `ipgm-mobapi-prod:previous`. If the health check fails, Jenkins automatically rolls back to that image. You can also trigger a manual rollback by running the pipeline with the **Rollback** action selected.
 
 ### 12. Optional npm Scripts
 
@@ -151,9 +151,9 @@ Deployment Successful
 
 Branch    : development
 Commit    : a13bc82
-Image     : ipms-mob-api:a13bc82
+Image     : ipgm-mobapi-dev:a13bc82
 
-Container : ipms-mob-api-development-backend-1
+Container : ipgm-mobapi-dev
 
 Time      : 2026-07-22 21:50
 
@@ -186,7 +186,7 @@ Create these credentials in **Manage Jenkins → Credentials**:
 | Credential ID | Type | Required? | Purpose |
 | --- | --- | --- | --- |
 | `github-token` | Secret text | Optional | Used if the repository is private or if you want to authenticate GitHub API calls. |
-| `ipms-mob-api-env-file` | Secret file | Optional | The `.env` file that the compose project reads. If `.env` already exists in the workspace, or if you inject environment variables through Docker Compose, this credential is not required. |
+| `ipgm-mobapi-env-file` | Secret file | Optional | The `.env` file that the compose project reads. If `.env` already exists in the workspace, or if you inject environment variables through Docker Compose, this credential is not required. |
 | `vps-ssh-credentials` | SSH Username with private key | Optional | Reserved for future use if Jenkins is ever separated from the deployment host. The current pipeline deploys locally via the Docker socket. |
 
 > **Security note:** Never commit secrets to Git. Store environment variables either in this Jenkins secret file or in a secrets manager.
@@ -237,31 +237,31 @@ If the webhook is configured, pushing to a branch triggers the corresponding bra
 
 ### Automatic Rollback
 
-If the new container fails the health check, the `failure` post handler re-tags `ipms-mob-api:previous` to the active tag and recreates the compose project.
+If the new container fails the health check, the `failure` post handler re-tags `ipgm-mobapi-prod:previous` to the active tag and recreates the compose project.
 
 ### Manual Rollback
 
 Run the pipeline with the **Rollback** parameter enabled. The pipeline will:
 
 1. Skip checkout, build, lint, and audit.
-2. Verify that `ipms-mob-api:previous` exists.
+2. Verify that `ipgm-mobapi-prod:previous` exists.
 3. Re-create the compose project using the previous image.
 
 You can also run the helper script directly on the VPS:
 
 ```bash
-APP_IMAGE=ipms-mob-api \
-COMPOSE_FILE=docker-compose.yml \
-COMPOSE_PROJECT=ipms-mob-api-main \
+APP_IMAGE=ipgm-mobapi-prod \
+COMPOSE_FILE=docker-compose.prod.yml \
+COMPOSE_PROJECT=ipgm-mobapi-prod \
 ./scripts/jenkins-rollback.sh
 ```
 
 For development:
 
 ```bash
-APP_IMAGE=ipms-mob-api \
+APP_IMAGE=ipgm-mobapi-dev \
 COMPOSE_FILE=docker-compose.dev.yml \
-COMPOSE_PROJECT=ipms-mob-api-development \
+COMPOSE_PROJECT=ipgm-mobapi-dev \
 ./scripts/jenkins-rollback.sh
 ```
 
@@ -275,16 +275,16 @@ The `scripts/` folder contains reusable shell scripts for manual operations:
 | --- | --- |
 | `scripts/jenkins-build.sh` | Build the Docker image and tag it with the short commit SHA. |
 | `scripts/jenkins-deploy.sh` | Deploy the commit-SHA image with Docker Compose while saving the previous image. |
-| `scripts/jenkins-rollback.sh` | Roll back to the `ipms-mob-api:previous` image. |
+| `scripts/jenkins-rollback.sh` | Roll back to the `ipgm-mobapi-prod:previous` image. |
 | `scripts/jenkins-health-check.sh` | Poll the backend health endpoint inside the compose network. |
 
 ### Example Manual Deployment
 
 ```bash
-export APP_IMAGE=ipms-mob-api
+export APP_IMAGE=ipgm-mobapi-prod
 export GIT_COMMIT_SHORT=$(git rev-parse --short HEAD)
-export COMPOSE_FILE=docker-compose.yml
-export COMPOSE_PROJECT=ipms-mob-api-main
+export COMPOSE_FILE=docker-compose.prod.yml
+export COMPOSE_PROJECT=ipgm-mobapi-prod
 
 ./scripts/jenkins-build.sh
 ./scripts/jenkins-deploy.sh
@@ -312,13 +312,13 @@ export COMPOSE_PROJECT=ipms-mob-api-main
 
 ### Health check fails repeatedly
 
-- Check the container logs: `docker logs ipms-mob-api-main-backend-1` or `docker logs ipms-mob-api-development-backend-1`.
+- Check the container logs: `docker logs ipgm-mobapi-prod` or `docker logs ipgm-mobapi-dev`.
 - Verify the database is reachable from the container.
 - Ensure `.env` has the correct `DATABASE_URL` and other secrets.
 
 ### Rollback image not found
 
-A previous deployment must have run successfully for `ipms-mob-api:previous` to exist. If you are rolling back after a fresh install, there is no previous image.
+A previous deployment must have run successfully for `ipgm-mobapi-prod:previous` to exist. If you are rolling back after a fresh install, there is no previous image.
 
 ### `docker compose` not found
 

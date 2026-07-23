@@ -22,10 +22,10 @@ fi
 COMPOSE_CMD="docker compose"
 
 # Determine network name from the compose file or use a sensible default
-if [ "${COMPOSE_FILE}" = "docker-compose.yml" ]; then
-  NETWORK_NAME="${NETWORK_NAME:-ipms_mob_api}"
+if [ "${COMPOSE_FILE}" = "docker-compose.prod.yml" ]; then
+  NETWORK_NAME="${NETWORK_NAME:-ipgm-mobapi-prod-network}"
 else
-  NETWORK_NAME="${NETWORK_NAME:-ipms_mob_api_dev}"
+  NETWORK_NAME="${NETWORK_NAME:-ipgm-mobapi-dev-network}"
 fi
 
 # Ensure the external network exists

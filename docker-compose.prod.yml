@@ -1,7 +1,8 @@
 services:
-  backend:
+  ipgm-mobapi-prod:
     build: .
-    image: ${APP_IMAGE:-ipms-mob-api}:${APP_TAG:-latest}
+    image: ${APP_IMAGE:-ipgm-mobapi-prod}:${APP_TAG:-latest}
+    container_name: ipgm-mobapi-prod
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -41,12 +42,12 @@ services:
     expose:
       - "3000"
 
-  nginx:
+  ipgm-mobapi-prod-nginx:
     image: nginx:1.27-alpine
-    container_name: ipms-mob-api-nginx
+    container_name: ipgm-mobapi-prod-nginx
     restart: unless-stopped
     depends_on:
-      - backend
+      - ipgm-mobapi-prod
     ports:
       - "80:80"
       - "443:443"
@@ -55,9 +56,9 @@ services:
       - ./certbot/www:/var/www/certbot
       - ./certbot/conf:/etc/letsencrypt
 
-  certbot:
+  ipgm-mobapi-prod-certbot:
     image: certbot/certbot:latest
-    container_name: ipms-mob-api-certbot
+    container_name: ipgm-mobapi-prod-certbot
     restart: unless-stopped
     volumes:
       - ./certbot/www:/var/www/certbot
@@ -74,4 +75,4 @@ services:
 networks:
   default:
     external: true
-    name: ipms_mob_api
+    name: ipgm-mobapi-prod-network

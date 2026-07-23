@@ -5,12 +5,13 @@
 set -euo pipefail
 
 NETWORK_NAME="${NETWORK_NAME:-ipms_mob_api}"
+BACKEND_HOST="${BACKEND_HOST:-backend}"
 APP_PORT="${APP_PORT:-3000}"
 HEALTH_ENDPOINT="${HEALTH_ENDPOINT:-/api/v1/health}"
 MAX_RETRIES="${MAX_HEALTH_RETRIES:-12}"
 RETRY_DELAY="${HEALTH_RETRY_DELAY:-5}"
 
-URL="http://backend:${APP_PORT}${HEALTH_ENDPOINT}"
+URL="http://${BACKEND_HOST}:${APP_PORT}${HEALTH_ENDPOINT}"
 
 echo "Checking health at ${URL} (network: ${NETWORK_NAME})"
 

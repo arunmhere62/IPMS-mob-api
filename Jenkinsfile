@@ -283,18 +283,24 @@ def normalizeBranchName(String rawBranch) {
 
 def setDeploymentConfig(String branch) {
     if (branch == 'main') {
-        env.COMPOSE_FILE = 'docker-compose.yml'
-        env.NETWORK_NAME = 'ipms_mob_api'
+        env.APP_IMAGE = 'ipgm-mobapi-prod'
+        env.COMPOSE_FILE = 'docker-compose.prod.yml'
+        env.NETWORK_NAME = 'ipgm-mobapi-prod-network'
         env.APP_PORT = '3000'
-        env.COMPOSE_PROJECT = "${env.APP_NAME}-main"
-        env.CONTAINER_NAME = "${env.APP_NAME}-main-backend-1"
+        env.COMPOSE_PROJECT = 'ipgm-mobapi-prod'
+        env.CONTAINER_NAME = 'ipgm-mobapi-prod'
+        env.BACKEND_HOST = 'ipgm-mobapi-prod'
+        env.IMAGE_FQN = "${env.APP_IMAGE}:${env.GIT_COMMIT_SHORT}"
         env.DEPLOYMENT_ENV = 'production'
     } else {
+        env.APP_IMAGE = 'ipgm-mobapi-dev'
         env.COMPOSE_FILE = 'docker-compose.dev.yml'
-        env.NETWORK_NAME = 'ipms_mob_api_dev'
+        env.NETWORK_NAME = 'ipgm-mobapi-dev-network'
         env.APP_PORT = '3000'
-        env.COMPOSE_PROJECT = "${env.APP_NAME}-development"
-        env.CONTAINER_NAME = "${env.APP_NAME}-development-backend-1"
+        env.COMPOSE_PROJECT = 'ipgm-mobapi-dev'
+        env.CONTAINER_NAME = 'ipgm-mobapi-dev'
+        env.BACKEND_HOST = 'ipgm-mobapi-dev'
+        env.IMAGE_FQN = "${env.APP_IMAGE}:${env.GIT_COMMIT_SHORT}"
         env.DEPLOYMENT_ENV = 'development'
     }
     echo "Configured ${env.DEPLOYMENT_ENV} deployment using ${env.COMPOSE_FILE}"
@@ -382,7 +388,7 @@ def prepareEnvFile() {
     // Optional: pull .env from a Jenkins secret file credential if it exists.
     // If the credential is not configured, continue without it. The deployment
     // may still work if Docker Compose reads an env file from the host instead.
-    def envCredentialId = 'ipms-mob-api-env-file'
+    def envCredentialId = 'ipgm-mobapi-env-file'
 
     try {
         withCredentials([file(credentialsId: envCredentialId, variable: 'SECRET_ENV_FILE')]) {
@@ -458,7 +464,7 @@ def waitForHealthyApplication() {
             returnStatus: true,
             script: """
                 docker run --rm --network ${env.NETWORK_NAME} curlimages/curl:latest \
-                    -fsS --max-time 10 http://backend:${env.APP_PORT}${env.HEALTH_ENDPOINT}
+                    -fsS --max-time 10 http://${env.BACKEND_HOST}:${env.APP_PORT}${env.HEALTH_ENDPOINT}
             """
         )
 

@@ -26,10 +26,10 @@ fi
 COMPOSE_CMD="docker compose"
 
 # Determine network name from the compose file or use a sensible default
-if [ "${COMPOSE_FILE}" = "docker-compose.yml" ]; then
-  NETWORK_NAME="${NETWORK_NAME:-ipms_mob_api}"
+if [ "${COMPOSE_FILE}" = "docker-compose.prod.yml" ]; then
+  NETWORK_NAME="${NETWORK_NAME:-ipgm-mobapi-prod-network}"
 else
-  NETWORK_NAME="${NETWORK_NAME:-ipms_mob_api_dev}"
+  NETWORK_NAME="${NETWORK_NAME:-ipgm-mobapi-dev-network}"
 fi
 
 # Ensure the external network exists
@@ -42,7 +42,7 @@ echo "Deploying ${APP_NAME} from ${COMPOSE_FILE} (project: ${COMPOSE_PROJECT})"
 echo "Image: ${IMAGE_FQN}"
 
 # Preserve previous image for rollback by inspecting the running backend container
-RUNNING_CONTAINER=$(docker ps -q --filter name="^/${COMPOSE_PROJECT}-backend-1$" || true)
+RUNNING_CONTAINER=$(docker ps -q --filter ancestor="${APP_IMAGE}" --filter name="^/${COMPOSE_PROJECT}.*" || true)
 if [ -n "${RUNNING_CONTAINER}" ]; then
   CURRENT_IMAGE=$(docker inspect --format='{{.Config.Image}}' "${RUNNING_CONTAINER}" || true)
   if [ -n "${CURRENT_IMAGE}" ]; then

@@ -15,6 +15,11 @@ pipeline {
             choices: ['Production', 'Development', 'Rollback'],
             description: 'Select the action to perform: deploy Production, deploy Development, or Rollback'
         )
+        string(
+            name: 'PRODUCTION_NOTIFICATION_EMAIL',
+            defaultValue: 'arunmhere62@gmail.com',
+            description: 'Recipient for production deployment notifications'
+        )
     }
 
     environment {
@@ -165,6 +170,21 @@ pipeline {
             }
         }
 
+        stage('Notify Production Deployment Started') {
+            when {
+                allOf {
+                    expression { env.GIT_BRANCH_NAME == 'main' }
+                    expression { params.ACTION == 'Production' }
+                }
+            }
+            steps {
+                script {
+                    env.PRODUCTION_DEPLOYMENT_STARTED = 'true'
+                    sendProductionDeploymentEmail('STARTED', 'Production deployment is starting.')
+                }
+            }
+        }
+
         stage('Deploy Development') {
             when {
                 allOf {
@@ -237,10 +257,16 @@ pipeline {
             }
         }
         success {
-            echo "Pipeline completed successfully: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+            script {
+                echo "Pipeline completed successfully: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                sendProductionDeploymentEmail('SUCCEEDED', 'Production deployment completed and passed the health check.')
+            }
         }
         unstable {
-            echo "Pipeline completed with warnings (lint/tests). Deployment: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+            script {
+                echo "Pipeline completed with warnings (lint/tests). Deployment: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                sendProductionDeploymentEmail('COMPLETED WITH WARNINGS', 'Production deployment completed and passed the health check, but the pipeline has warnings.')
+            }
         }
         failure {
             script {
@@ -249,6 +275,12 @@ pipeline {
                     echo 'Deployment did not reach healthy state. Attempting automatic rollback to previous image...'
                     rollbackDeployment()
                 }
+                sendProductionDeploymentEmail('FAILED', 'Production deployment failed. Review the Jenkins build log for details.')
+            }
+        }
+        aborted {
+            script {
+                sendProductionDeploymentEmail('ABORTED', 'Production deployment was aborted before completion.')
             }
         }
     }
@@ -257,6 +289,27 @@ pipeline {
 // -----------------------------------------------------------------------------
 // Helper functions
 // -----------------------------------------------------------------------------
+
+def sendProductionDeploymentEmail(String status, String message) {
+    if (env.PRODUCTION_DEPLOYMENT_STARTED != 'true') return
+
+    def subject = "[IPMS Production] ${status} | Build #${env.BUILD_NUMBER}"
+    def body = """Production deployment ${status.toLowerCase()}.
+
+${message}
+
+Branch: ${env.GIT_BRANCH_NAME ?: 'main'}
+Commit: ${env.GIT_COMMIT_SHORT ?: 'unknown'}
+Image: ${env.IMAGE_FQN ?: 'unknown'}
+Build: ${env.BUILD_URL ?: 'unavailable'}
+""".stripIndent()
+
+    try {
+        mail to: params.PRODUCTION_NOTIFICATION_EMAIL, subject: subject, body: body
+    } catch (Exception e) {
+        echo "WARNING: Could not send production deployment email: ${e.message}"
+    }
+}
 
 def normalizeBranchName(String rawBranch) {
     if (!rawBranch) return 'unknown'

@@ -17,6 +17,7 @@ import { HeadersValidationGuard } from '../../../common/guards/headers-validatio
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
 
+
 @ApiTags('current-bills')
 @Controller('current-bills')
 @UseGuards(HeadersValidationGuard)

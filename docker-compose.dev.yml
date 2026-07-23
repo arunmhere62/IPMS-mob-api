@@ -1,14 +1,13 @@
 services:
-  ipgm-mobapi-dev:
+  backend:
     build: .
-    image: ${APP_IMAGE:-ipgm-mobapi-dev}:${APP_TAG:-dev-latest}
-    container_name: ipgm-mobapi-dev
+    image: ${APP_IMAGE:-ipms-mob-api}:${APP_TAG:-dev-latest}
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: development
-      PORT: 3000
+      PORT: 3001
       API_PREFIX: api
       API_VERSION: v1
       DATABASE_URL: ${DATABASE_URL}
@@ -42,12 +41,12 @@ services:
     expose:
       - "3000"
 
-  ipgm-mobapi-dev-nginx:
+  nginx:
     image: nginx:1.27-alpine
-    container_name: ipgm-mobapi-dev-nginx
+    container_name: ipms-mob-api-development-nginx
     restart: unless-stopped
     depends_on:
-      - ipgm-mobapi-dev
+      - backend
     ports:
       - "80:80"
       - "443:443"
@@ -56,9 +55,9 @@ services:
       - ./certbot/www:/var/www/certbot
       - ./certbot/conf:/etc/letsencrypt
 
-  ipgm-mobapi-dev-certbot:
+  certbot:
     image: certbot/certbot:latest
-    container_name: ipgm-mobapi-dev-certbot
+    container_name: ipms-mob-api-development-certbot
     restart: unless-stopped
     volumes:
       - ./certbot/www:/var/www/certbot
@@ -75,4 +74,4 @@ services:
 networks:
   default:
     external: true
-    name: ipgm-mobapi-dev-network
+    name: ipms_mob_api_dev

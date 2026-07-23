@@ -151,9 +151,9 @@ Deployment Successful
 
 Branch    : development
 Commit    : a13bc82
-Image     : ipgm-mobapi-dev:a13bc82
+Image     : ipms-mob-api:a13bc82
 
-Container : ipgm-mobapi-dev
+Container : ipms-mob-api-development-backend-1
 
 Time      : 2026-07-22 21:50
 
@@ -259,9 +259,9 @@ COMPOSE_PROJECT=ipgm-mobapi-prod \
 For development:
 
 ```bash
-APP_IMAGE=ipgm-mobapi-dev \
+APP_IMAGE=ipms-mob-api \
 COMPOSE_FILE=docker-compose.dev.yml \
-COMPOSE_PROJECT=ipgm-mobapi-dev \
+COMPOSE_PROJECT=ipms-mob-api-development \
 ./scripts/jenkins-rollback.sh
 ```
 
@@ -312,7 +312,7 @@ export COMPOSE_PROJECT=ipgm-mobapi-prod
 
 ### Health check fails repeatedly
 
-- Check the container logs: `docker logs ipgm-mobapi-prod` or `docker logs ipgm-mobapi-dev`.
+- Check the container logs: `docker logs ipgm-mobapi-prod` or `docker logs ipms-mob-api-development-backend-1`.
 - Verify the database is reachable from the container.
 - Ensure `.env` has the correct `DATABASE_URL` and other secrets.
 

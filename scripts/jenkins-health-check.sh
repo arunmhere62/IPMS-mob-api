@@ -4,7 +4,7 @@
 # ---------------------------------------------------------------------------
 set -euo pipefail
 
-NETWORK_NAME="${NETWORK_NAME:-ipms_mob_api}"
+NETWORK_NAME="${NETWORK_NAME:-ipgm-mobapi-prod-network}"
 BACKEND_HOST="${BACKEND_HOST:-backend}"
 APP_PORT="${APP_PORT:-3000}"
 HEALTH_ENDPOINT="${HEALTH_ENDPOINT:-/api/v1/health}"

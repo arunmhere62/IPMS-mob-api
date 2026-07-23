@@ -293,14 +293,12 @@ def setDeploymentConfig(String branch) {
         env.IMAGE_FQN = "${env.APP_IMAGE}:${env.GIT_COMMIT_SHORT}"
         env.DEPLOYMENT_ENV = 'production'
     } else {
-        env.APP_IMAGE = 'ipgm-mobapi-dev'
         env.COMPOSE_FILE = 'docker-compose.dev.yml'
-        env.NETWORK_NAME = 'ipgm-mobapi-dev-network'
+        env.NETWORK_NAME = 'ipms_mob_api_dev'
         env.APP_PORT = '3000'
-        env.COMPOSE_PROJECT = 'ipgm-mobapi-dev'
-        env.CONTAINER_NAME = 'ipgm-mobapi-dev'
-        env.BACKEND_HOST = 'ipgm-mobapi-dev'
-        env.IMAGE_FQN = "${env.APP_IMAGE}:${env.GIT_COMMIT_SHORT}"
+        env.COMPOSE_PROJECT = "${env.APP_NAME}-development"
+        env.CONTAINER_NAME = "${env.APP_NAME}-development-backend-1"
+        env.BACKEND_HOST = 'backend'
         env.DEPLOYMENT_ENV = 'development'
     }
     echo "Configured ${env.DEPLOYMENT_ENV} deployment using ${env.COMPOSE_FILE}"

@@ -84,10 +84,10 @@ networks:
     name: ipgm-mobapi-prod-network
   development:
     external: true
+    name: ipgm-mobapi-dev-network
   admin:
     external: true
     name: ipgm-admin-api-network
-    name: ipgm-mobapi-dev-network
 
 volumes:
   certbot-www:

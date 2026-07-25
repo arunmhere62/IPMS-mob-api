@@ -10,10 +10,10 @@ pipeline {
     }
 
     parameters {
-        choice(
-            name: 'ACTION',
-            choices: ['Development', 'Production', 'Rollback'],
-            description: 'Select the action to perform: deploy Production, deploy Development, or Rollback'
+        booleanParam(
+            name: 'ROLLBACK',
+            defaultValue: false,
+            description: 'Check this to roll back to the previous image instead of deploying a new one'
         )
         string(
             name: 'PRODUCTION_NOTIFICATION_EMAIL',
@@ -40,7 +40,7 @@ pipeline {
         // Rollback path: skip build/quality stages and go straight to rollback.
         // ------------------------------------------------------------------
         stage('Rollback') {
-            when { expression { params.ACTION == 'Rollback' } }
+            when { expression { params.ROLLBACK } }
             steps {
                 script {
                     env.GIT_BRANCH_NAME = normalizeBranchName(env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown')
@@ -54,7 +54,7 @@ pipeline {
         // Build & quality path
         // ------------------------------------------------------------------
         stage('Checkout') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     checkout scm
@@ -69,13 +69,12 @@ pipeline {
         }
 
         stage('Detect Branch & Configure Deployment') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     setDeploymentConfig(env.GIT_BRANCH_NAME)
 
                     echo '============================================'
-                    echo "Action: ${params.ACTION}"
                     echo "Branch: ${env.GIT_BRANCH_NAME}"
                     echo "Environment: ${env.DEPLOYMENT_ENV}"
                     echo "Image: ${env.IMAGE_FQN}"
@@ -88,7 +87,7 @@ pipeline {
         }
 
         stage('Install Dependencies') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     if (fileExists('package-lock.json')) {
@@ -102,7 +101,7 @@ pipeline {
         }
 
         stage('Format Check') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     runOptionalNpmScript('format')
@@ -111,7 +110,7 @@ pipeline {
         }
 
         stage('ESLint') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     runOptionalNpmScript('lint')
@@ -120,7 +119,7 @@ pipeline {
         }
 
         stage('npm Audit') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     // Audit is currently informational only. It prints vulnerabilities but does not fail or mark the build unstable.
@@ -131,7 +130,7 @@ pipeline {
         }
 
         stage('Unit Tests') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     runOptionalNpmScript('test', '--passWithNoTests --coverage=false')
@@ -140,7 +139,7 @@ pipeline {
         }
 
         stage('E2E Tests') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     runOptionalNpmScript('test:e2e', '--passWithNoTests')
@@ -149,14 +148,14 @@ pipeline {
         }
 
         stage('Build NestJS Application') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 sh 'npm run build'
             }
         }
 
         stage('Archive Build Artifacts') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 // Persist the compiled output and deployment manifests for build history/debugging.
                 archiveArtifacts artifacts: 'dist/**/*,package.json,package-lock.json,docker-compose*.yml', allowEmptyArchive: true
@@ -164,7 +163,7 @@ pipeline {
         }
 
         stage('Build Docker Image') {
-            when { expression { params.ACTION != 'Rollback' } }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     sh """
@@ -181,7 +180,7 @@ pipeline {
             when {
                 allOf {
                     expression { env.GIT_BRANCH_NAME == 'main' }
-                    expression { params.ACTION == 'Production' }
+                    expression { !params.ROLLBACK }
                 }
             }
             steps {
@@ -192,27 +191,8 @@ pipeline {
             }
         }
 
-        stage('Deploy Development') {
-            when {
-                allOf {
-                    expression { env.GIT_BRANCH_NAME == 'development' }
-                    expression { params.ACTION == 'Development' }
-                }
-            }
-            steps {
-                script {
-                    deployApplication(env.IMAGE_FQN)
-                }
-            }
-        }
-
-        stage('Deploy Production') {
-            when {
-                allOf {
-                    expression { env.GIT_BRANCH_NAME == 'main' }
-                    expression { params.ACTION == 'Production' }
-                }
-            }
+        stage('Deploy') {
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     deployApplication(env.IMAGE_FQN)
@@ -221,14 +201,7 @@ pipeline {
         }
 
         stage('Health Check') {
-            when {
-                expression {
-                    params.ACTION != 'Rollback' && (
-                        (env.GIT_BRANCH_NAME == 'development' && params.ACTION == 'Development') ||
-                        (env.GIT_BRANCH_NAME == 'main' && params.ACTION == 'Production')
-                    )
-                }
-            }
+            when { expression { !params.ROLLBACK } }
             steps {
                 script {
                     waitForHealthyApplication()
@@ -239,11 +212,9 @@ pipeline {
 
         stage('Deployment Summary') {
             when {
-                expression {
-                    params.ACTION != 'Rollback' && (
-                        (env.GIT_BRANCH_NAME == 'development' && params.ACTION == 'Development') ||
-                        (env.GIT_BRANCH_NAME == 'main' && params.ACTION == 'Production')
-                    ) && env.DEPLOY_HAPPENED == 'true'
+                allOf {
+                    expression { !params.ROLLBACK }
+                    expression { env.DEPLOY_HAPPENED == 'true' }
                 }
             }
             steps {
@@ -257,7 +228,7 @@ pipeline {
     post {
         always {
             script {
-                if (params.ACTION != 'Rollback') {
+                if (!params.ROLLBACK) {
                     // Remove dangling build layers to prevent disk bloat. Tagged images are never removed.
                     sh 'docker image prune -f'
                 }
@@ -267,7 +238,6 @@ pipeline {
             script {
                 echo '============================================'
                 echo 'RESULT: SUCCESS'
-                echo "Action: ${params.ACTION}"
                 echo "Branch: ${env.GIT_BRANCH_NAME}"
                 echo "Environment: ${env.DEPLOYMENT_ENV ?: 'unknown'}"
                 echo "Image: ${env.IMAGE_FQN ?: 'Rollback mode'}"
@@ -279,7 +249,6 @@ pipeline {
             script {
                 echo '============================================'
                 echo 'RESULT: UNSTABLE'
-                echo "Action: ${params.ACTION}"
                 echo "Branch: ${env.GIT_BRANCH_NAME}"
                 echo "Environment: ${env.DEPLOYMENT_ENV ?: 'unknown'}"
                 echo "Image: ${env.IMAGE_FQN ?: 'Rollback mode'}"
@@ -291,12 +260,11 @@ pipeline {
             script {
                 echo '============================================'
                 echo 'RESULT: FAILURE'
-                echo "Action: ${params.ACTION}"
                 echo "Branch: ${env.GIT_BRANCH_NAME}"
                 echo "Environment: ${env.DEPLOYMENT_ENV ?: 'unknown'}"
                 echo "Image: ${env.IMAGE_FQN ?: 'unknown'}"
                 echo '============================================'
-                if (params.ACTION != 'Rollback' && env.DEPLOY_HAPPENED == 'true' && env.DEPLOY_SUCCESSFUL != 'true') {
+                if (!params.ROLLBACK && env.DEPLOY_HAPPENED == 'true' && env.DEPLOY_SUCCESSFUL != 'true') {
                     echo 'Deployment did not reach healthy state. Attempting automatic rollback to previous image...'
                     rollbackDeployment()
                 }
@@ -307,7 +275,6 @@ pipeline {
             script {
                 echo '============================================'
                 echo 'RESULT: ABORTED'
-                echo "Action: ${params.ACTION}"
                 echo "Branch: ${env.GIT_BRANCH_NAME}"
                 echo '============================================'
                 sendProductionDeploymentEmail('ABORTED', 'Production deployment was aborted before completion.')

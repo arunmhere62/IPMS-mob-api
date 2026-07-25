@@ -330,12 +330,14 @@ def setDeploymentConfig(String branch) {
         env.IMAGE_FQN = "${env.APP_IMAGE}:${env.GIT_COMMIT_SHORT}"
         env.DEPLOYMENT_ENV = 'production'
     } else {
+        env.APP_IMAGE = 'ipgm-mobapi-dev'
         env.COMPOSE_FILE = 'docker-compose.dev.yml'
-        env.NETWORK_NAME = 'ipms_mob_api_dev'
+        env.NETWORK_NAME = 'ipgm-mobapi-dev-network'
         env.APP_PORT = '3000'
-        env.COMPOSE_PROJECT = "${env.APP_NAME}-development"
-        env.CONTAINER_NAME = "${env.APP_NAME}-development-backend-1"
-        env.BACKEND_HOST = 'backend'
+        env.COMPOSE_PROJECT = 'ipgm-mobapi-dev'
+        env.CONTAINER_NAME = 'ipgm-mobapi-dev'
+        env.BACKEND_HOST = 'ipgm-mobapi-dev'
+        env.IMAGE_FQN = "${env.APP_IMAGE}:${env.GIT_COMMIT_SHORT}"
         env.DEPLOYMENT_ENV = 'development'
     }
     echo "Configured ${env.DEPLOYMENT_ENV} deployment using ${env.COMPOSE_FILE}"
@@ -373,7 +375,7 @@ def tagPreviousImage() {
     // Tag the image from the currently running backend container so we can roll back.
     def runningContainer = sh(
         returnStdout: true,
-        script: "docker ps -q --filter publish=${env.APP_PORT} --filter ancestor=${env.APP_IMAGE} || true"
+        script: "docker ps -q --filter name=^/${env.CONTAINER_NAME}\$ --filter ancestor=${env.APP_IMAGE} || true"
     ).trim()
 
     if (!runningContainer) {
@@ -442,6 +444,11 @@ def deployApplication(String imageTag) {
     // Ensure the external network exists before Compose tries to use it.
     ensureNetworkExists(env.NETWORK_NAME)
 
+    // Prod Nginx also attaches to the dev network; ensure it exists so Compose doesn't fail.
+    if (env.DEPLOYMENT_ENV == 'production') {
+        ensureNetworkExists('ipgm-mobapi-dev-network')
+    }
+
     // Tag the currently running image so we can roll back if the new deployment fails.
     tagPreviousImage()
 
@@ -457,11 +464,6 @@ def deployApplication(String imageTag) {
         ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --force-recreate
     """
 
-    if (env.DEPLOYMENT_ENV == 'development') {
-        sh """
-            ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --force-recreate nginx
-        """
-    }
 
     echo "Deployed ${imageTag} to ${env.DEPLOYMENT_ENV}"
 }

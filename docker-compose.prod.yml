@@ -57,6 +57,9 @@ services:
     volumes:
       - certbot-www:/var/www/certbot
       - letsencrypt:/etc/letsencrypt
+    networks:
+      default:
+      development:
 
   ipgm-mobapi-prod-certbot:
     image: certbot/certbot:latest
@@ -78,6 +81,9 @@ networks:
   default:
     external: true
     name: ipgm-mobapi-prod-network
+  development:
+    external: true
+    name: ipgm-mobapi-dev-network
 
 volumes:
   certbot-www:

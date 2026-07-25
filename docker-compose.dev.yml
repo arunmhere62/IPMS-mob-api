@@ -1,13 +1,14 @@
 services:
-  backend:
+  ipgm-mobapi-dev:
     build: .
-    image: ${APP_IMAGE:-ipms-mob-api}:${APP_TAG:-dev-latest}
+    image: ${APP_IMAGE:-ipgm-mobapi-dev}:${APP_TAG:-dev-latest}
+    container_name: ipgm-mobapi-dev
     restart: unless-stopped
     extra_hosts:
       - "host.docker.internal:host-gateway"
     environment:
       NODE_ENV: development
-      PORT: 3001
+      PORT: 3000
       API_PREFIX: api
       API_VERSION: v1
       DATABASE_URL: ${DATABASE_URL}
@@ -41,37 +42,7 @@ services:
     expose:
       - "3000"
 
-  nginx:
-    image: nginx:1.27-alpine
-    container_name: ipms-mob-api-development-nginx
-    restart: unless-stopped
-    depends_on:
-      - backend
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./nginx/conf.d:/etc/nginx/conf.d
-      - ./certbot/www:/var/www/certbot
-      - ./certbot/conf:/etc/letsencrypt
-
-  certbot:
-    image: certbot/certbot:latest
-    container_name: ipms-mob-api-development-certbot
-    restart: unless-stopped
-    volumes:
-      - ./certbot/www:/var/www/certbot
-      - ./certbot/conf:/etc/letsencrypt
-    entrypoint: ["sh", "-c"]
-    command:
-      - |
-        trap exit TERM;
-        while :; do
-          certbot renew --webroot -w /var/www/certbot --quiet;
-          sleep 12h & wait $${!};
-        done
-
 networks:
   default:
     external: true
-    name: ipms_mob_api_dev
+    name: ipgm-mobapi-dev-network

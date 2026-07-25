@@ -60,6 +60,7 @@ services:
     networks:
       default:
       development:
+      admin:
 
   ipgm-mobapi-prod-certbot:
     image: certbot/certbot:latest
@@ -83,6 +84,9 @@ networks:
     name: ipgm-mobapi-prod-network
   development:
     external: true
+  admin:
+    external: true
+    name: ipgm-admin-api-network
     name: ipgm-mobapi-dev-network
 
 volumes:

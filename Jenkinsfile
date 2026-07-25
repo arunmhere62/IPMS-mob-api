@@ -12,7 +12,7 @@ pipeline {
     parameters {
         choice(
             name: 'ACTION',
-            choices: ['Production', 'Development', 'Rollback'],
+            choices: ['Development', 'Production', 'Rollback'],
             description: 'Select the action to perform: deploy Production, deploy Development, or Rollback'
         )
         string(
@@ -24,7 +24,6 @@ pipeline {
 
     environment {
         APP_NAME = 'ipms-mob-api'
-        APP_IMAGE = 'ipms-mob-api'
 
         // Docker BuildKit makes builds faster and more cache-efficient.
         DOCKER_BUILDKIT = '1'
@@ -62,11 +61,9 @@ pipeline {
 
                     env.GIT_COMMIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                     env.GIT_BRANCH_NAME = normalizeBranchName(env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown')
-                    env.IMAGE_FQN = "${env.APP_IMAGE}:${env.GIT_COMMIT_SHORT}"
 
                     echo "Branch: ${env.GIT_BRANCH_NAME}"
                     echo "Commit: ${env.GIT_COMMIT_SHORT}"
-                    echo "Image: ${env.IMAGE_FQN}"
                 }
             }
         }
@@ -341,6 +338,7 @@ def setDeploymentConfig(String branch) {
         env.DEPLOYMENT_ENV = 'development'
     }
     echo "Configured ${env.DEPLOYMENT_ENV} deployment using ${env.COMPOSE_FILE}"
+    echo "Image: ${env.IMAGE_FQN}"
 }
 
 def composeCommand() {

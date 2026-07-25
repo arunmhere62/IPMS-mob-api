@@ -73,6 +73,16 @@ pipeline {
             steps {
                 script {
                     setDeploymentConfig(env.GIT_BRANCH_NAME)
+
+                    echo '============================================'
+                    echo "Action: ${params.ACTION}"
+                    echo "Branch: ${env.GIT_BRANCH_NAME}"
+                    echo "Environment: ${env.DEPLOYMENT_ENV}"
+                    echo "Image: ${env.IMAGE_FQN}"
+                    echo "Container: ${env.CONTAINER_NAME}"
+                    echo "Network: ${env.NETWORK_NAME}"
+                    echo "Compose file: ${env.COMPOSE_FILE}"
+                    echo '============================================'
                 }
             }
         }
@@ -255,19 +265,37 @@ pipeline {
         }
         success {
             script {
-                echo "Pipeline completed successfully: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                echo '============================================'
+                echo 'RESULT: SUCCESS'
+                echo "Action: ${params.ACTION}"
+                echo "Branch: ${env.GIT_BRANCH_NAME}"
+                echo "Environment: ${env.DEPLOYMENT_ENV ?: 'unknown'}"
+                echo "Image: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                echo '============================================'
                 sendProductionDeploymentEmail('SUCCEEDED', 'Production deployment completed and passed the health check.')
             }
         }
         unstable {
             script {
-                echo "Pipeline completed with warnings (lint/tests). Deployment: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                echo '============================================'
+                echo 'RESULT: UNSTABLE'
+                echo "Action: ${params.ACTION}"
+                echo "Branch: ${env.GIT_BRANCH_NAME}"
+                echo "Environment: ${env.DEPLOYMENT_ENV ?: 'unknown'}"
+                echo "Image: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                echo '============================================'
                 sendProductionDeploymentEmail('COMPLETED WITH WARNINGS', 'Production deployment completed and passed the health check, but the pipeline has warnings.')
             }
         }
         failure {
             script {
-                echo 'Pipeline failed.'
+                echo '============================================'
+                echo 'RESULT: FAILURE'
+                echo "Action: ${params.ACTION}"
+                echo "Branch: ${env.GIT_BRANCH_NAME}"
+                echo "Environment: ${env.DEPLOYMENT_ENV ?: 'unknown'}"
+                echo "Image: ${env.IMAGE_FQN ?: 'unknown'}"
+                echo '============================================'
                 if (params.ACTION != 'Rollback' && env.DEPLOY_HAPPENED == 'true' && env.DEPLOY_SUCCESSFUL != 'true') {
                     echo 'Deployment did not reach healthy state. Attempting automatic rollback to previous image...'
                     rollbackDeployment()
@@ -277,6 +305,11 @@ pipeline {
         }
         aborted {
             script {
+                echo '============================================'
+                echo 'RESULT: ABORTED'
+                echo "Action: ${params.ACTION}"
+                echo "Branch: ${env.GIT_BRANCH_NAME}"
+                echo '============================================'
                 sendProductionDeploymentEmail('ABORTED', 'Production deployment was aborted before completion.')
             }
         }
@@ -423,7 +456,7 @@ def prepareEnvFile() {
     // Optional: pull .env from a Jenkins secret file credential if it exists.
     // If the credential is not configured, continue without it. The deployment
     // may still work if Docker Compose reads an env file from the host instead.
-    def envCredentialId = 'ipgm-mobapi-env-file'
+    def envCredentialId = env.DEPLOYMENT_ENV == 'production' ? 'ipgm-mobapi-prod-env-file' : 'ipgm-mobapi-dev-env-file'
 
     try {
         withCredentials([file(credentialsId: envCredentialId, variable: 'SECRET_ENV_FILE')]) {

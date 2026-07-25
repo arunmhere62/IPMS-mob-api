@@ -475,9 +475,10 @@ def deployApplication(String imageTag) {
     // Ensure the external network exists before Compose tries to use it.
     ensureNetworkExists(env.NETWORK_NAME)
 
-    // Prod Nginx also attaches to the dev network; ensure it exists so Compose doesn't fail.
+    // Prod Nginx also attaches to the dev/admin networks; ensure they exist.
     if (env.DEPLOYMENT_ENV == 'production') {
         ensureNetworkExists('ipgm-mobapi-dev-network')
+        ensureNetworkExists('ipgm-admin-api-network')
     }
 
     // Tag the currently running image so we can roll back if the new deployment fails.

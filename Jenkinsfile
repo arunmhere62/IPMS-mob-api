@@ -12,7 +12,7 @@ pipeline {
     parameters {
         choice(
             name: 'ACTION',
-            choices: ['Production', 'Development', 'Rollback'],
+            choices: ['Development', 'Production', 'Rollback'],
             description: 'Select the action to perform: deploy Production, deploy Development, or Rollback'
         )
         string(
@@ -24,7 +24,6 @@ pipeline {
 
     environment {
         APP_NAME = 'ipms-mob-api'
-        APP_IMAGE = 'ipms-mob-api'
 
         // Docker BuildKit makes builds faster and more cache-efficient.
         DOCKER_BUILDKIT = '1'
@@ -62,11 +61,9 @@ pipeline {
 
                     env.GIT_COMMIT_SHORT = sh(returnStdout: true, script: 'git rev-parse --short HEAD').trim()
                     env.GIT_BRANCH_NAME = normalizeBranchName(env.BRANCH_NAME ?: env.GIT_BRANCH ?: 'unknown')
-                    env.IMAGE_FQN = "${env.APP_IMAGE}:${env.GIT_COMMIT_SHORT}"
 
                     echo "Branch: ${env.GIT_BRANCH_NAME}"
                     echo "Commit: ${env.GIT_COMMIT_SHORT}"
-                    echo "Image: ${env.IMAGE_FQN}"
                 }
             }
         }
@@ -76,6 +73,16 @@ pipeline {
             steps {
                 script {
                     setDeploymentConfig(env.GIT_BRANCH_NAME)
+
+                    echo '============================================'
+                    echo "Action: ${params.ACTION}"
+                    echo "Branch: ${env.GIT_BRANCH_NAME}"
+                    echo "Environment: ${env.DEPLOYMENT_ENV}"
+                    echo "Image: ${env.IMAGE_FQN}"
+                    echo "Container: ${env.CONTAINER_NAME}"
+                    echo "Network: ${env.NETWORK_NAME}"
+                    echo "Compose file: ${env.COMPOSE_FILE}"
+                    echo '============================================'
                 }
             }
         }
@@ -258,19 +265,37 @@ pipeline {
         }
         success {
             script {
-                echo "Pipeline completed successfully: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                echo '============================================'
+                echo 'RESULT: SUCCESS'
+                echo "Action: ${params.ACTION}"
+                echo "Branch: ${env.GIT_BRANCH_NAME}"
+                echo "Environment: ${env.DEPLOYMENT_ENV ?: 'unknown'}"
+                echo "Image: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                echo '============================================'
                 sendProductionDeploymentEmail('SUCCEEDED', 'Production deployment completed and passed the health check.')
             }
         }
         unstable {
             script {
-                echo "Pipeline completed with warnings (lint/tests). Deployment: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                echo '============================================'
+                echo 'RESULT: UNSTABLE'
+                echo "Action: ${params.ACTION}"
+                echo "Branch: ${env.GIT_BRANCH_NAME}"
+                echo "Environment: ${env.DEPLOYMENT_ENV ?: 'unknown'}"
+                echo "Image: ${env.IMAGE_FQN ?: 'Rollback mode'}"
+                echo '============================================'
                 sendProductionDeploymentEmail('COMPLETED WITH WARNINGS', 'Production deployment completed and passed the health check, but the pipeline has warnings.')
             }
         }
         failure {
             script {
-                echo 'Pipeline failed.'
+                echo '============================================'
+                echo 'RESULT: FAILURE'
+                echo "Action: ${params.ACTION}"
+                echo "Branch: ${env.GIT_BRANCH_NAME}"
+                echo "Environment: ${env.DEPLOYMENT_ENV ?: 'unknown'}"
+                echo "Image: ${env.IMAGE_FQN ?: 'unknown'}"
+                echo '============================================'
                 if (params.ACTION != 'Rollback' && env.DEPLOY_HAPPENED == 'true' && env.DEPLOY_SUCCESSFUL != 'true') {
                     echo 'Deployment did not reach healthy state. Attempting automatic rollback to previous image...'
                     rollbackDeployment()
@@ -280,6 +305,11 @@ pipeline {
         }
         aborted {
             script {
+                echo '============================================'
+                echo 'RESULT: ABORTED'
+                echo "Action: ${params.ACTION}"
+                echo "Branch: ${env.GIT_BRANCH_NAME}"
+                echo '============================================'
                 sendProductionDeploymentEmail('ABORTED', 'Production deployment was aborted before completion.')
             }
         }
@@ -341,6 +371,7 @@ def setDeploymentConfig(String branch) {
         env.DEPLOYMENT_ENV = 'development'
     }
     echo "Configured ${env.DEPLOYMENT_ENV} deployment using ${env.COMPOSE_FILE}"
+    echo "Image: ${env.IMAGE_FQN}"
 }
 
 def composeCommand() {
@@ -425,7 +456,7 @@ def prepareEnvFile() {
     // Optional: pull .env from a Jenkins secret file credential if it exists.
     // If the credential is not configured, continue without it. The deployment
     // may still work if Docker Compose reads an env file from the host instead.
-    def envCredentialId = 'ipgm-mobapi-env-file'
+    def envCredentialId = env.DEPLOYMENT_ENV == 'production' ? 'ipgm-mobapi-prod-env-file' : 'ipgm-mobapi-dev-env-file'
 
     try {
         withCredentials([file(credentialsId: envCredentialId, variable: 'SECRET_ENV_FILE')]) {

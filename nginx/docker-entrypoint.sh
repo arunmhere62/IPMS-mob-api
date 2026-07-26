@@ -32,4 +32,16 @@ else
     fi
 fi
 
+ADMIN_UI_CONF="/etc/nginx/conf.d/admin-ui.conf"
+ADMIN_UI_CERT="/etc/letsencrypt/live/admin.indianpgmanagement.com/fullchain.pem"
+
+if [ -f "$ADMIN_UI_CERT" ]; then
+    echo "Admin UI SSL certificate found — enabling admin-ui virtual host."
+else
+    if [ -f "$ADMIN_UI_CONF" ]; then
+        echo "Admin UI SSL certificate not found — disabling HTTPS block, keeping HTTP for ACME."
+        strip_https_block "$ADMIN_UI_CONF"
+    fi
+fi
+
 exec nginx -g 'daemon off;'

@@ -44,4 +44,16 @@ else
     fi
 fi
 
+WEB_UI_CONF="/etc/nginx/conf.d/web-ui.conf"
+WEB_UI_CERT="/etc/letsencrypt/live/www.indianpgmanagement.com/fullchain.pem"
+
+if [ -f "$WEB_UI_CERT" ]; then
+    echo "Web UI SSL certificate found — enabling web-ui virtual host."
+else
+    if [ -f "$WEB_UI_CONF" ]; then
+        echo "Web UI SSL certificate not found — disabling HTTPS block, keeping HTTP for ACME."
+        strip_https_block "$WEB_UI_CONF"
+    fi
+fi
+
 exec nginx -g 'daemon off;'

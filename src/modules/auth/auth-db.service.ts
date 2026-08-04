@@ -4,6 +4,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   NotFoundException,
+  ForbiddenException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -85,12 +86,17 @@ export class AuthDbService {
         email: true,
         phone: true,
         status: true,
+        organization_id: true,
+        roles: { select: { role_name: true } },
       },
     });
 
     if (!user) {
       throw new NotFoundException('User not found with this phone number');
     }
+
+    // Block login for users whose organization is suspended or deleted
+    await this.validateOrganizationActive(user.organization_id, user.roles?.role_name);
 
     // Generate OTP
     let otp = this.generateOtp();
@@ -260,6 +266,9 @@ export class AuthDbService {
       throw new NotFoundException('User not found');
     }
 
+    // Block login if the user's organization is suspended or deleted
+    await this.validateOrganizationActive(user.organization_id, user.roles?.role_name);
+
     // Check if user is superadmin
     const isSuperAdmin = user.roles.role_name === 'SUPER_ADMIN' || 
                          user.roles.role_name.toLowerCase() === 'super_admin' ||
@@ -358,12 +367,16 @@ export class AuthDbService {
         email: true,
         role_id: true,
         organization_id: true,
+        roles: { select: { role_name: true } },
       },
     });
 
     if (!user) {
       throw new UnauthorizedException('User not found');
     }
+
+    // Block refresh if the user's organization is suspended or deleted
+    await this.validateOrganizationActive(user.organization_id, user.roles?.role_name);
 
     const tokens = await this.jwtTokenService.generateTokens(user);
     return ResponseUtil.success(tokens, 'Token refreshed successfully');
@@ -403,16 +416,19 @@ export class AuthDbService {
     // Normalize phone number (remove spaces)
     const normalizedPhone = normalizePhoneNumber(phone);
 
-    // If phone is already registered, don't send signup OTP
+    // If phone is already registered (active, inactive or deleted), don't send signup OTP
     const existingUser = await this.prisma.users.findFirst({
-      where: {
-        phone: normalizedPhone,
-        is_deleted: false,
-      },
-      select: { s_no: true },
+      where: { phone: normalizedPhone },
+      select: { s_no: true, is_deleted: true, status: true },
+      orderBy: { s_no: 'desc' },
     });
 
     if (existingUser) {
+      if (existingUser.is_deleted || existingUser.status !== 'ACTIVE') {
+        throw new BadRequestException(
+          'This phone number is linked to a deleted account. Contact support to reactivate.',
+        );
+      }
       throw new BadRequestException('Phone number already registered try again');
     }
 
@@ -1209,5 +1225,161 @@ export class AuthDbService {
     console.log('✅ Found roles:', roles.length, roles);
 
     return ResponseUtil.success(roles, 'Roles retrieved successfully');
+  }
+
+  /**
+   * Validate that the user's organization is active and not deleted.
+   */
+  private async validateOrganizationActive(organizationId: number | null | undefined, roleName?: string) {
+    if (!organizationId) {
+      return; // Users without an organization (legacy / admin) bypass this check
+    }
+
+    const organization = await this.prisma.organization.findUnique({
+      where: { s_no: organizationId },
+      select: { s_no: true, is_deleted: true, status: true },
+    });
+
+    const isSuperAdmin = roleName === 'SUPER_ADMIN' ||
+      (roleName && roleName.toLowerCase() === 'super_admin') ||
+      (roleName && roleName.toLowerCase() === 'superadmin');
+
+    if (!organization || organization.is_deleted) {
+      if (isSuperAdmin) {
+        throw new UnauthorizedException('Your account has been deleted. Contact support to reactivate.');
+      }
+      throw new UnauthorizedException("Your account has been deleted. Please contact your PG owner.");
+    }
+    if (organization.status !== 'ACTIVE') {
+      if (isSuperAdmin) {
+        throw new UnauthorizedException('Your account is suspended. Contact support.');
+      }
+      throw new UnauthorizedException('Your account is suspended. Please contact your PG owner.');
+    }
+  }
+
+  /**
+   * Delete owner account.
+   * Only the super admin can delete. The organization is soft-deleted
+   * (status = INACTIVE, is_deleted = true) while superadmin_id is kept.
+   * The super admin user is also soft-deleted. All tokens for users in the
+   * organization are revoked so employees are logged out immediately.
+   */
+  async deleteAccount(userId: number, reason?: string) {
+    // Load user with role and organization link
+    const user = await this.prisma.users.findUnique({
+      where: { s_no: userId },
+      include: {
+        roles: {
+          select: { s_no: true, role_name: true, status: true },
+        },
+      },
+    });
+
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    const roleName = user.roles?.role_name || '';
+    const isSuperAdmin =
+      roleName === 'SUPER_ADMIN' ||
+      roleName.toLowerCase() === 'super_admin' ||
+      roleName.toLowerCase() === 'superadmin';
+
+    if (!isSuperAdmin) {
+      throw new ForbiddenException('Only super admin can delete this account');
+    }
+
+    const organizationId = user.organization_id;
+    if (!organizationId) {
+      throw new BadRequestException('User is not associated with any organization');
+    }
+
+    const organization = await this.prisma.organization.findUnique({
+      where: { s_no: organizationId },
+      select: { s_no: true, superadmin_id: true, is_deleted: true, status: true },
+    });
+
+    if (!organization) {
+      throw new NotFoundException('Organization not found');
+    }
+
+    if (organization.is_deleted || organization.status !== 'ACTIVE') {
+      return ResponseUtil.success(null, 'Account already deleted');
+    }
+
+    const now = new Date();
+
+    // Get all user IDs in this organization to revoke their tokens
+    const orgUsers = await this.prisma.users.findMany({
+      where: { organization_id: organizationId },
+      select: { s_no: true },
+    });
+    const orgUserIds = orgUsers.map((u) => u.s_no);
+
+    // Get all tenant IDs via PG locations belonging to this organization
+    const orgPgLocations = await this.prisma.pg_locations.findMany({
+      where: { organization_id: organizationId },
+      select: { s_no: true },
+    });
+    const orgPgIds = orgPgLocations.map((pg) => pg.s_no);
+
+    const orgTenants = orgPgIds.length > 0
+      ? await this.prisma.tenants.findMany({
+          where: { pg_id: { in: orgPgIds } },
+          select: { s_no: true },
+        })
+      : [];
+    const orgTenantIds = orgTenants.map((t) => t.s_no);
+
+    await this.prisma.$transaction([
+      // Soft-delete the organization (root) but keep superadmin_id
+      this.prisma.organization.update({
+        where: { s_no: organizationId },
+        data: {
+          status: 'INACTIVE',
+          is_deleted: true,
+          deleted_at: now,
+          deleted_by: userId,
+        },
+      }),
+
+      // Soft-delete the super admin user (users table has no deleted_at/deleted_reason)
+      this.prisma.users.update({
+        where: { s_no: userId },
+        data: {
+          status: 'INACTIVE',
+          is_deleted: true,
+        },
+      }),
+
+      // Revoke all tokens for every user in the organization
+      this.prisma.tokens.updateMany({
+        where: {
+          user_id: { in: orgUserIds },
+          is_revoked: false,
+        },
+        data: {
+          is_revoked: true,
+          revoked_at: now,
+        },
+      }),
+
+      // Revoke all tenant tokens for tenants under this organization's PG locations
+      ...(orgTenantIds.length > 0
+        ? [this.prisma.tenant_tokens.updateMany({
+            where: {
+              tenant_id: { in: orgTenantIds },
+              is_revoked: false,
+            },
+            data: {
+              is_revoked: true,
+              updated_at: now,
+            },
+          })]
+        : []),
+    ]);
+
+    return ResponseUtil.success(null, 'Account deleted successfully');
   }
 }

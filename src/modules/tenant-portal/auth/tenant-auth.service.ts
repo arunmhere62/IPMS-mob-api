@@ -47,10 +47,12 @@ export class TenantAuthService {
     const tenant =
       (await this.prisma.tenants.findFirst({
         where: { phone_no: normalizedPhone, is_deleted: false, status: 'ACTIVE' },
+        include: { pg_locations: { select: { s_no: true, organization_id: true } } },
         orderBy: { s_no: 'desc' },
       })) ??
       (await this.prisma.tenants.findFirst({
         where: { phone_no: normalizedPhone, is_deleted: false },
+        include: { pg_locations: { select: { s_no: true, organization_id: true } } },
         orderBy: { s_no: 'desc' },
       }));
 
@@ -65,6 +67,20 @@ export class TenantAuthService {
       throw new BadRequestException(
         `Your account is ${tenant.status}. Please contact your PG owner.`,
       );
+    }
+
+    // Block login if the tenant's organization is deleted or suspended
+    if (tenant.pg_locations?.organization_id) {
+      const organization = await this.prisma.organization.findUnique({
+        where: { s_no: tenant.pg_locations.organization_id },
+        select: { is_deleted: true, status: true },
+      });
+      if (!organization || organization.is_deleted) {
+        throw new UnauthorizedException("Your account has been deleted. Please contact your PG owner.");
+      }
+      if (organization.status !== 'ACTIVE') {
+        throw new UnauthorizedException("Your account is suspended. Please contact your PG owner.");
+      }
     }
 
     // Check if portal access is enabled (if you add this field)
@@ -154,6 +170,20 @@ export class TenantAuthService {
 
     if (!tenant) {
       throw new NotFoundException('Tenant account not found');
+    }
+
+    // Block login if the tenant's organization is deleted or suspended
+    if (tenant.pg_locations?.organization_id) {
+      const organization = await this.prisma.organization.findUnique({
+        where: { s_no: tenant.pg_locations.organization_id },
+        select: { is_deleted: true, status: true },
+      });
+      if (!organization || organization.is_deleted) {
+        throw new UnauthorizedException("Your PG owner's account has been deleted. Please contact your PG owner.");
+      }
+      if (organization.status !== 'ACTIVE') {
+        throw new UnauthorizedException("Your PG owner's account is suspended. Please contact your PG owner.");
+      }
     }
 
     // Generate JWT token

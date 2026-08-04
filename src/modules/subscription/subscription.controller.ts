@@ -198,11 +198,34 @@ export class SubscriptionController {
       const mappedStatus = paymentStatus === 'Success' ? 'Success' : paymentStatus === 'Aborted' ? 'Aborted' : 'Failure';
       const deepLink = `pgapp://payment-result?orderId=${encodeURIComponent(orderId)}&status=${mappedStatus}`;
       console.log('💳 Payment callback done, redirecting to:', deepLink);
-      return res.redirect(302, deepLink);
+      return res.status(200).send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Complete</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; text-align: center; }
+    .container { padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 320px; }
+    h2 { margin-top: 0; color: #333; }
+    p { color: #666; }
+    .btn { display: inline-block; margin-top: 16px; padding: 12px 24px; background: #3B82F6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Payment ${mappedStatus === 'Success' ? 'Successful' : mappedStatus === 'Aborted' ? 'Cancelled' : 'Failed'}</h2>
+    <p>Returning you to the app...</p>
+    <a id="returnLink" class="btn" href="${deepLink}">Open App</a>
+  </div>
+  <script>
+    window.location.replace('${deepLink}');
+  </script>
+</body>
+</html>`);
     } catch (error) {
       console.error('❌ Payment callback error:', error);
       const deepLink = `pgapp://payment-result?status=Failure`;
-      return res.redirect(302, deepLink);
+      return this.sendRedirectHtml(res, deepLink, 'Failure');
     }
   }
 
@@ -224,7 +247,7 @@ export class SubscriptionController {
   async paymentCancel(@Body() _body: Record<string, unknown>, @Res() res: Response) {
     console.log('🚫 Payment cancelled by user');
     const deepLink = `pgapp://payment-result?status=Aborted`;
-    return res.redirect(302, deepLink);
+    return this.sendRedirectHtml(res, deepLink, 'Aborted');
   }
 
   @Get('payment/cancel')
@@ -232,6 +255,33 @@ export class SubscriptionController {
   async paymentCancelGet(@Res() res: Response) {
     console.log('🚫 Payment cancel GET');
     const deepLink = `pgapp://payment-result?status=Aborted`;
-    return res.redirect(302, deepLink);
+    return this.sendRedirectHtml(res, deepLink, 'Aborted');
+  }
+
+  private sendRedirectHtml(res: Response, deepLink: string, status: string) {
+    return res.status(200).send(`<!DOCTYPE html>
+<html>
+<head>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Payment Complete</title>
+  <style>
+    body { font-family: Arial, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; background: #f5f5f5; text-align: center; }
+    .container { padding: 24px; background: #fff; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); max-width: 320px; }
+    h2 { margin-top: 0; color: #333; }
+    p { color: #666; }
+    .btn { display: inline-block; margin-top: 16px; padding: 12px 24px; background: #3B82F6; color: #fff; text-decoration: none; border-radius: 8px; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h2>Payment ${status === 'Success' ? 'Successful' : status === 'Aborted' ? 'Cancelled' : 'Failed'}</h2>
+    <p>Returning you to the app...</p>
+    <a id="returnLink" class="btn" href="${deepLink}">Open App</a>
+  </div>
+  <script>
+    window.location.replace('${deepLink}');
+  </script>
+</body>
+</html>`);
   }
 }

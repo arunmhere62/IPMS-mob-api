@@ -115,6 +115,18 @@ export class JwtTokenService {
         return null;
       }
 
+      // Reject token if the organization is suspended or deleted
+      if (payload.organization_id) {
+        const organization = await this.prisma.organization.findUnique({
+          where: { s_no: payload.organization_id },
+          select: { s_no: true, is_deleted: true, status: true },
+        });
+
+        if (!organization || organization.is_deleted || organization.status !== 'ACTIVE') {
+          return null;
+        }
+      }
+
       // Update last used time
       await this.prisma.tokens.update({
         where: { s_no: tokenRecord.s_no },

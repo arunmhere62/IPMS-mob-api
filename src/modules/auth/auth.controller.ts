@@ -1,4 +1,4 @@
-import { Controller, Post, Body, HttpCode, HttpStatus, Patch, Param, ParseIntPipe, Get, UseGuards, Req } from '@nestjs/common';
+import { Controller, Post, Body, HttpCode, HttpStatus, Patch, Param, ParseIntPipe, Get, UseGuards, Req, UnauthorizedException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiResponse } from '@nestjs/swagger';
 import { AuthDbService } from './auth-db.service';
 import { SendOtpDto } from './dto/send-otp.dto';
@@ -75,6 +75,19 @@ export class AuthController {
   @ApiOperation({ summary: 'Logout user and revoke tokens' })
   async logout(@Req() req: RequestWithUser) {
     return this.authService.logout(req.user, req.accessToken);
+  }
+
+  @Post('delete-account')
+  @HttpCode(HttpStatus.OK)
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Delete owner account (super admin only)' })
+  async deleteAccount(@Req() req: RequestWithUser, @Body('reason') reason?: string) {
+    const user = req.user as { sub?: number; organization_id?: number; role_id?: number } | undefined;
+    const userId = Number(user?.sub);
+    if (!userId) {
+      throw new UnauthorizedException('Invalid user context');
+    }
+    return this.authService.deleteAccount(userId, reason);
   }
 
   @Post('verify-signup-otp')

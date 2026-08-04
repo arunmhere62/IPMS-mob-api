@@ -909,12 +909,25 @@ export class SubscriptionService {
             : parseInt(String(fromSubscriptionIdRaw || ''), 10);
 
           await this.prisma.$transaction(async (tx) => {
+            // Cancel ALL other active subscriptions for this organization
+            await tx.user_subscriptions.updateMany({
+              where: {
+                organization_id: payment.organization_id,
+                status: 'ACTIVE',
+                s_no: { not: payment.subscription_id! },
+              },
+              data: {
+                status: 'CANCELLED',
+                end_date: startDate,
+              },
+            });
+
+            // Also ensure the specific subscription being upgraded from is cancelled
             if (Number.isFinite(fromSubscriptionId)) {
               await tx.user_subscriptions.updateMany({
                 where: {
                   s_no: fromSubscriptionId,
                   organization_id: payment.organization_id,
-                  status: 'ACTIVE',
                 },
                 data: {
                   status: 'CANCELLED',
@@ -935,13 +948,28 @@ export class SubscriptionService {
 
           console.log('✅ Upgrade activated:', payment.subscription_id, 'from:', fromSubscriptionId);
         } else {
-          await this.prisma.user_subscriptions.update({
-            where: { s_no: payment.subscription_id },
-            data: {
-              status: 'ACTIVE',
-              start_date: startDate,
-              end_date: endDate,
-            },
+          await this.prisma.$transaction(async (tx) => {
+            // Cancel all existing active subscriptions for this organization
+            await tx.user_subscriptions.updateMany({
+              where: {
+                organization_id: payment.organization_id,
+                status: 'ACTIVE',
+                s_no: { not: payment.subscription_id! },
+              },
+              data: {
+                status: 'CANCELLED',
+                end_date: startDate,
+              },
+            });
+
+            await tx.user_subscriptions.update({
+              where: { s_no: payment.subscription_id },
+              data: {
+                status: 'ACTIVE',
+                start_date: startDate,
+                end_date: endDate,
+              },
+            });
           });
 
           console.log('✅ Subscription activated:', payment.subscription_id);

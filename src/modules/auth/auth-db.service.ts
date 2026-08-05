@@ -1264,6 +1264,7 @@ export class AuthDbService {
    * (status = INACTIVE, is_deleted = true) while superadmin_id is kept.
    * The super admin user is also soft-deleted. All tokens for users in the
    * organization are revoked so employees are logged out immediately.
+   * TEST COMMENT
    */
   async deleteAccount(userId: number, reason?: string) {
     // Load user with role and organization link

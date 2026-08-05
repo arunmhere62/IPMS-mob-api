@@ -797,15 +797,34 @@ export class SubscriptionService {
 
     console.log('✅ Found subscription:', subscription.s_no);
 
-    // Activate the subscription
-    const updatedSubscription = await this.prisma.user_subscriptions.update({
-      where: { s_no: subscription.s_no },
-      data: {
-        status: 'ACTIVE',
-      },
-      include: {
-        subscription_plans: true,
-      },
+    const startDate = new Date();
+
+    // Activate the subscription and cancel any other active subscriptions
+    // for this organization so only the newly subscribed plan remains active.
+    const updatedSubscription = await this.prisma.$transaction(async (tx) => {
+      await tx.user_subscriptions.updateMany({
+        where: {
+          organization_id: subscription.organization_id,
+          status: 'ACTIVE',
+          s_no: { not: subscription.s_no },
+        },
+        data: {
+          status: 'CANCELLED',
+          end_date: startDate,
+        },
+      });
+
+      return tx.user_subscriptions.update({
+        where: { s_no: subscription.s_no },
+        data: {
+          status: 'ACTIVE',
+          start_date: startDate,
+          end_date: new Date(Date.now() + subscription.subscription_plans.duration * 24 * 60 * 60 * 1000),
+        },
+        include: {
+          subscription_plans: true,
+        },
+      });
     });
 
     console.log('🎉 Subscription activated:', updatedSubscription.s_no);
@@ -909,12 +928,25 @@ export class SubscriptionService {
             : parseInt(String(fromSubscriptionIdRaw || ''), 10);
 
           await this.prisma.$transaction(async (tx) => {
+            // Cancel ALL other active subscriptions for this organization
+            await tx.user_subscriptions.updateMany({
+              where: {
+                organization_id: payment.organization_id,
+                status: 'ACTIVE',
+                s_no: { not: payment.subscription_id! },
+              },
+              data: {
+                status: 'CANCELLED',
+                end_date: startDate,
+              },
+            });
+
+            // Also ensure the specific subscription being upgraded from is cancelled
             if (Number.isFinite(fromSubscriptionId)) {
               await tx.user_subscriptions.updateMany({
                 where: {
                   s_no: fromSubscriptionId,
                   organization_id: payment.organization_id,
-                  status: 'ACTIVE',
                 },
                 data: {
                   status: 'CANCELLED',
@@ -935,13 +967,28 @@ export class SubscriptionService {
 
           console.log('✅ Upgrade activated:', payment.subscription_id, 'from:', fromSubscriptionId);
         } else {
-          await this.prisma.user_subscriptions.update({
-            where: { s_no: payment.subscription_id },
-            data: {
-              status: 'ACTIVE',
-              start_date: startDate,
-              end_date: endDate,
-            },
+          await this.prisma.$transaction(async (tx) => {
+            // Cancel all existing active subscriptions for this organization
+            await tx.user_subscriptions.updateMany({
+              where: {
+                organization_id: payment.organization_id,
+                status: 'ACTIVE',
+                s_no: { not: payment.subscription_id! },
+              },
+              data: {
+                status: 'CANCELLED',
+                end_date: startDate,
+              },
+            });
+
+            await tx.user_subscriptions.update({
+              where: { s_no: payment.subscription_id },
+              data: {
+                status: 'ACTIVE',
+                start_date: startDate,
+                end_date: endDate,
+              },
+            });
           });
 
           console.log('✅ Subscription activated:', payment.subscription_id);

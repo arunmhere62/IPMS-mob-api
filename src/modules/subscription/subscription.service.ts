@@ -797,15 +797,34 @@ export class SubscriptionService {
 
     console.log('✅ Found subscription:', subscription.s_no);
 
-    // Activate the subscription
-    const updatedSubscription = await this.prisma.user_subscriptions.update({
-      where: { s_no: subscription.s_no },
-      data: {
-        status: 'ACTIVE',
-      },
-      include: {
-        subscription_plans: true,
-      },
+    const startDate = new Date();
+
+    // Activate the subscription and cancel any other active subscriptions
+    // for this organization so only the newly subscribed plan remains active.
+    const updatedSubscription = await this.prisma.$transaction(async (tx) => {
+      await tx.user_subscriptions.updateMany({
+        where: {
+          organization_id: subscription.organization_id,
+          status: 'ACTIVE',
+          s_no: { not: subscription.s_no },
+        },
+        data: {
+          status: 'CANCELLED',
+          end_date: startDate,
+        },
+      });
+
+      return tx.user_subscriptions.update({
+        where: { s_no: subscription.s_no },
+        data: {
+          status: 'ACTIVE',
+          start_date: startDate,
+          end_date: new Date(Date.now() + subscription.subscription_plans.duration * 24 * 60 * 60 * 1000),
+        },
+        include: {
+          subscription_plans: true,
+        },
+      });
     });
 
     console.log('🎉 Subscription activated:', updatedSubscription.s_no);

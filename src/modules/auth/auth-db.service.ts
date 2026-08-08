@@ -1266,7 +1266,7 @@ export class AuthDbService {
    * organization are revoked so employees are logged out immediately.
    * TEST COMMENT
    */
-  async deleteAccount(userId: number, reason?: string) {
+  async deleteAccount(userId: number, _reason?: string) {
     // Load user with role and organization link
     const user = await this.prisma.users.findUnique({
       where: { s_no: userId },

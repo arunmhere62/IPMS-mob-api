@@ -218,7 +218,10 @@ export class SubscriptionController {
     <a id="returnLink" class="btn" href="${deepLink}">Open App</a>
   </div>
   <script>
-    window.location.replace('${deepLink}');
+    // Ensure deep link navigation works in WebView
+    setTimeout(() => {
+      window.location.href = '${deepLink}';
+    }, 500);
   </script>
 </body>
 </html>`);
@@ -279,7 +282,10 @@ export class SubscriptionController {
     <a id="returnLink" class="btn" href="${deepLink}">Open App</a>
   </div>
   <script>
-    window.location.replace('${deepLink}');
+    // Ensure deep link navigation works in WebView
+    setTimeout(() => {
+      window.location.href = '${deepLink}';
+    }, 500);
   </script>
 </body>
 </html>`);

@@ -8,6 +8,7 @@ import { GlobalExceptionFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 // import { RateLimitInterceptor } from './common/interceptors/rate-limit.interceptor';
 import { PerformanceInterceptor } from './common/interceptors/performance.interceptor';
+import { LoggingInterceptor } from './common/interceptors/logging.interceptor';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -39,6 +40,9 @@ async function bootstrap() {
 
   // Global exception filter - handles all errors consistently
   app.useGlobalFilters(new GlobalExceptionFilter());
+
+  // Global logging interceptor - logs every API call
+  app.useGlobalInterceptors(new LoggingInterceptor());
 
   // Global performance interceptor - enables API/DB timings
   app.useGlobalInterceptors(new PerformanceInterceptor());

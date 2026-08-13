@@ -24,6 +24,7 @@ import { OWNER_NOTIFICATION_EMAILS } from '../email/email.constants';
 import { normalizePhoneNumber } from '../../common/utils/phone.utils';
 import { Prisma } from '@prisma/client';
 import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { ActionType } from '../activity-logs/dto/log-activity.dto';
 
 @Injectable()
 export class AuthDbService {
@@ -328,7 +329,7 @@ export class AuthDbService {
     // Log LOGIN activity (non-blocking)
     this.activityLogsService
       .logActivity({
-        action_type: 'LOGIN' as any,
+        action_type: 'LOGIN' as ActionType,
         user_id: user.s_no,
         ip_address: ipAddress,
         user_agent: userAgent,
@@ -411,7 +412,7 @@ export class AuthDbService {
     // Log LOGOUT activity (non-blocking)
     this.activityLogsService
       .logActivity({
-        action_type: 'LOGOUT' as any,
+        action_type: 'LOGOUT' as ActionType,
         user_id: userId,
         ip_address: ipAddress,
         user_agent: userAgent,

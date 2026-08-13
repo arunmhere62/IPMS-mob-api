@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { initializeApp, getApps, getApp, App, cert } from 'firebase-admin/app';
-import { getMessaging, MulticastMessage, BatchResponse } from 'firebase-admin/messaging';
+import { getMessaging, MulticastMessage, BatchResponse, SendResponse } from 'firebase-admin/messaging';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { Prisma } from '@prisma/client';
 
@@ -725,7 +725,7 @@ export class NotificationService {
   ) {
     const failedTokens: string[] = [];
 
-    response.responses.forEach((resp: any, idx: number) => {
+    response.responses.forEach((resp: SendResponse, idx: number) => {
       if (!resp.success) {
         failedTokens.push(tokens[idx]);
       }
@@ -1104,7 +1104,7 @@ export class NotificationService {
           });
           sent++;
         } catch (error) {
-          this.logger.error(`Failed to send notification to user ${payment.user_id}`);
+          this.logger.error(`Failed to send notification to user ${payment.user_id}: ${getErrorMessage(error)}`);
         }
       }
 
@@ -1150,7 +1150,7 @@ export class NotificationService {
           });
           sent++;
         } catch (error) {
-          this.logger.error(`Failed to send notification to user ${payment.user_id}`);
+          this.logger.error(`Failed to send notification to user ${payment.user_id}: ${getErrorMessage(error)}`);
         }
       }
 
@@ -1194,7 +1194,7 @@ export class NotificationService {
           });
           sent++;
         } catch (error) {
-          this.logger.error(`Failed to send notification to user ${payment.user_id}`);
+          this.logger.error(`Failed to send notification to user ${payment.user_id}: ${getErrorMessage(error)}`);
         }
       }
 

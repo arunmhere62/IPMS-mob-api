@@ -18,7 +18,10 @@ export class LoggingInterceptor implements NestInterceptor {
     const request = context.switchToHttp().getRequest<Request>();
     const { method, url, ip } = request;
     const userAgent = request.get('user-agent') || '-';
-    const userId = (request as any).user?.sub || (request.headers['x-user-id'] as string) || '-';
+    const userId =
+      (request as Request & { user?: { sub?: string } }).user?.sub ||
+      (request.headers['x-user-id'] as string) ||
+      '-';
     const startTime = Date.now();
 
     // Skip health check logs to avoid noise

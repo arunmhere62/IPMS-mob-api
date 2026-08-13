@@ -1,6 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { LogActivityDto } from './dto/log-activity.dto';
+import { LogActivityDto, ActionType } from './dto/log-activity.dto';
 import { QueryActivityDto } from './dto/query-activity.dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { Prisma } from '@prisma/client';
@@ -17,7 +17,7 @@ export class ActivityLogsService {
         data: {
           user_id: dto.user_id ?? null,
           tenant_id: dto.tenant_id ?? null,
-          action_type: dto.action_type as any,
+          action_type: dto.action_type as ActionType,
           app_version: dto.app_version ?? null,
           os_version: dto.os_version ?? null,
           device_model: dto.device_model ?? null,
@@ -48,7 +48,7 @@ export class ActivityLogsService {
       const data = dtos.map((dto) => ({
         user_id: dto.user_id ?? null,
         tenant_id: dto.tenant_id ?? null,
-        action_type: dto.action_type as any,
+        action_type: dto.action_type as ActionType,
         app_version: dto.app_version ?? null,
         os_version: dto.os_version ?? null,
         device_model: dto.device_model ?? null,
@@ -82,16 +82,17 @@ export class ActivityLogsService {
     const limit = Math.min(query.limit ?? 50, 200);
     const skip = (page - 1) * limit;
 
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
     if (query.user_id) where.user_id = query.user_id;
     if (query.tenant_id) where.tenant_id = query.tenant_id;
-    if (query.action_type) where.action_type = query.action_type as any;
+    if (query.action_type) where.action_type = query.action_type;
 
     if (query.date_from || query.date_to) {
-      where.created_at = {};
-      if (query.date_from) where.created_at.gte = new Date(query.date_from);
-      if (query.date_to) where.created_at.lte = new Date(query.date_to);
+      const createdAtFilter: Record<string, Date> = {};
+      if (query.date_from) createdAtFilter.gte = new Date(query.date_from);
+      if (query.date_to) createdAtFilter.lte = new Date(query.date_to);
+      where.created_at = createdAtFilter;
     }
 
     const [logs, total] = await Promise.all([
@@ -123,15 +124,16 @@ export class ActivityLogsService {
   }
 
   async getStats(query: QueryActivityDto) {
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
     if (query.user_id) where.user_id = query.user_id;
     if (query.tenant_id) where.tenant_id = query.tenant_id;
 
     if (query.date_from || query.date_to) {
-      where.created_at = {};
-      if (query.date_from) where.created_at.gte = new Date(query.date_from);
-      if (query.date_to) where.created_at.lte = new Date(query.date_to);
+      const createdAtFilter: Record<string, Date> = {};
+      if (query.date_from) createdAtFilter.gte = new Date(query.date_from);
+      if (query.date_to) createdAtFilter.lte = new Date(query.date_to);
+      where.created_at = createdAtFilter;
     }
 
     const now = new Date();
@@ -205,14 +207,18 @@ export class ActivityLogsService {
         active_users_1d: uniqueUsers1d.length,
         active_users_7d: uniqueUsers7d.length,
         active_users_30d: uniqueUsers30d.length,
-        action_type_counts: actionTypeCounts.map((item: any) => ({
-          action_type: item.action_type,
-          count: item._count.action_type,
-        })),
-        top_devices: topDevices.map((item: any) => ({
-          device_model: item.device_model,
-          count: item._count.device_model,
-        })),
+        action_type_counts: actionTypeCounts.map(
+          (item: { action_type: string; _count: { action_type: number } }) => ({
+            action_type: item.action_type,
+            count: item._count.action_type,
+          }),
+        ),
+        top_devices: topDevices.map(
+          (item: { device_model: string | null; _count: { device_model: number } }) => ({
+            device_model: item.device_model,
+            count: item._count.device_model,
+          }),
+        ),
       },
       'Activity stats retrieved successfully',
     );

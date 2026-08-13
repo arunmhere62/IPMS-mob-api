@@ -70,7 +70,11 @@ export class LogActivityDto {
   @MaxLength(255)
   user_agent?: string;
 
-  @ApiPropertyOptional({ description: 'Additional metadata (JSON)', type: 'object' })
+  @ApiPropertyOptional({ 
+    description: 'Additional metadata (JSON)', 
+    type: 'object',
+    additionalProperties: true 
+  })
   @IsOptional()
   metadata?: Record<string, unknown>;
 }

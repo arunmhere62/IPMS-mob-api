@@ -12,6 +12,7 @@ import { TenantVerifyOtpDto } from './dto/tenant-verify-otp.dto';
 import { UserRole } from '../../../common/enums/user-role.enum';
 import { PrismaService } from '@/prisma/prisma.service';
 import { OtpStrategyFactory } from '../../auth/strategies/otp-strategy.factory';
+import { ActivityLogsService } from '../../activity-logs/activity-logs.service';
 
 @Injectable()
 export class TenantAuthService {
@@ -24,6 +25,7 @@ export class TenantAuthService {
     private jwtService: JwtService,
     private otpStrategyFactory: OtpStrategyFactory,
     private configService: ConfigService,
+    private activityLogsService: ActivityLogsService,
   ) {}
 
   private isTestOtpEnabled(): boolean {
@@ -211,6 +213,16 @@ export class TenantAuthService {
       },
     });
 
+    // Log LOGIN activity (non-blocking)
+    this.activityLogsService
+      .logActivity({
+        action_type: 'LOGIN' as any,
+        tenant_id: tenant.s_no,
+        ip_address: ipAddress,
+        user_agent: deviceInfo,
+      })
+      .catch((): void => undefined);
+
     return {
       success: true,
       message: 'Login successful',
@@ -330,6 +342,14 @@ export class TenantAuthService {
         },
       });
     }
+
+    // Log LOGOUT activity (non-blocking)
+    this.activityLogsService
+      .logActivity({
+        action_type: 'LOGOUT' as any,
+        tenant_id: tenantId,
+      })
+      .catch((): void => undefined);
 
     return {
       success: true,

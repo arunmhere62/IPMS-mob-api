@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthDbService } from './auth-db.service';
@@ -9,6 +9,7 @@ import { ProductionOtpStrategy } from './strategies/production-otp.strategy';
 import { DevelopmentOtpStrategy } from './strategies/development-otp.strategy';
 import { S3DeletionService } from '../common/s3-deletion.service';
 import { S3Module } from '../../s3/s3.module';
+import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 import { OtpController } from './controllers/otp.controller';
 import { TokensController } from './controllers/tokens.controller';
 import { SignupController } from './controllers/signup.controller';
@@ -20,6 +21,7 @@ import type { JwtSignOptions } from '@nestjs/jwt';
 @Module({
   imports: [
     S3Module,
+    forwardRef(() => ActivityLogsModule),
     JwtModule.registerAsync({
       imports: [ConfigModule],
       useFactory: async (configService: ConfigService) => ({

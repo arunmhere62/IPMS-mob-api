@@ -1,7 +1,8 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
+import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 import { TenantModule } from '../tenant/tenant.module';
 import { TenantPortalController } from './tenant-portal.controller';
 import { TenantAuthController } from './auth/tenant-auth.controller';
@@ -13,6 +14,7 @@ import { TenantPortalService } from './tenant-portal.service';
   imports: [
     ConfigModule,
     AuthModule,
+    forwardRef(() => ActivityLogsModule),
     TenantModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],

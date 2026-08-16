@@ -1,4 +1,5 @@
-import { Body, Controller, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Post, Req } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthDbService } from '../auth-db.service';
 import { AuthResponseDto } from '../dto/auth-response.dto';
@@ -49,8 +50,10 @@ export class OtpController {
   })
   @ApiResponse({ status: 401, description: 'Invalid or expired OTP' })
   @ApiResponse({ status: 404, description: 'User not found' })
-  async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto) {
-    return this.authService.verifyOtp(verifyOtpDto);
+  async verifyOtp(@Body() verifyOtpDto: VerifyOtpDto, @Req() req: Request) {
+    const ipAddress = (req.headers['x-forwarded-for'] as string | undefined) || req.ip;
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.authService.verifyOtp(verifyOtpDto, ipAddress, userAgent);
   }
 
   @Post('send-signup-otp')

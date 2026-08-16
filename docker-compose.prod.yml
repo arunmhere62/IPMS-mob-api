@@ -41,6 +41,11 @@ services:
       FORCE_REAL_SMS_IN_DEV: ${FORCE_REAL_SMS_IN_DEV}
     expose:
       - "3000"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "5"
 
   ipgm-mobapi-prod-nginx:
     build:

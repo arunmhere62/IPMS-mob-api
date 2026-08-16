@@ -1,10 +1,11 @@
 import { Body, Controller, HttpCode, HttpStatus, Post, Req, UseGuards, UnauthorizedException } from '@nestjs/common';
+import type { Request } from 'express';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { AuthDbService } from '../auth-db.service';
 import { RefreshTokenDto } from '../dto/refresh-token.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 
-type RequestWithUser = {
+type RequestWithUser = Request & {
   user?: unknown;
   accessToken?: string;
 };
@@ -28,7 +29,9 @@ export class TokensController {
   @ApiOperation({ summary: 'Logout user and revoke tokens' })
   @ApiResponse({ status: 200, description: 'Logged out successfully' })
   async logout(@Req() req: RequestWithUser) {
-    return this.authService.logout(req.user, req.accessToken);
+    const ipAddress = (req.headers['x-forwarded-for'] as string | undefined) || req.ip;
+    const userAgent = req.headers['user-agent'] as string | undefined;
+    return this.authService.logout(req.user, req.accessToken, ipAddress, userAgent);
   }
 
   @Post('delete-account')

@@ -23,6 +23,8 @@ import { EmailService } from '../email/email.service';
 import { OWNER_NOTIFICATION_EMAILS } from '../email/email.constants';
 import { normalizePhoneNumber } from '../../common/utils/phone.utils';
 import { Prisma } from '@prisma/client';
+import { ActivityLogsService } from '../activity-logs/activity-logs.service';
+import { ActionType } from '../activity-logs/dto/log-activity.dto';
 
 @Injectable()
 export class AuthDbService {
@@ -40,6 +42,7 @@ export class AuthDbService {
     private otpStrategyFactory: OtpStrategyFactory,
     private s3DeletionService: S3DeletionService,
     private emailService: EmailService,
+    private activityLogsService: ActivityLogsService,
   ) {
     // Get configuration based on environment
     this.OTP_EXPIRY_MINUTES = this.configService.get<number>('app.auth.otpExpiryMinutes', 5);
@@ -170,7 +173,7 @@ export class AuthDbService {
   /**
    * Verify OTP and login user (Database version)
    */
-  async verifyOtp(verifyOtpDto: VerifyOtpDto, ipAddress?: string) {
+  async verifyOtp(verifyOtpDto: VerifyOtpDto, ipAddress?: string, userAgent?: string) {
     const { phone, otp } = verifyOtpDto;
     
     // Normalize phone number (remove spaces)
@@ -314,7 +317,7 @@ export class AuthDbService {
     }
 
     // Generate JWT tokens
-    const tokens = await this.jwtTokenService.generateTokens(user, ipAddress);
+    const tokens = await this.jwtTokenService.generateTokens(user, ipAddress, userAgent);
 
     console.log('📤 Login response user object:', {
       s_no: userResponse.s_no,
@@ -322,6 +325,16 @@ export class AuthDbService {
       organization_id: userResponse.organization_id,
       role_name: userResponse.role_name,
     });
+
+    // Log LOGIN activity (non-blocking)
+    this.activityLogsService
+      .logActivity({
+        action_type: 'LOGIN' as ActionType,
+        user_id: user.s_no,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      })
+      .catch((): void => undefined);
 
     return ResponseUtil.success(
       {
@@ -382,7 +395,7 @@ export class AuthDbService {
     return ResponseUtil.success(tokens, 'Token refreshed successfully');
   }
 
-  async logout(user: unknown, accessToken?: string) {
+  async logout(user: unknown, accessToken?: string, ipAddress?: string, userAgent?: string) {
     const u = (user as { sub?: unknown } | null) ?? null;
     const userId = Number(u?.sub);
     if (!userId) {
@@ -395,6 +408,16 @@ export class AuthDbService {
     } else {
       await this.jwtTokenService.revokeToken(userId);
     }
+
+    // Log LOGOUT activity (non-blocking)
+    this.activityLogsService
+      .logActivity({
+        action_type: 'LOGOUT' as ActionType,
+        user_id: userId,
+        ip_address: ipAddress,
+        user_agent: userAgent,
+      })
+      .catch((): void => undefined);
 
     return ResponseUtil.success(null, 'Logged out successfully');
   }

@@ -1,15 +1,20 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import * as admin from 'firebase-admin';
+import { initializeApp, getApps, getApp, App, cert } from 'firebase-admin/app';
+import { getMessaging, MulticastMessage, BatchResponse, SendResponse } from 'firebase-admin/messaging';
 import { Expo, ExpoPushMessage } from 'expo-server-sdk';
 import { Prisma } from '@prisma/client';
 
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? (error as Error).message : String(error);
+}
+
 // Initialize Firebase Admin SDK
-let firebaseApp: admin.app.App;
+let firebaseApp: App;
 
 try {
   // Check if already initialized
-  if (!admin.apps.length) {
+  if (!getApps().length) {
     // Use environment variables for Firebase credentials
     const projectId = process.env.FIREBASE_PROJECT_ID;
     const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
@@ -19,8 +24,8 @@ try {
       throw new Error('Missing Firebase environment variables');
     }
 
-    firebaseApp = admin.initializeApp({
-      credential: admin.credential.cert({
+    firebaseApp = initializeApp({
+      credential: cert({
         projectId,
         privateKey,
         clientEmail,
@@ -29,10 +34,10 @@ try {
     
     console.log('✅ Firebase Admin initialized successfully');
   } else {
-    firebaseApp = admin.app();
+    firebaseApp = getApp();
   }
 } catch (error) {
-  console.error('❌ Failed to initialize Firebase Admin:', error.message);
+  console.error('❌ Failed to initialize Firebase Admin:', getErrorMessage(error));
   console.log('⚠️ Notifications will not work without Firebase environment variables');
   console.log('⚠️ Required: FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY, FIREBASE_CLIENT_EMAIL');
 }
@@ -77,7 +82,7 @@ export class NotificationService {
       });
     } catch (error) {
       this.logger.error(
-        `❌ Failed to deactivate other tokens user=${userId} device_id=${deviceId} keep=${this.maskToken(keepToken)} err=${error.message}`,
+        `❌ Failed to deactivate other tokens user=${userId} device_id=${deviceId} keep=${this.maskToken(keepToken)} err=${getErrorMessage(error)}`,
       );
     }
   }
@@ -189,8 +194,8 @@ export class NotificationService {
 
       return { receiptErrors, receiptOkCount, receiptErrorCount };
     } catch (error) {
-      this.logger.error(`❌ Expo receipt fetch failed: ${error.message}`);
-      return { receiptErrors: [{ message: error.message }], receiptOkCount: 0, receiptErrorCount: 1 };
+      this.logger.error(`❌ Expo receipt fetch failed: ${getErrorMessage(error)}`);
+      return { receiptErrors: [{ message: getErrorMessage(error) }], receiptOkCount: 0, receiptErrorCount: 1 };
     }
   }
 
@@ -311,7 +316,7 @@ export class NotificationService {
       return { success: true, message: 'Token registered' };
     } catch (error) {
       this.logger.error(
-        `❌ Failed to register token user=${userId} token=${this.maskToken(tokenData?.fcm_token)} err=${error.message}`,
+        `❌ Failed to register token user=${userId} token=${this.maskToken(tokenData?.fcm_token)} err=${getErrorMessage(error)}`,
       );
       throw error;
     }
@@ -333,7 +338,7 @@ export class NotificationService {
       this.logger.log(`✅ Unregistered FCM token`);
       return { success: true };
     } catch (error) {
-      this.logger.error(`❌ Failed to unregister token: ${error.message}`);
+      this.logger.error(`❌ Failed to unregister token: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -420,7 +425,7 @@ export class NotificationService {
         failureCount,
       };
     } catch (error) {
-      this.logger.error(`❌ Failed to send notification: ${error.message}`);
+      this.logger.error(`❌ Failed to send notification: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -467,7 +472,7 @@ export class NotificationService {
 
       return { success: true, message: 'Tenant token registered' };
     } catch (error) {
-      this.logger.error(`❌ registerTenantToken tenant=${tenantId} err=${error.message}`);
+      this.logger.error(`❌ registerTenantToken tenant=${tenantId} err=${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -526,8 +531,8 @@ export class NotificationService {
       this.logger.log(`✅ sendToTenant tenant=${tenantId}: ${successCount}/${allTokens.length} successful`);
       return { success: successCount > 0, successCount, failureCount };
     } catch (error) {
-      this.logger.error(`❌ sendToTenant tenant=${tenantId} err=${error.message}`);
-      return { success: false, message: error.message };
+      this.logger.error(`❌ sendToTenant tenant=${tenantId} err=${getErrorMessage(error)}`);
+      return { success: false, message: getErrorMessage(error) };
     }
   }
 
@@ -587,7 +592,7 @@ export class NotificationService {
             }
           });
         } catch (error) {
-          this.logger.error(`❌ Expo chunk send failed: ${error.message}`);
+          this.logger.error(`❌ Expo chunk send failed: ${getErrorMessage(error)}`);
           failureCount += chunk.length;
         }
       }
@@ -608,12 +613,12 @@ export class NotificationService {
         receiptSummary,
       };
     } catch (error) {
-      this.logger.error(`❌ Expo send failed: ${error.message}`);
+      this.logger.error(`❌ Expo send failed: ${getErrorMessage(error)}`);
       return {
         successCount: 0,
         failureCount: tokens.length,
         ticketIds: [],
-        receiptSummary: { receiptErrors: [{ message: error.message }], receiptOkCount: 0, receiptErrorCount: 1 },
+        receiptSummary: { receiptErrors: [{ message: getErrorMessage(error) }], receiptOkCount: 0, receiptErrorCount: 1 },
       };
     }
   }
@@ -626,7 +631,7 @@ export class NotificationService {
       this.logger.log(
         `🚀 Firebase send start tokens=${tokens.length} title=${notification.title} type=${notification.type}`,
       );
-      const message: admin.messaging.MulticastMessage = {
+      const message: MulticastMessage = {
         notification: {
           title: notification.title,
           body: notification.body,
@@ -638,7 +643,7 @@ export class NotificationService {
         tokens: tokens,
       };
 
-      const response = await admin.messaging().sendMulticast(message);
+      const response = await getMessaging().sendEachForMulticast(message);
 
       this.logger.log(
         `✅ Firebase send done success=${response.successCount} failed=${response.failureCount} total=${tokens.length}`,
@@ -654,7 +659,7 @@ export class NotificationService {
         failureCount: response.failureCount,
       };
     } catch (error) {
-      this.logger.error(`❌ Firebase send failed: ${error.message}`);
+      this.logger.error(`❌ Firebase send failed: ${getErrorMessage(error)}`);
       return { successCount: 0, failureCount: tokens.length };
     }
   }
@@ -669,7 +674,7 @@ export class NotificationService {
         data: { is_active: false },
       });
     } catch (error) {
-      this.logger.error(`Failed to mark token inactive: ${error.message}`);
+      this.logger.error(`Failed to mark token inactive: ${getErrorMessage(error)}`);
     }
   }
 
@@ -684,7 +689,7 @@ export class NotificationService {
         const result = await this.sendToUser(userId, notification);
         results.push({ userId, ...result });
       } catch (error) {
-        results.push({ userId, success: false, error: error.message });
+        results.push({ userId, success: false, error: getErrorMessage(error) });
       }
     }
 
@@ -707,7 +712,7 @@ export class NotificationService {
         },
       });
     } catch (error) {
-      this.logger.error(`❌ Failed to save notification: ${error.message}`);
+      this.logger.error(`❌ Failed to save notification: ${getErrorMessage(error)}`);
     }
   }
 
@@ -715,12 +720,12 @@ export class NotificationService {
    * Handle failed tokens (mark as inactive)
    */
   private async handleFailedTokens(
-    response: admin.messaging.BatchResponse,
+    response: BatchResponse,
     tokens: string[],
   ) {
     const failedTokens: string[] = [];
 
-    response.responses.forEach((resp, idx) => {
+    response.responses.forEach((resp: SendResponse, idx: number) => {
       if (!resp.success) {
         failedTokens.push(tokens[idx]);
       }
@@ -768,7 +773,7 @@ export class NotificationService {
         totalPages: Math.ceil(total / limit),
       };
     } catch (error) {
-      this.logger.error(`❌ Failed to get notification history: ${error.message}`);
+      this.logger.error(`❌ Failed to get notification history: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -787,7 +792,7 @@ export class NotificationService {
 
       return { count };
     } catch (error) {
-      this.logger.error(`❌ Failed to get unread count: ${error.message}`);
+      this.logger.error(`❌ Failed to get unread count: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -810,7 +815,7 @@ export class NotificationService {
 
       return { success: true };
     } catch (error) {
-      this.logger.error(`❌ Failed to mark as read: ${error.message}`);
+      this.logger.error(`❌ Failed to mark as read: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -833,7 +838,7 @@ export class NotificationService {
 
       return { success: true };
     } catch (error) {
-      this.logger.error(`❌ Failed to mark all as read: ${error.message}`);
+      this.logger.error(`❌ Failed to mark all as read: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -877,7 +882,7 @@ export class NotificationService {
 
       return { sent: upcomingPayments.length };
     } catch (error) {
-      this.logger.error(`❌ Failed to send rent reminders: ${error.message}`);
+      this.logger.error(`❌ Failed to send rent reminders: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -923,7 +928,7 @@ export class NotificationService {
 
       return { sent: overduePayments.length };
     } catch (error) {
-      this.logger.error(`❌ Failed to send overdue alerts: ${error.message}`);
+      this.logger.error(`❌ Failed to send overdue alerts: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -1099,13 +1104,13 @@ export class NotificationService {
           });
           sent++;
         } catch (error) {
-          this.logger.error(`Failed to send notification to user ${payment.user_id}`);
+          this.logger.error(`Failed to send notification to user ${payment.user_id}: ${getErrorMessage(error)}`);
         }
       }
 
       return { total: pendingPayments.length, sent };
     } catch (error) {
-      this.logger.error(`❌ Failed to send pending payment notifications: ${error.message}`);
+      this.logger.error(`❌ Failed to send pending payment notifications: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -1145,13 +1150,13 @@ export class NotificationService {
           });
           sent++;
         } catch (error) {
-          this.logger.error(`Failed to send notification to user ${payment.user_id}`);
+          this.logger.error(`Failed to send notification to user ${payment.user_id}: ${getErrorMessage(error)}`);
         }
       }
 
       return { total: dueSoonPayments.length, sent };
     } catch (error) {
-      this.logger.error(`❌ Failed to send due soon notifications: ${error.message}`);
+      this.logger.error(`❌ Failed to send due soon notifications: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -1189,13 +1194,13 @@ export class NotificationService {
           });
           sent++;
         } catch (error) {
-          this.logger.error(`Failed to send notification to user ${payment.user_id}`);
+          this.logger.error(`Failed to send notification to user ${payment.user_id}: ${getErrorMessage(error)}`);
         }
       }
 
       return { total: overduePayments.length, sent };
     } catch (error) {
-      this.logger.error(`❌ Failed to send overdue notifications: ${error.message}`);
+      this.logger.error(`❌ Failed to send overdue notifications: ${getErrorMessage(error)}`);
       throw error;
     }
   }
@@ -1259,7 +1264,7 @@ export class NotificationService {
         tokensUsed: tokens.map(t => this.maskToken(t)),
       };
     } catch (error) {
-      this.logger.error(`[TEST-STATIC] ❌ Failed to send static test notification: ${error.message}`);
+      this.logger.error(`[TEST-STATIC] ❌ Failed to send static test notification: ${getErrorMessage(error)}`);
       throw error;
     }
   }

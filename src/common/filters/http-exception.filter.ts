@@ -4,6 +4,7 @@ import {
   ArgumentsHost,
   HttpException,
   HttpStatus,
+  Logger,
 } from '@nestjs/common';
 import { Request, Response } from 'express';
 import { ApiResponseDto } from '../dto/response.dto';
@@ -16,6 +17,8 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 
 @Catch()
 export class GlobalExceptionFilter implements ExceptionFilter {
+  private readonly logger = new Logger('ExceptionFilter');
+
   catch(exception: unknown, host: ArgumentsHost) {
     const ctx = host.switchToHttp();
     const response = ctx.getResponse<Response>();
@@ -124,6 +127,19 @@ export class GlobalExceptionFilter implements ExceptionFilter {
       request.url,
       meta,
     );
+
+    // Log all errors (5xx = error, 4xx = warn)
+    if (statusCode >= 500) {
+      const errorStack = exception instanceof Error ? exception.stack : undefined;
+      this.logger.error(
+        `${request.method} ${request.url} ${statusCode} - ${message}`,
+        errorStack,
+      );
+    } else if (statusCode >= 400) {
+      this.logger.warn(
+        `${request.method} ${request.url} ${statusCode} - ${message}`,
+      );
+    }
 
     response.status(statusCode).json(apiResponse);
   }

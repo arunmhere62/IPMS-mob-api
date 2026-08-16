@@ -30,6 +30,8 @@ import { TenantPortalModule } from './modules/tenant-portal/tenant-portal.module
 import { TenantTicketsModule } from './modules/tenant-tickets/tenant-tickets.module';
 import { AppSettingsModule } from './modules/app-settings/app-settings.module';
 import { ElectricityBillModule } from './modules/electricity-bill/electricity-bill.module';
+import { ActivityLogsModule } from './modules/activity-logs/activity-logs.module';
+import { PublicListingModule } from './modules/public-listing/public-listing.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config';
@@ -73,6 +75,8 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
     TenantTicketsModule,
     AppSettingsModule,
     ElectricityBillModule,
+    ActivityLogsModule,
+    PublicListingModule,
   ],
   controllers: [AppController],
   providers: [

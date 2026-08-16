@@ -134,7 +134,7 @@ export class JwtTokenService {
       });
 
       return payload;
-    } catch (error) {
+    } catch {
       return null;
     }
   }
@@ -150,7 +150,7 @@ export class JwtTokenService {
       });
 
       return payload;
-    } catch (error) {
+    } catch {
       return null;
     }
   }

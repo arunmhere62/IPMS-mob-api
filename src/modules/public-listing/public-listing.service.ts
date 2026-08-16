@@ -946,6 +946,7 @@ export class PublicListingService {
         starting_price: priceMap.get(sNo) ?? null,
         available_beds: availableCountMap.get(sNo) ?? 0,
         total_beds: totalCountMap.get(sNo) ?? 0,
+        rooms: (item.rooms as unknown[]) ?? undefined,
       };
     });
   }

@@ -1,10 +1,71 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
+import { Prisma, pg_locations_pg_type } from '@prisma/client';
 import {
   findByPincode,
 } from '@twin.techies/india-pincode';
 import { lookupPincode } from 'india-post-pincode';
+
+type PgWhereClause = Prisma.pg_locationsWhereInput;
+
+interface ListingRow {
+  s_no: number;
+  location_name: string;
+  address: string;
+  pincode: string;
+  pg_type: string;
+  images: string | string[] | null;
+  city_id: number;
+  state_id: number;
+  organization_id: number;
+  slug: string;
+  listing_description: string;
+  listing_amenities: string | string[] | null;
+  listing_contact_phone: string;
+  listing_contact_email: string;
+  latitude: string | number;
+  longitude: string | number;
+  is_featured: boolean | number;
+  seo_title: string;
+  seo_description: string;
+  view_count: number;
+  published_at: Date;
+  city_name: string;
+  state_name: string;
+  min_price: number | null;
+  available_beds: number;
+  total_beds: number;
+  distance_km: number;
+}
+
+export interface EnrichedListing {
+  s_no: number;
+  location_name: string;
+  address: string;
+  pincode: string;
+  pg_type: string;
+  images: string | string[] | null;
+  city: { s_no: number; name: string } | { name: string } | null;
+  state: { s_no: number; name: string } | { name: string } | null;
+  slug: string | null;
+  listing_description: string | null;
+  listing_amenities: string | string[] | null;
+  listing_contact_phone: string | null;
+  listing_contact_email: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  is_featured: boolean;
+  seo_title: string | null;
+  seo_description: string | null;
+  view_count: number;
+  published_at: Date | null;
+  starting_price: number | null;
+  available_beds: number;
+  total_beds: number;
+  distance_km?: number;
+  rooms?: unknown[];
+}
 
 @Injectable()
 export class PublicListingService {
@@ -49,7 +110,7 @@ export class PublicListingService {
     const skip = (page - 1) * limit;
 
     // Build where clause for pg_locations
-    const pgWhere: any = {
+    const pgWhere: PgWhereClause = {
       is_deleted: false,
       status: 'ACTIVE',
       pg_directory_listings: {
@@ -76,7 +137,7 @@ export class PublicListingService {
       try {
         // Get all PG pincodes in this city, then match the area name
         // against the post office names (same approach as listAreasByCity)
-        const cityPgWhere: any = {
+        const cityPgWhere: PgWhereClause = {
           is_deleted: false,
           status: 'ACTIVE',
           pg_directory_listings: { listing_published: true },
@@ -99,7 +160,7 @@ export class PublicListingService {
           if (!result || !result.offices) continue;
           // Check if any office name matches the requested area
           const matched = result.offices.some(
-            (o: any) => o.name.toLowerCase() === area.toLowerCase(),
+            (o: { name: string }) => o.name.toLowerCase() === area.toLowerCase(),
           );
           if (matched) {
             areaPincode = pin;
@@ -121,7 +182,7 @@ export class PublicListingService {
 
       if (areaLat && areaLng) {
         // Use geo-radius filter (3km radius around the area center)
-        const geoPgWhere: any = {
+        const geoPgWhere: PgWhereClause = {
           is_deleted: false,
           status: 'ACTIVE',
           pg_directory_listings: { listing_published: true },
@@ -129,7 +190,7 @@ export class PublicListingService {
         if (cityId) geoPgWhere.city_id = cityId;
         else if (city) geoPgWhere.city = { name: { contains: city } };
         if (state) geoPgWhere.state = { name: { contains: state } };
-        if (pgType) geoPgWhere.pg_type = pgType;
+        if (pgType) geoPgWhere.pg_type = pgType as pg_locations_pg_type;
 
         return this.listWithGeoFilter(
           geoPgWhere,
@@ -162,12 +223,12 @@ export class PublicListingService {
     }
 
     if (pgType) {
-      pgWhere.pg_type = pgType as any;
+      pgWhere.pg_type = pgType as pg_locations_pg_type;
     }
 
     // Price filter — check if any bed has price in range
     if (minPrice !== undefined || maxPrice !== undefined) {
-      const bedFilter: any = {};
+      const bedFilter: { gte?: number; lte?: number } = {};
       if (minPrice !== undefined) bedFilter.gte = minPrice;
       if (maxPrice !== undefined) bedFilter.lte = maxPrice;
       pgWhere.beds = {
@@ -176,9 +237,7 @@ export class PublicListingService {
     }
 
     // Geo filter using Haversine formula (raw SQL for distance calc)
-    let useGeoSort = false;
     if (lat !== undefined && lng !== undefined) {
-      useGeoSort = true;
       // We'll use raw SQL for geo queries since Prisma doesn't support Haversine
       return this.listWithGeoFilter(
         pgWhere,
@@ -193,7 +252,7 @@ export class PublicListingService {
     }
 
     // Determine sort order
-    let orderBy: any = { created_at: 'desc' }; // newest
+    let orderBy: Record<string, unknown> = { created_at: 'desc' }; // newest
     if (sort === 'price_low') {
       // Sort by min bed price — need to fetch and sort in app
       orderBy = { created_at: 'desc' };
@@ -234,7 +293,7 @@ export class PublicListingService {
    * Geo-filtered listing using raw SQL with Haversine formula
    */
   private async listWithGeoFilter(
-    pgWhere: any,
+    pgWhere: PgWhereClause,
     lat: number,
     lng: number,
     radius: number,
@@ -251,11 +310,11 @@ export class PublicListingService {
       'dl.latitude IS NOT NULL',
       'dl.longitude IS NOT NULL',
     ];
-    const params: any[] = [lat, lat, lng, radius];
+    const params: (string | number)[] = [lat, lat, lng, radius];
 
     if (pgWhere.city_id) {
       conditions.push('pg.city_id = ?');
-      params.push(pgWhere.city_id);
+      params.push(pgWhere.city_id as number);
     }
     if (pgWhere.pincode) {
       if (typeof pgWhere.pincode === 'string') {
@@ -268,7 +327,7 @@ export class PublicListingService {
     }
     if (pgWhere.pg_type) {
       conditions.push('pg.pg_type = ?');
-      params.push(pgWhere.pg_type);
+      params.push(pgWhere.pg_type as string);
     }
 
     const orderByClause =
@@ -281,8 +340,8 @@ export class PublicListingService {
             : 'ORDER BY distance_km ASC'; // default: nearest
 
     // Haversine placeholders: lat, lng, lat
-    const geoParams: any[] = [lat, lng, lat];
-    const conditionParams: any[] = params.slice(4);
+    const geoParams: number[] = [lat, lng, lat];
+    const conditionParams: (string | number)[] = params.slice(4);
 
     const sql = `
       SELECT *
@@ -344,7 +403,7 @@ export class PublicListingService {
       LIMIT ? OFFSET ?
     `;
 
-    const finalParams: any[] = [
+    const finalParams: (string | number)[] = [
       ...geoParams,
       ...conditionParams,
       radius,
@@ -352,7 +411,7 @@ export class PublicListingService {
       skip,
     ];
 
-    const rows: any[] = await this.prisma.$queryRawUnsafe(sql, ...finalParams);
+    const rows: ListingRow[] = await this.prisma.$queryRawUnsafe(sql, ...finalParams);
 
     // Count total for pagination using the same distance calc
     const countSql = `
@@ -372,12 +431,12 @@ export class PublicListingService {
       ) as sub
       WHERE distance_km <= ?
     `;
-    const countParams: any[] = [lat, lng, lat, ...conditionParams, radius];
-    const countResult: any[] = await this.prisma.$queryRawUnsafe(countSql, ...countParams);
+    const countParams: (string | number)[] = [lat, lng, lat, ...conditionParams, radius];
+    const countResult: { total: number }[] = await this.prisma.$queryRawUnsafe(countSql, ...countParams);
     const total = Number(countResult[0]?.total ?? 0);
 
     // Format results
-    const enriched = rows.map((row: any) => this.formatListingRow(row));
+    const enriched = rows.map((row: ListingRow) => this.formatListingRow(row));
 
     return ResponseUtil.paginated(
       enriched,
@@ -441,34 +500,34 @@ export class PublicListingService {
       data: { view_count: { increment: 1 } },
     });
 
-    const enriched = (await this.enrichListings([pg]))[0];
+    const enriched = (await this.enrichListings([pg]))[0] as EnrichedListing | undefined;
 
     // Compute distance if user coordinates are provided
     if (enriched && userLat != null && userLng != null) {
-      const pgLat = (enriched as any).latitude;
-      const pgLng = (enriched as any).longitude;
+      const pgLat = enriched.latitude;
+      const pgLng = enriched.longitude;
       if (pgLat != null && pgLng != null) {
         const distance = 6371 * Math.acos(
           Math.cos((userLat * Math.PI) / 180) * Math.cos((pgLat * Math.PI) / 180) *
           Math.cos((pgLng * Math.PI) / 180 - (userLng * Math.PI) / 180) +
           Math.sin((userLat * Math.PI) / 180) * Math.sin((pgLat * Math.PI) / 180)
         );
-        (enriched as any).distance_km = Number(distance.toFixed(2));
+        enriched.distance_km = Number(distance.toFixed(2));
       }
     }
 
     // Add room/bed availability info
-    if (enriched && (enriched as any).rooms) {
-      (enriched as any).rooms = (enriched as any).rooms.map((room: any) => ({
+    if (enriched && enriched.rooms) {
+      enriched.rooms = (enriched.rooms as Record<string, unknown>[]).map((room) => ({
         ...room,
-        available_beds: room.beds.filter(
-          (b: any) => !b.tenant_allocations || b.tenant_allocations.length === 0,
+        available_beds: (room.beds as Record<string, unknown>[]).filter(
+          (b) => !b.tenant_allocations || (b.tenant_allocations as unknown[]).length === 0,
         ).length,
-        total_beds: room.beds.length,
-        beds: room.beds.map((b: any) => ({
+        total_beds: (room.beds as Record<string, unknown>[]).length,
+        beds: (room.beds as Record<string, unknown>[]).map((b): Record<string, unknown> => ({
           ...b,
-          is_occupied: b.tenant_allocations && b.tenant_allocations.length > 0,
-          tenant_allocations: undefined,
+          is_occupied: b.tenant_allocations && (b.tenant_allocations as unknown[]).length > 0,
+          tenant_allocations: undefined as unknown,
         })),
       }));
     }
@@ -814,10 +873,10 @@ export class PublicListingService {
     };
   }
 
-  private async enrichListings(items: any[]): Promise<any[]> {
+  private async enrichListings(items: Record<string, unknown>[]): Promise<EnrichedListing[]> {
     if (!items.length) return [];
 
-    const pgIds = items.map((i) => i.s_no);
+    const pgIds = items.map((i) => Number(i.s_no));
 
     // Fetch pricing + availability for all PGs in one query
     const bedsData = await this.prisma.beds.groupBy({
@@ -860,38 +919,38 @@ export class PublicListingService {
       }
     }
 
-    return items.map((item) => ({
-      s_no: item.s_no,
-      location_name: item.location_name,
-      address: item.address,
-      pincode: item.pincode,
-      pg_type: item.pg_type,
-      images: item.images,
-      city: item.city,
-      state: item.state,
-      slug: item.pg_directory_listings?.slug,
-      listing_description: item.pg_directory_listings?.listing_description,
-      listing_amenities: item.pg_directory_listings?.listing_amenities,
-      listing_contact_phone: item.pg_directory_listings?.listing_contact_phone,
-      listing_contact_email: item.pg_directory_listings?.listing_contact_email,
-      latitude: item.pg_directory_listings?.latitude
-        ? Number(item.pg_directory_listings.latitude)
-        : null,
-      longitude: item.pg_directory_listings?.longitude
-        ? Number(item.pg_directory_listings.longitude)
-        : null,
-      is_featured: item.pg_directory_listings?.is_featured ?? false,
-      seo_title: item.pg_directory_listings?.seo_title,
-      seo_description: item.pg_directory_listings?.seo_description,
-      view_count: item.pg_directory_listings?.view_count ?? 0,
-      published_at: item.pg_directory_listings?.published_at,
-      starting_price: priceMap.get(item.s_no) ?? null,
-      available_beds: availableCountMap.get(item.s_no) ?? 0,
-      total_beds: totalCountMap.get(item.s_no) ?? 0,
-    }));
+    return items.map((item) => {
+      const dl = item.pg_directory_listings as Record<string, unknown> | null;
+      const sNo = Number(item.s_no);
+      return {
+        s_no: sNo,
+        location_name: item.location_name as string,
+        address: item.address as string,
+        pincode: item.pincode as string,
+        pg_type: item.pg_type as string,
+        images: item.images as string | string[] | null,
+        city: item.city as { s_no: number; name: string } | null,
+        state: item.state as { s_no: number; name: string } | null,
+        slug: dl?.slug as string | null,
+        listing_description: dl?.listing_description as string | null,
+        listing_amenities: dl?.listing_amenities as string | string[] | null,
+        listing_contact_phone: dl?.listing_contact_phone as string | null,
+        listing_contact_email: dl?.listing_contact_email as string | null,
+        latitude: dl?.latitude ? Number(dl.latitude) : null,
+        longitude: dl?.longitude ? Number(dl.longitude) : null,
+        is_featured: (dl?.is_featured as boolean) ?? false,
+        seo_title: dl?.seo_title as string | null,
+        seo_description: dl?.seo_description as string | null,
+        view_count: Number(dl?.view_count ?? 0),
+        published_at: (dl?.published_at as Date | null) ?? null,
+        starting_price: priceMap.get(sNo) ?? null,
+        available_beds: availableCountMap.get(sNo) ?? 0,
+        total_beds: totalCountMap.get(sNo) ?? 0,
+      };
+    });
   }
 
-  private formatListingRow(row: any): any {
+  private formatListingRow(row: ListingRow): EnrichedListing {
     let images = row.images;
     try {
       if (typeof images === 'string') images = JSON.parse(images);

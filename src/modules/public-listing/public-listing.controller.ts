@@ -4,7 +4,6 @@ import {
   Param,
   ParseIntPipe,
   Query,
-  NotFoundException,
   Res,
   Header,
 } from '@nestjs/common';

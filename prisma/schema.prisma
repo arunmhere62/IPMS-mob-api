@@ -285,38 +285,39 @@ model permissions_master {
 }
 
 model pg_locations {
-  s_no               Int                          @id @unique(map: "s_no_2") @default(autoincrement())
-  location_name      String                       @db.VarChar(100)
-  address            String                       @db.VarChar(255)
-  pincode            String?                      @db.VarChar(10)
-  rent_cycle_start   Int?
-  rent_cycle_end     Int?
-  rent_cycle_type    pg_locations_rent_cycle_type @default(CALENDAR)
-  created_at         DateTime?                    @default(now()) @db.Timestamp(0)
-  updated_at         DateTime?                    @default(now()) @db.Timestamp(0)
-  status             pg_locations_status?         @default(ACTIVE)
-  images             Json?
-  city_id            Int?
-  state_id           Int?
-  organization_id    Int
-  is_deleted         Boolean                      @default(false)
-  pg_type            pg_locations_pg_type         @default(COLIVING)
-  advance_payments   advance_payments[]
-  beds               beds[]
-  current_bills      current_bills[]
-  electricity_bills  electricity_bills[]
-  expenses           expenses[]
-  city               city?                        @relation(fields: [city_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_city")
-  organization       organization                 @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_pg_locations_organization")
-  state              state?                       @relation(fields: [state_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_state")
-  pg_users           pg_users[]
-  refund_payments    refund_payments[]
-  rent_payments      rent_payments[]
-  rooms              rooms[]
-  tenant_allocations tenant_allocations[]
-  tenant_tickets     tenant_tickets[]
-  tenants            tenants[]
-  visitors           visitors[]
+  s_no                  Int                          @id @unique(map: "s_no_2") @default(autoincrement())
+  location_name         String                       @db.VarChar(100)
+  address               String                       @db.VarChar(255)
+  pincode               String?                      @db.VarChar(10)
+  rent_cycle_start      Int?
+  rent_cycle_end        Int?
+  rent_cycle_type       pg_locations_rent_cycle_type @default(CALENDAR)
+  created_at            DateTime?                    @default(now()) @db.Timestamp(0)
+  updated_at            DateTime?                    @default(now()) @db.Timestamp(0)
+  status                pg_locations_status?         @default(ACTIVE)
+  images                Json?
+  city_id               Int?
+  state_id              Int?
+  organization_id       Int
+  is_deleted            Boolean                      @default(false)
+  pg_type               pg_locations_pg_type         @default(COLIVING)
+  advance_payments      advance_payments[]
+  beds                  beds[]
+  current_bills         current_bills[]
+  electricity_bills     electricity_bills[]
+  expenses              expenses[]
+  pg_directory_listings pg_directory_listings?
+  city                  city?                        @relation(fields: [city_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_city")
+  organization          organization                 @relation(fields: [organization_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_pg_locations_organization")
+  state                 state?                       @relation(fields: [state_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "fk_state")
+  pg_users              pg_users[]
+  refund_payments       refund_payments[]
+  rent_payments         rent_payments[]
+  rooms                 rooms[]
+  tenant_allocations    tenant_allocations[]
+  tenant_tickets        tenant_tickets[]
+  tenants               tenants[]
+  visitors              visitors[]
 
   @@index([city_id], map: "fk_city")
   @@index([organization_id], map: "fk_pg_locations_organization")
@@ -1110,6 +1111,32 @@ model app_version_history {
   @@index([is_active], map: "idx_app_version_active")
   @@index([platform], map: "idx_app_version_platform")
   @@index([released_at], map: "idx_app_version_released")
+}
+
+model pg_directory_listings {
+  s_no                  Int          @id @default(autoincrement())
+  pg_id                 Int          @unique(map: "pg_id")
+  listing_published     Boolean?     @default(false)
+  listing_description   String?      @db.Text
+  listing_amenities     Json?
+  listing_contact_phone String?      @db.VarChar(20)
+  listing_contact_email String?      @db.VarChar(100)
+  latitude              Decimal?     @db.Decimal(10, 7)
+  longitude             Decimal?     @db.Decimal(10, 7)
+  slug                  String?      @db.VarChar(200)
+  is_featured           Boolean?     @default(false)
+  seo_title             String?      @db.VarChar(200)
+  seo_description       String?      @db.VarChar(300)
+  view_count            Int?         @default(0)
+  published_at          DateTime?    @db.Timestamp(0)
+  created_at            DateTime?    @default(now()) @db.Timestamp(0)
+  updated_at            DateTime?    @default(now()) @db.Timestamp(0)
+  pg_locations          pg_locations @relation(fields: [pg_id], references: [s_no], onDelete: Cascade, onUpdate: NoAction, map: "pg_directory_listings_ibfk_1")
+
+  @@index([latitude, longitude], map: "idx_dir_listing_coords")
+  @@index([is_featured, listing_published], map: "idx_dir_listing_featured")
+  @@index([listing_published], map: "idx_dir_listing_published")
+  @@index([slug], map: "idx_dir_listing_slug")
 }
 
 enum permissions_master_action {

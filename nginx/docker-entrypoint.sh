@@ -44,6 +44,18 @@ else
     fi
 fi
 
+APEX_CONF="/etc/nginx/conf.d/apex.conf"
+APEX_CERT="/etc/letsencrypt/live/indianpgmanagement.com/fullchain.pem"
+
+if [ -f "$APEX_CERT" ]; then
+    echo "Apex SSL certificate found — enabling apex virtual host."
+else
+    if [ -f "$APEX_CONF" ]; then
+        echo "Apex SSL certificate not found — disabling HTTPS block, keeping HTTP for ACME."
+        strip_https_block "$APEX_CONF"
+    fi
+fi
+
 WEB_UI_CONF="/etc/nginx/conf.d/web-ui.conf"
 WEB_UI_CERT="/etc/letsencrypt/live/www.indianpgmanagement.com/fullchain.pem"
 

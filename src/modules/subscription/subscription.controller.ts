@@ -1,7 +1,8 @@
-import { Controller, Get, Post, Req, Res, Body, Query } from '@nestjs/common';
+import { Controller, Get, Post, Req, Res, Body, Query, BadRequestException } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SubscriptionService } from './subscription.service';
+import { IapService } from './iap.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 
 type RequestWithHeaders = {
@@ -22,7 +23,10 @@ const toIntOrNaN = (v: unknown): number => {
 @ApiTags('subscription')
 @Controller('subscription')
 export class SubscriptionController {
-  constructor(private readonly subscriptionService: SubscriptionService) {}
+  constructor(
+    private readonly subscriptionService: SubscriptionService,
+    private readonly iapService: IapService,
+  ) {}
 
   /**
    * Get all active subscription plans (Public - No auth required)
@@ -159,6 +163,78 @@ export class SubscriptionController {
     console.log('📦 Prepare payment request:', { order_id, payment_method });
 
     return this.subscriptionService.preparePayment(order_id, payment_method);
+  }
+
+  /**
+   * Validate an Apple In-App Purchase receipt (StoreKit 2 JWS) and grant
+   * subscription entitlement. iOS-only purchase path.
+   *
+   * App Store Guideline 3.1.1: paid digital subscriptions inside the iOS
+   * app must be sold via Apple IAP. The client sends the signed transaction
+   * token from StoreKit; the server verifies it with Apple's App Store
+   * Server API and activates the subscription.
+   */
+  @Post('iap/validate')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Validate Apple IAP receipt and activate subscription (iOS)' })
+  async validateIapReceipt(
+    @Req() req: RequestWithHeaders,
+    @Body()
+    body: {
+      transactionToken: string;
+      productId: string;
+      transactionId?: string;
+      originalTransactionId?: string;
+    },
+  ) {
+    const userId = parseInt(headerToString(req.headers['x-user-id']), 10);
+    const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
+
+    if (!Number.isFinite(userId) || !Number.isFinite(organizationId)) {
+      throw new BadRequestException('Missing user or organization id in request headers.');
+    }
+
+    const { transactionToken, productId, transactionId, originalTransactionId } = body;
+
+    console.log('🍎 IAP validate request:', {
+      userId,
+      organizationId,
+      productId,
+      transactionId,
+    });
+
+    return this.iapService.validateReceiptAndGrantEntitlement({
+      userId,
+      organizationId,
+      transactionToken,
+      productId,
+      transactionId,
+      originalTransactionId,
+    });
+  }
+
+  /**
+   * App Store Server Notifications V2 endpoint.
+   *
+   * Apple calls this from its servers (NOT the app) to notify us of
+   * subscription lifecycle events: renewals, expirations, refunds, billing
+   * issues. The body is `{ signedPayload: '<JWS>' }`. We verify the JWS
+   * signature with Apple's root CAs and update entitlement state.
+   *
+   * Configure this URL in App Store Connect → App → App Information →
+   * App Store Server Notifications → Production/Sandbox URL:
+   *   https://mobapi.indianpgmanagement.com/api/v1/subscription/iap/notifications
+   * Version: V2.
+   */
+  @Post('iap/notifications')
+  @ApiOperation({ summary: 'App Store Server Notifications V2 webhook (Apple → server)' })
+  async appleServerNotification(@Body() body: { signedPayload?: string }) {
+    const signedPayload = body?.signedPayload;
+    if (!signedPayload) {
+      throw new BadRequestException('Missing signedPayload.');
+    }
+    console.log('🍎 Apple S2S notification received');
+    return this.iapService.handleServerNotification(signedPayload);
   }
 
   /**

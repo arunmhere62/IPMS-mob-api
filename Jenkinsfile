@@ -460,7 +460,7 @@ def deployApplication(String imageTag) {
         export APP_IMAGE=${env.APP_IMAGE}
         export APP_TAG=${env.GIT_COMMIT_SHORT}
         ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} down --remove-orphans
-        ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --force-recreate
+        ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --build --force-recreate
     """
 
 
@@ -483,7 +483,7 @@ def rollbackDeployment() {
         export APP_IMAGE=${env.APP_IMAGE}
         export APP_TAG=previous
         ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} down --remove-orphans
-        ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --force-recreate
+        ${composeCommand()} -f ${env.COMPOSE_FILE} -p ${env.COMPOSE_PROJECT} up -d --build --force-recreate
     """
 
     echo "Rolled back to ${previousImage}"

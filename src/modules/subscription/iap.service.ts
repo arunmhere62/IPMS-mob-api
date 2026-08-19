@@ -309,7 +309,14 @@ export class IapService {
       throw new BadRequestException('Missing signedPayload.');
     }
 
-    let notificationBody: any;
+    let notificationBody: {
+      notificationType?: NotificationTypeV2;
+      subtype?: Subtype;
+      data?: {
+        signedTransactionInfo?: string;
+        originalTransactionId?: string;
+      };
+    };
     try {
       notificationBody = await this.verifier.verifyAndDecodeNotification(signedPayload);
     } catch (err) {
@@ -317,8 +324,8 @@ export class IapService {
       throw new BadRequestException('Apple notification verification failed.');
     }
 
-    const notificationType = notificationBody?.notificationType as NotificationTypeV2 | undefined;
-    const subtype = notificationBody?.subtype as Subtype | undefined;
+    const notificationType = notificationBody?.notificationType;
+    const subtype = notificationBody?.subtype;
     const data = notificationBody?.data ?? {};
     const signedTransactionInfo = data?.signedTransactionInfo as string | undefined;
     const originalTransactionId =

@@ -32,6 +32,7 @@ import { AppSettingsModule } from './modules/app-settings/app-settings.module';
 import { ElectricityBillModule } from './modules/electricity-bill/electricity-bill.module';
 import { ActivityLogsModule } from './modules/activity-logs/activity-logs.module';
 import { PublicListingModule } from './modules/public-listing/public-listing.module';
+import { LeadCaptureModule } from './modules/lead-capture/lead-capture.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config';
@@ -77,6 +78,7 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
     ElectricityBillModule,
     ActivityLogsModule,
     PublicListingModule,
+    LeadCaptureModule,
   ],
   controllers: [AppController],
   providers: [

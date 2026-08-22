@@ -9,6 +9,7 @@ import {
   JWSTransactionDecodedPayload,
   NotificationTypeV2,
   Subtype,
+  ResponseBodyV2DecodedPayload,
 } from '@apple/app-store-server-library';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -309,7 +310,7 @@ export class IapService {
       throw new BadRequestException('Missing signedPayload.');
     }
 
-    let notificationBody: any;
+    let notificationBody: ResponseBodyV2DecodedPayload;
     try {
       notificationBody = await this.verifier.verifyAndDecodeNotification(signedPayload);
     } catch (err) {
@@ -319,7 +320,7 @@ export class IapService {
 
     const notificationType = notificationBody?.notificationType as NotificationTypeV2 | undefined;
     const subtype = notificationBody?.subtype as Subtype | undefined;
-    const data = notificationBody?.data ?? {};
+    const data = (notificationBody?.data ?? {}) as { signedTransactionInfo?: string; originalTransactionId?: string };
     const signedTransactionInfo = data?.signedTransactionInfo as string | undefined;
     const originalTransactionId =
       data?.originalTransactionId ?? (signedTransactionInfo

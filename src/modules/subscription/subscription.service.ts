@@ -1,4 +1,4 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
@@ -14,7 +14,7 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 type DecimalLike = Prisma.Decimal | { toNumber(): number };
 
 @Injectable()
-export class SubscriptionService {
+export class SubscriptionService implements OnModuleInit {
   private readonly logger = new Logger(SubscriptionService.name);
 
   constructor(
@@ -22,6 +22,15 @@ export class SubscriptionService {
     private emailService: EmailService,
     private readonly configService: ConfigService,
   ) {}
+
+  async onModuleInit() {
+    // Backfill missing invoices for existing successful payments
+    try {
+      await this.backfillInvoices();
+    } catch (error) {
+      this.logger.error(`Invoice backfill on startup failed: ${(error as Error).message}`);
+    }
+  }
 
   private normalizePrice(price: DecimalLike | number | string | null | undefined): number {
     if (price && typeof price === 'object' && 'toNumber' in price && typeof (price as DecimalLike).toNumber === 'function') {
@@ -367,12 +376,245 @@ export class SubscriptionService {
     const invoices = await this.prisma.subscription_invoices.findMany({
       where: { organization_id: organizationId },
       orderBy: { invoice_date: 'desc' },
+      include: {
+        subscription_payments: {
+          select: { s_no: true, order_id: true, status: true, payment_mode: true },
+        },
+      },
     });
 
     return ResponseUtil.success(
       invoices,
       'Subscription invoices fetched successfully',
     );
+  }
+
+  /**
+   * Backfill: Generate invoices for all successful payments that don't have one yet.
+   * Called on startup or manually. Skips payments that already have an invoice.
+   */
+  async backfillInvoices() {
+    // Find all successful payments that have a subscription_id and no existing invoice
+    const successfulPayments = await this.prisma.subscription_payments.findMany({
+      where: {
+        status: 'SUCCESS',
+        subscription_id: { not: null },
+      },
+      include: {
+        subscription_invoices: true,
+      },
+    });
+
+    const paymentsWithoutInvoice = successfulPayments.filter(
+      (p) => !p.subscription_invoices || p.subscription_invoices.length === 0,
+    );
+
+    this.logger.log(`Backfilling invoices for ${paymentsWithoutInvoice.length} payments...`);
+
+    let created = 0;
+    let failed = 0;
+
+    for (const payment of paymentsWithoutInvoice) {
+      try {
+        await this.createSubscriptionInvoice({
+          paymentId: payment.s_no,
+          userId: payment.user_id,
+          organizationId: payment.organization_id,
+          subscriptionId: payment.subscription_id!,
+          planId: payment.plan_id,
+          amount: Number(payment.amount || 0),
+          currency: payment.currency,
+        });
+        created++;
+      } catch (error) {
+        failed++;
+        this.logger.error(
+          `Backfill failed for payment ${payment.s_no}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    this.logger.log(`Backfill complete: ${created} invoices created, ${failed} failed`);
+    return ResponseUtil.success(
+      { created, failed, total: paymentsWithoutInvoice.length },
+      `Backfilled ${created} invoices`,
+    );
+  }
+
+  /**
+   * Get a single invoice by ID (with payment details)
+   */
+  async getInvoiceById(invoiceId: number, organizationId: number) {
+    const invoice = await this.prisma.subscription_invoices.findFirst({
+      where: { s_no: invoiceId, organization_id: organizationId },
+      include: {
+        subscription_payments: {
+          select: {
+            s_no: true,
+            order_id: true,
+            status: true,
+            payment_mode: true,
+            tracking_id: true,
+            bank_ref_no: true,
+            amount: true,
+            currency: true,
+            created_at: true,
+          },
+        },
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    return ResponseUtil.success(invoice, 'Invoice fetched successfully');
+  }
+
+  /**
+   * Generate a GST-compliant invoice after a successful subscription payment.
+   * Seller details come from env vars (COMPANY_* / SELLER_*).
+   * Buyer details come from the user's profile + organization.
+   */
+  private async createSubscriptionInvoice(args: {
+    paymentId: number;
+    userId: number;
+    organizationId: number;
+    subscriptionId: number;
+    planId: number;
+    amount: number;
+    currency: string;
+  }): Promise<void> {
+    const { paymentId, userId, organizationId, subscriptionId, planId, amount } = args;
+
+    // Fetch user and organization for buyer details
+    const [user, org] = await Promise.all([
+      this.prisma.users.findUnique({
+        where: { s_no: userId },
+        select: {
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+          city_id: true,
+          state_id: true,
+          pincode: true,
+        },
+      }),
+      this.prisma.organization.findUnique({
+        where: { s_no: organizationId },
+        select: { name: true, description: true },
+      }),
+    ]);
+
+    // Fetch city/state names if available — never use static defaults
+    let cityName = '';
+    let stateName = '';
+    let stateCode = '';
+    if (user?.city_id || user?.state_id) {
+      const [city, state] = await Promise.all([
+        user?.city_id
+          ? this.prisma.city.findUnique({ where: { s_no: user.city_id }, select: { name: true } })
+          : null,
+        user?.state_id
+          ? this.prisma.state.findUnique({ where: { s_no: user.state_id }, select: { name: true, iso_code: true } })
+          : null,
+      ]);
+      cityName = city?.name ?? '';
+      stateName = state?.name ?? '';
+      stateCode = state?.iso_code ?? '';
+    }
+
+    // Seller details from env
+    const sellerLegalName = process.env.COMPANY_LEGAL_NAME || 'Indian PG Management Pvt Ltd';
+    const sellerTradeName = process.env.COMPANY_TRADE_NAME || 'IPGM';
+    const sellerGstin = process.env.COMPANY_GSTIN || '07AABCI1234L1Z5';
+    const sellerAddress = process.env.COMPANY_ADDRESS || 'New Delhi, India';
+    const sellerStateCode = process.env.COMPANY_STATE_CODE || '07';
+    const sellerDuns = process.env.COMPANY_DUNS || null;
+
+    // Buyer details — never use static defaults, use empty string if missing
+    const buyerName = user?.name || org?.name || '';
+    const buyerGstin: string | null = null; // Users don't have GSTIN in current schema
+    const buyerAddress = [user?.address, cityName, stateName, user?.pincode]
+      .filter(Boolean)
+      .join(', ');
+    const placeOfSupply = stateName;
+
+    // GST calculation (18% — split into CGST + SGST for intra-state, IGST for inter-state)
+    // If stateCode is empty, default to intra-state (CGST+SGST) since we can't determine inter-state
+    const gstRate = 18;
+    const isInterState = stateCode !== '' && sellerStateCode !== stateCode;
+    const taxableValue = Number((amount / (1 + gstRate / 100)).toFixed(2));
+    const gstAmount = Number((amount - taxableValue).toFixed(2));
+
+    let cgstRate = 0, cgstAmount = 0, sgstRate = 0, sgstAmount = 0;
+    let igstRate = 0, igstAmount = 0;
+
+    if (isInterState) {
+      igstRate = gstRate;
+      igstAmount = gstAmount;
+    } else {
+      cgstRate = gstRate / 2;
+      cgstAmount = Number((gstAmount / 2).toFixed(2));
+      sgstRate = gstRate / 2;
+      sgstAmount = Number((gstAmount - cgstAmount).toFixed(2));
+    }
+
+    const totalAmount = Number(amount.toFixed(2));
+
+    // Generate invoice number: INV-YYYYMMDD-PAYMENTID
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const invoiceNumber = `INV-${dateStr}-${paymentId}`;
+
+    // Check if invoice already exists (idempotency)
+    const existing = await this.prisma.subscription_invoices.findUnique({
+      where: { invoice_number: invoiceNumber },
+    });
+    if (existing) {
+      this.logger.log(`Invoice ${invoiceNumber} already exists, skipping creation`);
+      return;
+    }
+
+    await this.prisma.subscription_invoices.create({
+      data: {
+        invoice_number: invoiceNumber,
+        payment_id: paymentId,
+        user_id: userId,
+        organization_id: organizationId,
+        subscription_id: subscriptionId,
+        plan_id: planId,
+        invoice_date: today,
+        seller_legal_name: sellerLegalName,
+        seller_trade_name: sellerTradeName,
+        seller_gstin: sellerGstin,
+        seller_address: sellerAddress,
+        seller_state_code: sellerStateCode,
+        seller_duns_number: sellerDuns,
+        buyer_name: buyerName,
+        buyer_gstin: buyerGstin,
+        buyer_address: buyerAddress,
+        buyer_state_code: stateCode,
+        place_of_supply: placeOfSupply,
+        service_description: 'IPGM Subscription Service',
+        hsn_sac_code: '998314',
+        taxable_value: taxableValue,
+        cgst_rate: cgstRate,
+        cgst_amount: cgstAmount,
+        sgst_rate: sgstRate,
+        sgst_amount: sgstAmount,
+        igst_rate: igstRate,
+        igst_amount: igstAmount,
+        total_amount: totalAmount,
+        gst_number: buyerGstin,
+        billing_address: buyerAddress,
+        is_reverse_charge: false,
+        status: 'ACTIVE',
+      },
+    });
+
+    this.logger.log(`Invoice ${invoiceNumber} created for payment ${paymentId}`);
   }
 
   /**
@@ -1069,6 +1311,23 @@ export class SubscriptionService {
 
       // Send subscription confirmation email on successful payment
       if (orderStatus === 'Success' && payment.subscription_id) {
+        // Create GST invoice for the payment
+        try {
+          await this.createSubscriptionInvoice({
+            paymentId: payment.s_no,
+            userId: payment.user_id,
+            organizationId: payment.organization_id,
+            subscriptionId: payment.subscription_id,
+            planId: payment.plan_id,
+            amount: Number(payment.amount || 0),
+            currency: payment.currency,
+          });
+        } catch (error) {
+          this.logger.error(
+            `Failed to create invoice for order ${orderId}: ${(error as Error).message}`,
+          );
+        }
+
         try {
           const subscriptionDetails = await this.prisma.user_subscriptions.findUnique({
             where: { s_no: payment.subscription_id },

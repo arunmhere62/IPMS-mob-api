@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Req, Res, Body, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Req, Res, Body, Query, Param, BadRequestException } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SubscriptionService } from './subscription.service';
@@ -99,6 +99,42 @@ export class SubscriptionController {
     const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
 
     return this.subscriptionService.getUserSubscriptionsAll(userId, organizationId);
+  }
+
+  /**
+   * Get all invoices for the organization
+   */
+  @Get('invoices')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get organization subscription invoices' })
+  async getInvoices(@Req() req: RequestWithHeaders) {
+    const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
+    return this.subscriptionService.getSubscriptionInvoices(organizationId);
+  }
+
+  /**
+   * Get a single invoice by ID (with full details for download/display)
+   */
+  @Get('invoices/:id')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get a single invoice by ID' })
+  async getInvoice(@Req() req: RequestWithHeaders, @Param('id') idParam: string) {
+    const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
+    const invoiceId = parseInt(idParam, 10);
+    if (!Number.isFinite(invoiceId)) {
+      throw new BadRequestException('Invalid invoice ID');
+    }
+    return this.subscriptionService.getInvoiceById(invoiceId, organizationId);
+  }
+
+  /**
+   * Backfill: Generate invoices for all successful payments that don't have one yet
+   */
+  @Post('invoices/backfill')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Backfill missing invoices for successful payments' })
+  async backfillInvoices() {
+    return this.subscriptionService.backfillInvoices();
   }
 
   /**

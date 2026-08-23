@@ -331,16 +331,26 @@ export class SubscriptionController {
    */
   @Post('payment/cancel')
   @ApiOperation({ summary: 'CCAvenue payment cancel' })
-  async paymentCancel(@Body() _body: Record<string, unknown>, @Res() res: Response) {
+  async paymentCancel(@Body() body: Record<string, unknown>, @Res() res: Response) {
     console.log('🚫 Payment cancelled by user');
+    try {
+      await this.subscriptionService.handlePaymentCancel(body);
+    } catch (error) {
+      console.error('❌ Payment cancel handling error:', error);
+    }
     const deepLink = `pgapp://payment-result?status=Aborted`;
     return this.sendRedirectHtml(res, deepLink, 'Aborted');
   }
 
   @Get('payment/cancel')
   @ApiOperation({ summary: 'CCAvenue payment cancel (GET)' })
-  async paymentCancelGet(@Res() res: Response) {
+  async paymentCancelGet(@Query() query: Record<string, unknown>, @Res() res: Response) {
     console.log('🚫 Payment cancel GET');
+    try {
+      await this.subscriptionService.handlePaymentCancel({ encResp: query.encResp });
+    } catch (error) {
+      console.error('❌ Payment cancel GET handling error:', error);
+    }
     const deepLink = `pgapp://payment-result?status=Aborted`;
     return this.sendRedirectHtml(res, deepLink, 'Aborted');
   }

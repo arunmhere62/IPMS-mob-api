@@ -1113,6 +1113,65 @@ export class SubscriptionService {
   }
 
   /**
+   * Handle payment cancel from CCAvenue - mark payment and subscription as cancelled
+   */
+  async handlePaymentCancel(body: Record<string, unknown>) {
+    try {
+      const encResponse = typeof body.encResp === 'string' ? body.encResp : '';
+      let orderId: string | null = null;
+
+      if (encResponse) {
+        const decryptedData = this.ccavDecrypt(encResponse);
+        const params = new URLSearchParams(decryptedData);
+        orderId = params.get('order_id');
+      }
+
+      if (!orderId) {
+        console.log('🚫 Payment cancel: no order_id found, skipping DB update');
+        return { message: 'Cancel received, no order_id' };
+      }
+
+      console.log('🚫 Payment cancel for order:', orderId);
+
+      const payment = await this.prisma.subscription_payments.findUnique({
+        where: { order_id: orderId },
+        include: { user_subscriptions: true },
+      });
+
+      if (!payment) {
+        console.log('🚫 Payment cancel: payment record not found for', orderId);
+        return { message: 'Payment record not found' };
+      }
+
+      // Idempotency: don't update if already in a terminal state
+      if (payment.status === 'SUCCESS' || payment.status === 'FAILURE') {
+        console.log('🚫 Payment cancel: already processed, skipping');
+        return { message: 'Already processed' };
+      }
+
+      // Mark payment as ABORTED
+      await this.prisma.subscription_payments.update({
+        where: { order_id: orderId },
+        data: { status: 'ABORTED' },
+      });
+
+      // Mark subscription as CANCELLED if still PENDING
+      if (payment.subscription_id) {
+        await this.prisma.user_subscriptions.updateMany({
+          where: { s_no: payment.subscription_id, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        });
+      }
+
+      console.log('🚫 Payment cancel processed for order:', orderId);
+      return { message: 'Payment cancelled successfully' };
+    } catch (error) {
+      console.error('❌ Payment cancel processing error:', error);
+      throw error;
+    }
+  }
+
+  /**
    * Send subscription purchase/activation confirmation email
    */
   private async sendSubscriptionConfirmationEmail(args: {

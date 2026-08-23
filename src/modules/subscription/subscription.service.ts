@@ -1,4 +1,5 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { EmailService } from '../email/email.service';
@@ -19,6 +20,7 @@ export class SubscriptionService {
   constructor(
     private prisma: PrismaService,
     private emailService: EmailService,
+    private readonly configService: ConfigService,
   ) {}
 
   private normalizePrice(price: DecimalLike | number | string | null | undefined): number {
@@ -52,13 +54,31 @@ export class SubscriptionService {
     };
   }
 
-  // CCAvenue configuration (hardcoded for debugging)
-  private readonly CCAVENUE_MERCHANT_ID = '4422142';
-  private readonly CCAVENUE_ACCESS_CODE = 'AVAE94NG00AB68EABA';
-  private readonly CCAVENUE_WORKING_KEY = 'B2779D53659D72AD12DD229F49FE01B4';
-  private readonly CCAVENUE_REDIRECT_URL = 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/callback';
-  private readonly CCAVENUE_CANCEL_URL = 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/cancel';
-  private readonly CCAVENUE_PAYMENT_URL = 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
+  // CCAvenue configuration. Prefer environment values so dev/staging can point
+  // callbacks to the same backend instance whose DB is being verified.
+  private get CCAVENUE_MERCHANT_ID() {
+    return this.configService.get<string>('CCAVENUE_MERCHANT_ID') || '4422142';
+  }
+
+  private get CCAVENUE_ACCESS_CODE() {
+    return this.configService.get<string>('CCAVENUE_ACCESS_CODE') || 'AVAE94NG00AB68EABA';
+  }
+
+  private get CCAVENUE_WORKING_KEY() {
+    return this.configService.get<string>('CCAVENUE_WORKING_KEY') || 'B2779D53659D72AD12DD229F49FE01B4';
+  }
+
+  private get CCAVENUE_PAYMENT_URL() {
+    return this.configService.get<string>('CCAVENUE_PAYMENT_URL') || 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
+  }
+
+  private get CCAVENUE_REDIRECT_URL() {
+    return this.configService.get<string>('CCAVENUE_REDIRECT_URL') || 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/callback';
+  }
+
+  private get CCAVENUE_CANCEL_URL() {
+    return this.configService.get<string>('CCAVENUE_CANCEL_URL') || 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/cancel';
+  }
 
   // CCAvenue AES encryption (matches old working implementation)
   // Key: MD5(working_key) → 16 bytes → AES-128-CBC
@@ -458,6 +478,10 @@ export class SubscriptionService {
       merchant_param2: userId.toString(),
       merchant_param3: organizationId.toString(),
       merchant_param4: planId.toString(),
+      // Enable UPI Intent flow so CCAvenue shows "Pay with UPI App" button
+      // which generates upi:// URLs that our WebView native patch intercepts.
+      // Values: Intent, QR, VPA, Intent,VPA, Intent,QR (case-sensitive, no spaces)
+      upi_mode: 'Intent,VPA',
     };
 
     // Convert to query string (no encodeURIComponent - matches CCAvenue demo)
@@ -629,6 +653,7 @@ export class SubscriptionService {
       merchant_param2: userId.toString(),
       merchant_param3: organizationId.toString(),
       merchant_param4: newPlanId.toString(),
+      upi_mode: 'Intent,VPA',
     };
 
     const queryString = Object.entries(paymentData)
@@ -726,6 +751,7 @@ export class SubscriptionService {
       merchant_param2: payment.user_id.toString(),
       merchant_param3: payment.organization_id.toString(),
       merchant_param4: payment.plan_id.toString(),
+      upi_mode: 'Intent,VPA',
     };
 
     // Map selected payment method to CCAvenue payment_option codes for pre-selection
@@ -758,6 +784,44 @@ export class SubscriptionService {
       order_id: orderId,
       payment_method: paymentMethod,
     }, 'Payment prepared successfully');
+  }
+
+  async getPaymentStatus(orderId: string) {
+    if (!orderId) {
+      throw new BadRequestException('Order ID is required');
+    }
+
+    const payment = await this.prisma.subscription_payments.findUnique({
+      where: { order_id: orderId },
+      include: { user_subscriptions: true },
+    });
+
+    if (!payment) {
+      throw new NotFoundException(`Payment record not found for order ${orderId}`);
+    }
+
+    const orderStatusMap: Record<string, string> = {
+      SUCCESS: 'Success',
+      FAILURE: 'Failure',
+      ABORTED: 'Aborted',
+      INITIATED: 'Pending',
+      PENDING: 'Pending',
+    };
+
+    return ResponseUtil.success({
+      order_id: payment.order_id,
+      payment_status: payment.status,
+      order_status: orderStatusMap[payment.status] || 'Pending',
+      tracking_id: payment.tracking_id,
+      bank_ref_no: payment.bank_ref_no,
+      payment_mode: payment.payment_mode,
+      status_code: payment.status_code,
+      status_message: payment.status_message,
+      amount: payment.amount,
+      currency: payment.currency,
+      subscription_id: payment.subscription_id,
+      subscription_status: payment.user_subscriptions?.status ?? null,
+    }, 'Payment status fetched successfully');
   }
 
   /**

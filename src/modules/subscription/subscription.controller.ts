@@ -165,6 +165,14 @@ export class SubscriptionController {
     return this.subscriptionService.preparePayment(order_id, payment_method);
   }
 
+  @Get('payment/status')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Fetch payment status for an order' })
+  async getPaymentStatus(@Query('order_id') orderId: string) {
+    console.log('📦 Payment status request:', { orderId });
+    return this.subscriptionService.getPaymentStatus(orderId);
+  }
+
   /**
    * Validate an Apple In-App Purchase receipt (StoreKit 2 JWS) and grant
    * subscription entitlement. iOS-only purchase path.

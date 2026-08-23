@@ -43,7 +43,7 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env', '.env.dev'],
       load: configuration,
     }),
     ScheduleModule.forRoot(),

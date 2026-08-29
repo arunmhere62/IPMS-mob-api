@@ -143,17 +143,18 @@ export class SubscriptionController {
   @Post('subscribe')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Subscribe to a plan' })
-  async subscribe(@Req() req: RequestWithHeaders, @Body() body: { plan_id: number }) {
+  async subscribe(@Req() req: RequestWithHeaders, @Body() body: { plan_id: number; coupon_code?: string }) {
     const userId = parseInt(headerToString(req.headers['x-user-id']), 10);
     const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
-    const { plan_id } = body;
+    const { plan_id, coupon_code } = body;
 
-    console.log('📦 Subscribe request:', { userId, organizationId, plan_id });
+    console.log('📦 Subscribe request:', { userId, organizationId, plan_id, coupon_code });
 
     const result = await this.subscriptionService.initiateSubscription(
       userId,
       organizationId,
       plan_id,
+      coupon_code,
     );
 
     return {

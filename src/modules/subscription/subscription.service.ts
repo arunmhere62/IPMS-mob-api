@@ -620,7 +620,7 @@ export class SubscriptionService implements OnModuleInit {
   /**
    * Initiate subscription and generate CCAvenue payment URL
    */
-  async initiateSubscription(userId: number, organizationId: number, planId: number) {
+  async initiateSubscription(userId: number, organizationId: number, planId: number, couponCode?: string) {
     // Validate CCAvenue configuration
     this.validateCCAvenueConfig();
 
@@ -634,7 +634,79 @@ export class SubscriptionService implements OnModuleInit {
     }
 
     const basePrice = this.normalizePrice(plan.price);
-    const gstDetails = this.calculateGstBreakdown(basePrice);
+
+    // ─── Coupon validation (if coupon code provided) ───────────
+    let couponId: number | null = null;
+    let appliedCouponCode: string | null = null;
+    let discountAmount = 0;
+    let finalBasePrice = basePrice;
+
+    if (couponCode) {
+      const upperCode = couponCode.trim().toUpperCase();
+      const coupon = await this.prisma.coupons.findUnique({
+        where: { code: upperCode },
+      });
+
+      if (!coupon || !coupon.is_active) {
+        throw new BadRequestException('Invalid or inactive coupon code');
+      }
+
+      // Check validity window
+      const now = new Date();
+      if (coupon.valid_from && now < coupon.valid_from) {
+        throw new BadRequestException('This coupon is not yet valid');
+      }
+      if (coupon.valid_until && now > coupon.valid_until) {
+        throw new BadRequestException('This coupon has expired');
+      }
+
+      // Check global usage limit
+      if (coupon.max_uses !== null && coupon.used_count >= coupon.max_uses) {
+        throw new BadRequestException('This coupon has reached its usage limit');
+      }
+
+      // Check plan applicability
+      if (coupon.applicable_plan_ids) {
+        const planIds = coupon.applicable_plan_ids as unknown as number[];
+        if (Array.isArray(planIds) && planIds.length > 0 && !planIds.includes(planId)) {
+          throw new BadRequestException('This coupon is not valid for the selected plan');
+        }
+      }
+
+      // Check minimum order amount
+      const minOrder = this.normalizePrice(coupon.min_order_amount);
+      if (minOrder > 0 && basePrice < minOrder) {
+        throw new BadRequestException(`Minimum order amount for this coupon is ₹${minOrder}`);
+      }
+
+      // Check per-user usage limit
+      if (coupon.max_uses_per_user !== null && coupon.max_uses_per_user > 0) {
+        const userRedemptionCount = await this.prisma.coupon_redemptions.count({
+          where: { coupon_id: coupon.s_no, user_id: userId },
+        });
+        if (userRedemptionCount >= coupon.max_uses_per_user) {
+          throw new BadRequestException('You have already used this coupon the maximum number of times');
+        }
+      }
+
+      // Calculate discount
+      const value = this.normalizePrice(coupon.discount_value);
+      if (coupon.discount_type === 'PERCENTAGE') {
+        discountAmount = Number(((basePrice * value) / 100).toFixed(2));
+        const maxCap = this.normalizePrice(coupon.max_discount_amount);
+        if (maxCap > 0 && discountAmount > maxCap) discountAmount = maxCap;
+      } else {
+        discountAmount = Math.min(value, basePrice);
+      }
+      discountAmount = Math.min(discountAmount, basePrice);
+      finalBasePrice = Number((basePrice - discountAmount).toFixed(2));
+
+      couponId = coupon.s_no;
+      appliedCouponCode = coupon.code;
+    }
+
+    // Calculate GST on discounted (or original) base price
+    const gstDetails = this.calculateGstBreakdown(finalBasePrice);
     const totalPriceIncludingGst = gstDetails.total_amount;
 
     const planSummary = {
@@ -680,11 +752,10 @@ export class SubscriptionService implements OnModuleInit {
         end_date: new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000),
         status: 'PENDING',
         auto_renew: false,
-        // Note: amount_paid field doesn't exist in schema, amount is stored in subscription_payments table
       },
     });
 
-    // Create payment record
+    // Create payment record (with coupon fields if applicable)
     await this.prisma.subscription_payments.create({
       data: {
         order_id: orderId,
@@ -692,6 +763,10 @@ export class SubscriptionService implements OnModuleInit {
         organization_id: organizationId,
         subscription_id: subscription.s_no,
         plan_id: planId,
+        coupon_id: couponId,
+        coupon_code: appliedCouponCode,
+        original_amount: basePrice.toFixed(2),
+        discount_amount: discountAmount.toFixed(2),
         amount: totalPriceIncludingGst.toFixed(2),
         currency: plan.currency,
         payment_type: 'NEW_SUBSCRIPTION',
@@ -763,10 +838,16 @@ export class SubscriptionService implements OnModuleInit {
       pricing: {
         currency: plan.currency,
         base_price: basePrice,
+        discount_amount: discountAmount,
+        final_base_price: finalBasePrice,
         cgst_amount: gstDetails.cgst_amount,
         sgst_amount: gstDetails.sgst_amount,
         total_price_including_gst: gstDetails.total_amount,
       },
+      coupon: appliedCouponCode ? {
+        code: appliedCouponCode,
+        discount_amount: discountAmount,
+      } : null,
       payment_url: paymentUrl,
       order_id: orderId,
     }, 'Subscription initiated successfully');
@@ -1311,6 +1392,45 @@ export class SubscriptionService implements OnModuleInit {
 
       // Send subscription confirmation email on successful payment
       if (orderStatus === 'Success' && payment.subscription_id) {
+        // ─── Redeem coupon if one was used ─────────────────────
+        if (payment.coupon_id && payment.coupon_code) {
+          try {
+            const originalAmt = Number(payment.original_amount || 0);
+            const discountAmt = Number(payment.discount_amount || 0);
+            const finalAmt = Number(payment.amount || 0);
+
+            await this.prisma.$transaction(async (tx) => {
+              await tx.coupon_redemptions.create({
+                data: {
+                  coupon_id: payment.coupon_id!,
+                  subscription_payment_id: payment.s_no,
+                  user_id: payment.user_id,
+                  organization_id: payment.organization_id,
+                  plan_id: payment.plan_id,
+                  original_amount: originalAmt,
+                  discount_amount: discountAmt,
+                  final_amount: finalAmt,
+                  coupon_code: payment.coupon_code!,
+                },
+              });
+
+              await tx.coupons.update({
+                where: { s_no: payment.coupon_id! },
+                data: { used_count: { increment: 1 } },
+              });
+            });
+
+            this.logger.log(
+              `Coupon ${payment.coupon_code} redeemed for payment ${orderId} — discount: ₹${discountAmt}`,
+            );
+          } catch (couponError) {
+            this.logger.error(
+              `Failed to redeem coupon for order ${orderId}: ${(couponError as Error).message}`,
+            );
+            // Don't fail the payment callback for coupon errors
+          }
+        }
+
         // Create GST invoice for the payment
         try {
           await this.createSubscriptionInvoice({

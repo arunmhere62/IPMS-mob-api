@@ -40,16 +40,30 @@ import * as path from 'path';
  * (./AppleRootCAs.p8 / downloaded at deploy time). See deploy notes.
  */
 
-// Apple IAP product id → backend plan lookup key (duration in days).
+// Apple IAP product id → backend subscription_plans.s_no (explicit mapping).
 // Keep in sync with the client (IPMS-mob-ui/src/config/iapProducts.ts).
+//
+// DB plan reference:
+//   s_no=6 → Testing Plan   (30 days,  ₹10)   → MONTHLY
+//   s_no=4 → PremiumX Lite  (180 days, ₹5999) → PREMIUMX_LITE
+//   s_no=3 → PremiumX       (365 days, ₹9999) → PREMIUMX
+//   s_no=2 → EnterpriseX    (365 days, ₹24999)→ ENTERPRISEX
 const IAP_PRODUCT_IDS = {
   MONTHLY: 'com.indianpgmanagement.sub.monthly',
-  QUARTERLY: 'com.indianpgmanagement.sub.quarterly',
-  HALF_YEARLY: 'com.indianpgmanagement.sub.halfyearly',
-  YEARLY: 'com.indianpgmanagement.sub.yearly',
+  PREMIUMX_LITE: 'com.indianpgmanagement.sub.premiumxlite',
+  PREMIUMX: 'com.indianpgmanagement.sub.premiumx',
+  ENTERPRISEX: 'com.indianpgmanagement.sub.enterprisex',
 } as const;
 
 type IapProductId = (typeof IAP_PRODUCT_IDS)[keyof typeof IAP_PRODUCT_IDS];
+
+// Explicit Apple Product ID → subscription_plans.s_no mapping.
+const IAP_PRODUCT_TO_PLAN_ID: Record<IapProductId, number> = {
+  [IAP_PRODUCT_IDS.MONTHLY]: 6,
+  [IAP_PRODUCT_IDS.PREMIUMX_LITE]: 4,
+  [IAP_PRODUCT_IDS.PREMIUMX]: 3,
+  [IAP_PRODUCT_IDS.ENTERPRISEX]: 2,
+};
 
 @Injectable()
 export class IapService {
@@ -429,28 +443,16 @@ export class IapService {
 
   /**
    * Map an Apple IAP product id to a backend subscription_plans row by
-   * matching the plan duration. Falls back to a name-based lookup if needed.
+   * explicit s_no lookup (IAP_PRODUCT_TO_PLAN_ID). This allows multiple
+   * plans with the same duration (e.g. PremiumX and EnterpriseX are both
+   * 365 days) to each have their own IAP product.
    */
   private async findPlanForProductId(productId: string) {
-    const durationByProduct: Record<IapProductId, number> = {
-      [IAP_PRODUCT_IDS.MONTHLY]: 30,
-      [IAP_PRODUCT_IDS.QUARTERLY]: 90,
-      [IAP_PRODUCT_IDS.HALF_YEARLY]: 180,
-      [IAP_PRODUCT_IDS.YEARLY]: 365,
-    };
+    const planId = IAP_PRODUCT_TO_PLAN_ID[productId as IapProductId];
+    if (!planId) return null;
 
-    const duration = durationByProduct[productId as IapProductId];
-    if (!duration) return null;
-
-    // Prefer an active plan with this exact duration that is NOT free/trial.
-    const plan = await this.prisma.subscription_plans.findFirst({
-      where: {
-        duration,
-        is_active: true,
-        is_free: false,
-        is_trial: false,
-      },
-      orderBy: { price: 'asc' },
+    const plan = await this.prisma.subscription_plans.findUnique({
+      where: { s_no: planId },
     });
     return plan;
   }

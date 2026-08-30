@@ -419,14 +419,10 @@ def runOptionalNpmScript(String scriptName, String extraArgs = '') {
 }
 
 def prepareEnvFile() {
-    if (fileExists('.env')) {
-        echo 'Using existing .env file in workspace.'
-        return
-    }
-
-    // Optional: pull .env from a Jenkins secret file credential if it exists.
-    // If the credential is not configured, continue without it. The deployment
-    // may still work if Docker Compose reads an env file from the host instead.
+    // Always pull .env from the Jenkins secret file credential so the
+    // workspace never uses a stale .env left behind by a previous build.
+    // If the credential is not configured, fall back to an existing .env
+    // in the workspace (if any) so the deployment can still proceed.
     def envCredentialId = env.DEPLOYMENT_ENV == 'production' ? 'ipgm-mobapi-prod-env-file' : 'ipgm-mobapi-dev-env-file'
 
     try {
@@ -436,7 +432,11 @@ def prepareEnvFile() {
         }
         echo 'Wrote .env file from Jenkins secret file credential.'
     } catch (Exception e) {
-        echo "WARNING: Could not load Jenkins credential '${envCredentialId}' and no .env file present. Continuing anyway."
+        if (fileExists('.env')) {
+            echo "WARNING: Could not load Jenkins credential '${envCredentialId}'. Using existing .env file in workspace."
+        } else {
+            echo "WARNING: Could not load Jenkins credential '${envCredentialId}' and no .env file present. Continuing anyway."
+        }
     }
 }
 

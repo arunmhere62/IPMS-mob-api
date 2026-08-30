@@ -7,6 +7,7 @@ import {
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
+import { normalizePhoneNumber } from '../../../common/utils/phone.utils';
 import { TenantSendOtpDto } from './dto/tenant-send-otp.dto';
 import { TenantVerifyOtpDto } from './dto/tenant-verify-otp.dto';
 import { ActionType } from '../../activity-logs/dto/log-activity.dto';
@@ -43,8 +44,8 @@ export class TenantAuthService {
   async sendOtp(dto: TenantSendOtpDto) {
     const { phone } = dto;
 
-    // Normalize phone by removing spaces for database search
-    const normalizedPhone = phone.replace(/\s/g, '');
+    // Normalize phone to E.164 format for database search
+    const normalizedPhone = normalizePhoneNumber(phone);
 
     // Prefer the ACTIVE tenant record for this phone (handles re-join after checkout at another PG)
     const tenant =
@@ -128,8 +129,8 @@ export class TenantAuthService {
   async verifyOtp(dto: TenantVerifyOtpDto, deviceInfo?: string, ipAddress?: string) {
     const { phone, otp } = dto;
 
-    // Normalize phone by removing spaces for database search
-    const normalizedPhone = phone.replace(/\s/g, '');
+    // Normalize phone to E.164 format for database search
+    const normalizedPhone = normalizePhoneNumber(phone);
 
     // Verify OTP using normalized phone
     // Fetch the latest unverified OTP record (strategy may allow bypass OTP)

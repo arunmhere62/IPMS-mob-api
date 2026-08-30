@@ -3,12 +3,38 @@
  */
 
 /**
- * Normalize phone number format by removing spaces
- * Converts "+91 8248449609" to "+918248449609"
+ * Normalize phone number format for database lookup.
+ * Converts "+91 8248449609" → "+918248449609"
+ * Converts "9003939213" → "+919003939213"
+ * Converts "919003939213" → "+919003939213"
  */
 export function normalizePhoneNumber(phone: string): string {
   if (!phone) return phone;
-  return phone.replace(/\s+/g, '');
+
+  // Remove all non-digit and non-leading-plus characters
+  let normalized = phone.replace(/\s+/g, '');
+
+  // If it starts with '00', replace with '+'
+  if (normalized.startsWith('00')) {
+    normalized = '+' + normalized.slice(2);
+  }
+
+  // If already in E.164 format with +, just clean it
+  if (normalized.startsWith('+')) {
+    return normalized;
+  }
+
+  // If it's a 10-digit local number, assume India (+91)
+  if (/^\d{10}$/.test(normalized)) {
+    return '+91' + normalized;
+  }
+
+  // If it already starts with 91 + 10 more digits (12 digits total), add + prefix
+  if (/^91\d{10}$/.test(normalized)) {
+    return '+' + normalized;
+  }
+
+  return normalized;
 }
 
 /**

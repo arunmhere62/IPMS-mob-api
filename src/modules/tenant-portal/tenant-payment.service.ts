@@ -1,7 +1,7 @@
 import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '@/prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
-import { Prisma } from '@prisma/client';
+import { rent_payments_payment_method, tenant_payment_submissions_payment_method } from '@prisma/client';
 import { NotificationService } from '../notification/notification.service';
 
 export interface SubmitPaymentProofDto {
@@ -285,7 +285,7 @@ export class TenantPaymentService {
             // actual_rent_amount = full expected rent for this cycle (NOT the partial amount)
             // This is used by the verification logic to determine PAID vs PARTIAL
             actual_rent_amount: bedPrice ? Number(bedPrice) : paidAmount,
-            payment_method: (dto.payment_method || 'UPI') as any,
+            payment_method: (dto.payment_method || 'UPI') as rent_payments_payment_method,
             status: 'PENDING',
           },
         });
@@ -303,7 +303,14 @@ export class TenantPaymentService {
     }
 
     // 7. Resolve the owner's current payment config and snapshot it
-    let configSnapshot: any = null;
+    let configSnapshot: {
+      upi_id: string;
+      account_holder_name: string | null;
+      bank_name: string | null;
+      account_number: string | null;
+      ifsc_code: string | null;
+      payment_instructions: string | null;
+    } | null = null;
     let paymentConfig = await this.prisma.owner_payment_configs.findFirst({
       where: {
         organization_id: orgId,
@@ -347,7 +354,7 @@ export class TenantPaymentService {
           paid_amount: paidAmount,
           paid_date: paidDate,
           transaction_ref: dto.transaction_ref || null,
-          payment_method: (dto.payment_method || 'UPI') as any,
+          payment_method: (dto.payment_method || 'UPI') as tenant_payment_submissions_payment_method,
           payment_screenshot_url: dto.payment_screenshot_url || null,
           tenant_notes: dto.tenant_notes || null,
           payment_config_snapshot: configSnapshot,

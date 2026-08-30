@@ -1,7 +1,6 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, Req, BadRequestException } from '@nestjs/common';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { CouponService } from './coupon.service';
-import { ResponseUtil } from '../../common/utils/response.util';
 
 type RequestWithHeaders = {
   headers: Record<string, string | string[] | undefined>;

@@ -31,6 +31,16 @@ type RentPaymentSummary = {
   payment_date?: Date | string | null;
   status?: string | null;
   amount_paid?: Prisma.Decimal | number | string | null;
+  has_pending_submission?: boolean;
+  tenant_payment_submissions_rent_payment_idTorent_payments?: Array<{
+    s_no: number;
+    paid_amount?: Prisma.Decimal | number | string | null;
+    paid_date?: Date | string | null;
+    status?: string | null;
+    submitted_at?: Date | string | null;
+    payment_method?: string | null;
+    transaction_ref?: string | null;
+  }>;
 };
 
 type PaymentCycleSummary = {
@@ -1197,7 +1207,7 @@ export class TenantService {
         const remaining = cycleSummary ? Number(cycleSummary.remainingDue || 0) : null;
 
         // Extract pending submission (if any) from the nested relation
-        const pendingSubmissions = (p as any)?.tenant_payment_submissions_rent_payment_idTorent_payments ?? [];
+        const pendingSubmissions = p?.tenant_payment_submissions_rent_payment_idTorent_payments ?? [];
         const pendingSubmission = pendingSubmissions.length > 0 ? pendingSubmissions[0] : null;
 
         return {
@@ -1225,7 +1235,7 @@ export class TenantService {
     // Check if any rent payment has an active (SUBMITTED) payment submission
     // If so, override the display status to PENDING_VERIFICATION
     const hasPendingVerification = enrichedRentPayments.some(
-      (p: any) => p.has_pending_submission === true,
+      (p) => p.has_pending_submission === true,
     );
     const displayPaymentStatus = hasPendingVerification && paymentStatus !== 'PAID'
       ? 'PENDING_VERIFICATION'

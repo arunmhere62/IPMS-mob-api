@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
-import { Prisma } from '@prisma/client';
+import { Prisma, tenant_payment_submissions_status, rent_payments_payment_method } from '@prisma/client';
 import { NotificationService } from '../notification/notification.service';
 
 @Injectable()
@@ -35,7 +35,7 @@ export class PaymentVerificationService {
     };
 
     if (filters.status && filters.status !== 'ALL') {
-      where.status = filters.status as any;
+      where.status = filters.status as tenant_payment_submissions_status;
     }
 
     if (filters.pg_id) {
@@ -174,7 +174,7 @@ export class PaymentVerificationService {
         data: {
           status: newStatus,
           // Update payment_method to what the tenant actually used
-          payment_method: submission.payment_method as any,
+          payment_method: submission.payment_method as rent_payments_payment_method,
           // Accumulate amount_paid (previous partial + this submission)
           amount_paid: newTotalPaid,
           // Clear the active submission pointer
@@ -195,15 +195,10 @@ export class PaymentVerificationService {
 
     // ─── Send push notification to the tenant ───
     try {
-      const tenant = await this.prisma.tenants.findFirst({
-        where: { s_no: submission.tenant_id },
-        select: { s_no: true, name: true },
-      });
       const pg = await this.prisma.pg_locations.findFirst({
         where: { s_no: submission.pg_id },
         select: { location_name: true },
       });
-      const tenantName = tenant?.name || 'Tenant';
       const pgName = pg?.location_name || 'your PG';
       const amount = Number(submission.paid_amount || 0);
 
@@ -304,15 +299,10 @@ export class PaymentVerificationService {
 
     // ─── Send push notification to the tenant about rejection ───
     try {
-      const tenant = await this.prisma.tenants.findFirst({
-        where: { s_no: submission.tenant_id },
-        select: { s_no: true, name: true },
-      });
       const pg = await this.prisma.pg_locations.findFirst({
         where: { s_no: submission.pg_id },
         select: { location_name: true },
       });
-      const tenantName = tenant?.name || 'Tenant';
       const pgName = pg?.location_name || 'your PG';
       const amount = Number(submission.paid_amount || 0);
 

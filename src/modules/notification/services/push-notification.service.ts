@@ -7,7 +7,8 @@ import { getFirebaseApp } from '../providers/firebase.provider';
 import { getExpoClient, isExpoReceipt } from '../providers/expo.provider';
 import { SendNotificationDto } from '../types/notification.types';
 
-const firebaseApp = getFirebaseApp();
+// Initialize Firebase app at module load (side effect — no assignment needed).
+getFirebaseApp();
 
 @Injectable()
 export class PushNotificationService {

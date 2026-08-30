@@ -32,6 +32,10 @@ import { AppSettingsModule } from './modules/app-settings/app-settings.module';
 import { ElectricityBillModule } from './modules/electricity-bill/electricity-bill.module';
 import { ActivityLogsModule } from './modules/activity-logs/activity-logs.module';
 import { PublicListingModule } from './modules/public-listing/public-listing.module';
+import { LeadCaptureModule } from './modules/lead-capture/lead-capture.module';
+import { CouponModule } from './modules/coupon/coupon.module';
+import { OwnerPaymentConfigModule } from './modules/owner-payment-config/owner-payment-config.module';
+import { PaymentVerificationModule } from './modules/payment-verification/payment-verification.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config';
@@ -42,7 +46,7 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
-      envFilePath: '.env',
+      envFilePath: ['.env', '.env.dev'],
       load: configuration,
     }),
     ScheduleModule.forRoot(),
@@ -77,6 +81,10 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
     ElectricityBillModule,
     ActivityLogsModule,
     PublicListingModule,
+    LeadCaptureModule,
+    CouponModule,
+    OwnerPaymentConfigModule,
+    PaymentVerificationModule,
   ],
   controllers: [AppController],
   providers: [

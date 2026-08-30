@@ -31,6 +31,16 @@ type RentPaymentSummary = {
   payment_date?: Date | string | null;
   status?: string | null;
   amount_paid?: Prisma.Decimal | number | string | null;
+  has_pending_submission?: boolean;
+  tenant_payment_submissions_rent_payment_idTorent_payments?: Array<{
+    s_no: number;
+    paid_amount?: Prisma.Decimal | number | string | null;
+    paid_date?: Date | string | null;
+    status?: string | null;
+    submitted_at?: Date | string | null;
+    payment_method?: string | null;
+    transaction_ref?: string | null;
+  }>;
 };
 
 type PaymentCycleSummary = {
@@ -763,6 +773,512 @@ export class TenantService {
         },
       },
       'Tenants fetched successfully',
+    );
+  }
+
+  /**
+   * Get tenant profile only — basic info, PG, room, bed, allocations.
+   * Excludes all payment data (rent_payments, advance_payments, refund_payments, rent summary).
+   * Used by GET /tenant/profile for the tenant portal.
+   */
+  async findOneProfileOnly(id: number) {
+    const tenant = await this.prisma.tenants.findFirst({
+      where: {
+        s_no: id,
+        is_deleted: false,
+      },
+      include: {
+        pg_locations: {
+          select: {
+            s_no: true,
+            location_name: true,
+            address: true,
+            city: true,
+            state: true,
+            rent_cycle_type: true,
+          },
+        },
+        rooms: {
+          select: {
+            s_no: true,
+            room_no: true,
+          },
+        },
+        beds: {
+          select: {
+            s_no: true,
+            bed_no: true,
+            bed_price: true,
+          },
+        },
+        city: {
+          select: {
+            s_no: true,
+            name: true,
+          },
+        },
+        state: {
+          select: {
+            s_no: true,
+            name: true,
+          },
+        },
+        tenant_allocations: {
+          orderBy: {
+            effective_from: 'asc',
+          },
+          select: {
+            s_no: true,
+            effective_from: true,
+            effective_to: true,
+            bed_price_snapshot: true,
+            pg_id: true,
+            room_id: true,
+            bed_id: true,
+            pg_locations: {
+              select: {
+                s_no: true,
+                location_name: true,
+              },
+            },
+            rooms: {
+              select: {
+                s_no: true,
+                room_no: true,
+              },
+            },
+            beds: {
+              select: {
+                s_no: true,
+                bed_no: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException(`Tenant with ID ${id} not found`);
+    }
+
+    // Basic status flags (no rent summary computation)
+    const enrichedTenant = this.tenantStatusService.enrichTenantsWithStatus([tenant])[0] as Record<string, unknown>;
+
+    return ResponseUtil.success(
+      enrichedTenant,
+      'Tenant profile retrieved successfully',
+    );
+  }
+
+  /**
+   * Get tenant payments summary — all payment-related data.
+   * Includes rent_payments, advance_payments, refund_payments, tenant_rent_cycles,
+   * payment_cycle_summaries, unpaid_months, dues, and payment status.
+   * Used by GET /tenant/payments-summary for the tenant portal.
+   */
+  async findOnePaymentsSummary(id: number) {
+    const tenant = await this.prisma.tenants.findFirst({
+      where: {
+        s_no: id,
+        is_deleted: false,
+      },
+      include: {
+        pg_locations: {
+          select: {
+            s_no: true,
+            location_name: true,
+            rent_cycle_type: true,
+          },
+        },
+        rooms: {
+          select: {
+            s_no: true,
+            room_no: true,
+          },
+        },
+        beds: {
+          select: {
+            s_no: true,
+            bed_no: true,
+            bed_price: true,
+          },
+        },
+        tenant_rent_cycles: {
+          orderBy: {
+            cycle_start: 'asc',
+          },
+          select: {
+            s_no: true,
+            cycle_type: true,
+            anchor_day: true,
+            cycle_start: true,
+            cycle_end: true,
+          },
+        },
+        rent_payments: {
+          where: {
+            is_deleted: false,
+            status: {
+              not: 'VOIDED',
+            },
+          },
+          orderBy: {
+            payment_date: 'desc',
+          },
+          select: {
+            s_no: true,
+            payment_date: true,
+            pg_id: true,
+            room_id: true,
+            bed_id: true,
+            amount_paid: true,
+            actual_rent_amount: true,
+            cycle_id: true,
+            payment_method: true,
+            remarks: true,
+            status: true,
+            active_submission_id: true,
+            tenant_payment_submissions_tenant_payment_submissions_rent_payment_idTorent_payments: {
+              where: {
+                status: 'SUBMITTED',
+              },
+              select: {
+                s_no: true,
+                paid_amount: true,
+                paid_date: true,
+                status: true,
+                submitted_at: true,
+                payment_method: true,
+                transaction_ref: true,
+              },
+              orderBy: {
+                submitted_at: 'desc',
+              },
+              take: 1,
+            },
+            tenant_rent_cycles: {
+              select: {
+                s_no: true,
+                cycle_type: true,
+                cycle_start: true,
+                cycle_end: true,
+              },
+            },
+            pg_locations: {
+              select: {
+                s_no: true,
+                location_name: true,
+              },
+            },
+            rooms: {
+              select: {
+                s_no: true,
+                room_no: true,
+              },
+            },
+            beds: {
+              select: {
+                s_no: true,
+                bed_no: true,
+              },
+            },
+          },
+        },
+        advance_payments: {
+          where: {
+            is_deleted: false,
+            status: {
+              not: 'VOIDED',
+            },
+          },
+          orderBy: {
+            payment_date: 'desc',
+          },
+          select: {
+            s_no: true,
+            payment_date: true,
+            pg_id: true,
+            room_id: true,
+            bed_id: true,
+            amount_paid: true,
+            actual_rent_amount: true,
+            payment_method: true,
+            status: true,
+            remarks: true,
+            pg_locations: {
+              select: {
+                s_no: true,
+                location_name: true,
+              },
+            },
+            rooms: {
+              select: {
+                s_no: true,
+                room_no: true,
+              },
+            },
+            beds: {
+              select: {
+                s_no: true,
+                bed_no: true,
+              },
+            },
+          },
+        },
+        refund_payments: {
+          where: {
+            is_deleted: false,
+          },
+          orderBy: {
+            payment_date: 'desc',
+          },
+          select: {
+            s_no: true,
+            payment_date: true,
+            amount_paid: true,
+            payment_method: true,
+            status: true,
+            remarks: true,
+          },
+        },
+        tenant_allocations: {
+          orderBy: {
+            effective_from: 'asc',
+          },
+          select: {
+            s_no: true,
+            effective_from: true,
+            effective_to: true,
+            bed_price_snapshot: true,
+            pg_id: true,
+            room_id: true,
+            bed_id: true,
+            pg_locations: {
+              select: {
+                s_no: true,
+                location_name: true,
+              },
+            },
+            rooms: {
+              select: {
+                s_no: true,
+                room_no: true,
+              },
+            },
+            beds: {
+              select: {
+                s_no: true,
+                bed_no: true,
+              },
+            },
+          },
+        },
+      },
+    });
+
+    if (!tenant) {
+      throw new NotFoundException(`Tenant with ID ${id} not found`);
+    }
+
+    // Calculate advance and refund payment summaries
+    interface PaymentWithAmount {
+      amount_paid: unknown;
+    }
+
+    const advancePayments = (tenant as { advance_payments?: PaymentWithAmount[] }).advance_payments || [];
+    const refundPayments = (tenant as { refund_payments?: PaymentWithAmount[] }).refund_payments || [];
+
+    const totalAdvancePaid = advancePayments.reduce((sum: number, p: PaymentWithAmount) => {
+      const amount = typeof p.amount_paid === 'number' ? p.amount_paid : parseFloat(String(p.amount_paid || 0));
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0) as number;
+
+    const totalRefundGiven = refundPayments.reduce((sum: number, p: PaymentWithAmount) => {
+      const amount = typeof p.amount_paid === 'number' ? p.amount_paid : parseFloat(String(p.amount_paid || 0));
+      return sum + (isNaN(amount) ? 0 : amount);
+    }, 0) as number;
+
+    const rentSummary = this.tenantRentSummaryService.buildRentSummary({ tenant });
+    const paymentStatus = rentSummary.payment_status || 'NO_PAYMENT';
+
+    // Compute transfer difference due cycle
+    const transferDifferenceDueCycle = (() => {
+      const allocations = ((tenant as { tenant_allocations?: TenantAllocationSummary[] }).tenant_allocations ||
+        []) as TenantAllocationSummary[];
+
+      if (!allocations || allocations.length <= 1) return null;
+
+      const toDateOnlyUtcLocal = (input: unknown): Date => {
+        const d = input instanceof Date ? input : new Date(String(input));
+        if (Number.isNaN(d.getTime())) return new Date(NaN);
+        return new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
+      };
+
+      const checkInDateOnly = toDateOnlyUtcLocal(tenant.check_in_date);
+      const transferAllocations = allocations
+        .filter((a: TenantAllocationSummary) => {
+          const ef = toDateOnlyUtcLocal(a.effective_from);
+          if (Number.isNaN(ef.getTime())) return false;
+          return ef.getTime() !== checkInDateOnly.getTime();
+        })
+        .sort(
+          (a: TenantAllocationSummary, b: TenantAllocationSummary) =>
+            new Date(b.effective_from).getTime() - new Date(a.effective_from).getTime(),
+        );
+
+      if (transferAllocations.length === 0) return null;
+
+      const transferDate = toDateOnlyUtcLocal(transferAllocations[0].effective_from);
+      if (Number.isNaN(transferDate.getTime())) return null;
+
+      const candidate = (rentSummary.payment_cycle_summaries as PaymentCycleSummary[]).find(
+        (c: PaymentCycleSummary) => {
+          const start = toDateOnlyUtcLocal(String(c.start_date));
+          const end = toDateOnlyUtcLocal(String(c.end_date));
+          if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return false;
+          return transferDate >= start && transferDate <= end;
+        },
+      );
+
+      if (!candidate) return null;
+      const remaining = Number(candidate.remainingDue || 0);
+      if (!(remaining > 0)) return null;
+
+      const todayUtc = toDateOnlyUtcLocal(new Date());
+      const candidateStartUtc = toDateOnlyUtcLocal(String(candidate.start_date));
+      if (Number.isNaN(candidateStartUtc.getTime())) return null;
+      if (candidateStartUtc.getTime() > todayUtc.getTime()) return null;
+
+      return candidate;
+    })();
+
+    const unpaidMonths = rentSummary.unpaid_months;
+
+    const rentFlags = this.tenantStatusService.deriveRentFlags({
+      paymentStatus,
+      unpaidMonthsCount: unpaidMonths.length,
+      partialDueAmount: rentSummary.partial_due_amount || 0,
+    });
+
+    const cycleSummaryById = new Map<number, PaymentCycleSummary>();
+    ((rentSummary.payment_cycle_summaries as PaymentCycleSummary[] | undefined) || []).forEach(
+      (s: PaymentCycleSummary) => {
+        if (s?.cycle_id) cycleSummaryById.set(Number(s.cycle_id), s);
+      },
+    );
+
+    const toDateOnlyUtcLocal = (input: unknown): Date => {
+      const d = input instanceof Date ? input : new Date(String(input));
+      if (Number.isNaN(d.getTime())) return new Date(NaN);
+      return new Date(d.toISOString().split('T')[0] + 'T00:00:00.000Z');
+    };
+
+    const allocationSnapshotForDate = (paymentDate: Date | string | null | undefined): number | null => {
+      if (!paymentDate) return null;
+      const pd = toDateOnlyUtcLocal(paymentDate);
+      if (Number.isNaN(pd.getTime())) return null;
+
+      const allocations = (tenant as { tenant_allocations?: TenantAllocationSummary[] }).tenant_allocations ||
+        ([] as TenantAllocationSummary[]);
+
+      const matching = allocations
+        .filter((a: TenantAllocationSummary) => {
+          const from = toDateOnlyUtcLocal(a.effective_from);
+          const to = a.effective_to ? toDateOnlyUtcLocal(a.effective_to) : null;
+          if (Number.isNaN(from.getTime())) return false;
+          if (to && Number.isNaN(to.getTime())) return false;
+          return from <= pd && (!to || to >= pd);
+        })
+        .sort(
+          (a: TenantAllocationSummary, b: TenantAllocationSummary) =>
+            new Date(b.effective_from).getTime() - new Date(a.effective_from).getTime(),
+        );
+
+      if (matching.length === 0) return null;
+      const snap = matching[0]?.bed_price_snapshot;
+      const n = Number(snap);
+      return Number.isFinite(n) ? n : null;
+    };
+
+    const enrichedRentPayments = ((tenant as { rent_payments?: RentPaymentSummary[] }).rent_payments || []).map(
+      (p: RentPaymentSummary) => {
+        const cycleSummary = p?.cycle_id ? cycleSummaryById.get(Number(p.cycle_id)) : null;
+        const remaining = cycleSummary ? Number(cycleSummary.remainingDue || 0) : null;
+
+        // Extract pending submission (if any) from the nested relation
+        const pendingSubmissions = p?.tenant_payment_submissions_rent_payment_idTorent_payments ?? [];
+        const pendingSubmission = pendingSubmissions.length > 0 ? pendingSubmissions[0] : null;
+
+        return {
+          ...p,
+          bed_rent_amount_snapshot: allocationSnapshotForDate(p?.payment_date),
+          cycle_status: cycleSummary?.status ?? null,
+          cycle_due: cycleSummary?.due ?? null,
+          cycle_total_paid: cycleSummary?.totalPaid ?? null,
+          cycle_remaining_due: remaining,
+          is_cycle_settled: remaining !== null ? remaining <= 0 : null,
+          has_pending_submission: !!pendingSubmission,
+          pending_submission: pendingSubmission ? {
+            s_no: pendingSubmission.s_no,
+            paid_amount: Number(pendingSubmission.paid_amount || 0),
+            paid_date: pendingSubmission.paid_date,
+            status: pendingSubmission.status,
+            submitted_at: pendingSubmission.submitted_at,
+            payment_method: pendingSubmission.payment_method,
+            transaction_ref: pendingSubmission.transaction_ref,
+          } : null,
+        };
+      },
+    );
+
+    // Check if any rent payment has an active (SUBMITTED) payment submission
+    // If so, override the display status to PENDING_VERIFICATION
+    const hasPendingVerification = enrichedRentPayments.some(
+      (p) => p.has_pending_submission === true,
+    );
+    const displayPaymentStatus = hasPendingVerification && paymentStatus !== 'PAID'
+      ? 'PENDING_VERIFICATION'
+      : paymentStatus;
+
+    return ResponseUtil.success(
+      {
+        s_no: tenant.s_no,
+        tenant_id: tenant.tenant_id,
+        pg_id: tenant.pg_id,
+        room_id: tenant.room_id,
+        bed_id: tenant.bed_id,
+        beds: tenant.beds,
+        rooms: tenant.rooms,
+        pg_locations: tenant.pg_locations,
+        tenant_rent_cycles: tenant.tenant_rent_cycles,
+        rent_payments: enrichedRentPayments,
+        advance_payments: tenant.advance_payments,
+        refund_payments: tenant.refund_payments,
+        tenant_allocations: tenant.tenant_allocations,
+        advance_payment_summary: {
+          total_advance_paid: totalAdvancePaid,
+          total_advance_count: advancePayments.length,
+        },
+        refund_payment_summary: {
+          total_refund_given: totalRefundGiven,
+          total_refund_count: refundPayments.length,
+        },
+        net_advance_remaining: totalAdvancePaid - totalRefundGiven,
+        is_rent_paid: rentFlags.is_rent_paid,
+        is_rent_partial: rentFlags.is_rent_partial,
+        is_advance_paid: totalAdvancePaid > 0,
+        is_refund_paid: totalRefundGiven > 0,
+        rent_due_amount: rentSummary.rent_due_amount,
+        partial_due_amount: rentSummary.partial_due_amount,
+        pending_due_amount: rentSummary.pending_due_amount,
+        unpaid_months: unpaidMonths,
+        payment_status: displayPaymentStatus,
+        has_pending_verification: hasPendingVerification,
+        payment_cycle_summaries: rentSummary.payment_cycle_summaries,
+        transfer_difference_due_cycle: transferDifferenceDueCycle,
+      },
+      'Tenant payments summary retrieved successfully',
     );
   }
 

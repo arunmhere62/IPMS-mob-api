@@ -48,6 +48,7 @@ type TenantInput = {
 };
 
 type RentPeriod = {
+  cycle_id: number;
   period_start: string;
   period_end: string;
   expected_rent: number;
@@ -188,6 +189,7 @@ export class TenantRentSummaryService {
       else status = 'PENDING';
 
       return {
+        cycle_id: cycle.s_no,
         period_start: this.formatUtcDate(cycle.cycle_start),
         period_end: this.formatUtcDate(cycle.cycle_end),
         expected_rent: expectedRent,
@@ -266,7 +268,16 @@ export class TenantRentSummaryService {
       unpaid_months: unpaidMonths,
       partial_payments: partialPayments,
       current_cycle: currentCycle,
-      payment_cycle_summaries: [],
+      payment_cycle_summaries: periods.map((p) => ({
+        cycle_id: p.cycle_id,
+        start_date: p.period_start,
+        end_date: p.period_end,
+        expected_rent: p.expected_rent,
+        due: p.due_amount,
+        totalPaid: p.paid_amount,
+        remainingDue: p.due_amount,
+        status: p.status,
+      })),
       total_partial_due: partialDueAmount,
     };
   }

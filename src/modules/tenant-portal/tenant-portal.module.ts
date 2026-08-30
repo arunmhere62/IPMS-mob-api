@@ -4,11 +4,13 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { AuthModule } from '../auth/auth.module';
 import { ActivityLogsModule } from '../activity-logs/activity-logs.module';
 import { TenantModule } from '../tenant/tenant.module';
+import { NotificationModule } from '../notification/notification.module';
 import { TenantPortalController } from './tenant-portal.controller';
 import { TenantAuthController } from './auth/tenant-auth.controller';
 import { PrismaService } from '@/prisma/prisma.service';
 import { TenantAuthService } from './auth/tenant-auth.service';
 import { TenantPortalService } from './tenant-portal.service';
+import { TenantPaymentService } from './tenant-payment.service';
 
 @Module({
   imports: [
@@ -16,6 +18,7 @@ import { TenantPortalService } from './tenant-portal.service';
     AuthModule,
     forwardRef(() => ActivityLogsModule),
     TenantModule,
+    NotificationModule,
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -28,7 +31,7 @@ import { TenantPortalService } from './tenant-portal.service';
     }),
   ],
   controllers: [TenantPortalController, TenantAuthController],
-  providers: [TenantPortalService, TenantAuthService, PrismaService],
-  exports: [TenantPortalService],
+  providers: [TenantPortalService, TenantAuthService, TenantPaymentService, PrismaService],
+  exports: [TenantPortalService, TenantPaymentService],
 })
 export class TenantPortalModule {}

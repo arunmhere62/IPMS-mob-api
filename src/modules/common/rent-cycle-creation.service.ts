@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { Prisma } from '@prisma/client';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,7 +50,7 @@ export class RentCycleCreationService {
    * @param data  - Tenant data already available in memory (no extra DB fetch)
    */
   async createCyclesInTx(
-    tx: { tenant_rent_cycles: { createMany: (args: unknown) => Promise<{ count: number }> } },
+    tx: Prisma.TransactionClient,
     data: {
       tenantId: number;
       checkInDate: Date;
@@ -78,9 +79,9 @@ export class RentCycleCreationService {
         cycle_end: c.cycleEnd,
       })),
       skipDuplicates: true,
-    } as never);
+    });
 
-    return { created: (result as { count: number }).count };
+    return { created: result.count };
   }
 
   /**

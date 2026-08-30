@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Req, Res, Body, Query, BadRequestException } from '@nestjs/common';
+import { Controller, Get, Post, Req, Res, Body, Query, Param, BadRequestException } from '@nestjs/common';
 import { Response } from 'express';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { SubscriptionService } from './subscription.service';
@@ -102,22 +102,59 @@ export class SubscriptionController {
   }
 
   /**
+   * Get all invoices for the organization
+   */
+  @Get('invoices')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get organization subscription invoices' })
+  async getInvoices(@Req() req: RequestWithHeaders) {
+    const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
+    return this.subscriptionService.getSubscriptionInvoices(organizationId);
+  }
+
+  /**
+   * Get a single invoice by ID (with full details for download/display)
+   */
+  @Get('invoices/:id')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Get a single invoice by ID' })
+  async getInvoice(@Req() req: RequestWithHeaders, @Param('id') idParam: string) {
+    const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
+    const invoiceId = parseInt(idParam, 10);
+    if (!Number.isFinite(invoiceId)) {
+      throw new BadRequestException('Invalid invoice ID');
+    }
+    return this.subscriptionService.getInvoiceById(invoiceId, organizationId);
+  }
+
+  /**
+   * Backfill: Generate invoices for all successful payments that don't have one yet
+   */
+  @Post('invoices/backfill')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Backfill missing invoices for successful payments' })
+  async backfillInvoices() {
+    return this.subscriptionService.backfillInvoices();
+  }
+
+  /**
    * Subscribe to a plan
    */
   @Post('subscribe')
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Subscribe to a plan' })
-  async subscribe(@Req() req: RequestWithHeaders, @Body() body: { plan_id: number }) {
+  async subscribe(@Req() req: RequestWithHeaders, @Body() body: { plan_id: number; coupon_code?: string }) {
     const userId = parseInt(headerToString(req.headers['x-user-id']), 10);
     const organizationId = parseInt(headerToString(req.headers['x-organization-id']), 10);
-    const { plan_id } = body;
+    const { plan_id, coupon_code } = body;
 
-    console.log('📦 Subscribe request:', { userId, organizationId, plan_id });
+    console.log('📦 Subscribe request:', { userId, organizationId, plan_id, coupon_code });
 
     const result = await this.subscriptionService.initiateSubscription(
       userId,
       organizationId,
       plan_id,
+      coupon_code,
     );
 
     return {
@@ -163,6 +200,14 @@ export class SubscriptionController {
     console.log('📦 Prepare payment request:', { order_id, payment_method });
 
     return this.subscriptionService.preparePayment(order_id, payment_method);
+  }
+
+  @Get('payment/status')
+  @ApiBearerAuth()
+  @ApiOperation({ summary: 'Fetch payment status for an order' })
+  async getPaymentStatus(@Query('order_id') orderId: string) {
+    console.log('📦 Payment status request:', { orderId });
+    return this.subscriptionService.getPaymentStatus(orderId);
   }
 
   /**
@@ -323,16 +368,26 @@ export class SubscriptionController {
    */
   @Post('payment/cancel')
   @ApiOperation({ summary: 'CCAvenue payment cancel' })
-  async paymentCancel(@Body() _body: Record<string, unknown>, @Res() res: Response) {
+  async paymentCancel(@Body() body: Record<string, unknown>, @Res() res: Response) {
     console.log('🚫 Payment cancelled by user');
+    try {
+      await this.subscriptionService.handlePaymentCancel(body);
+    } catch (error) {
+      console.error('❌ Payment cancel handling error:', error);
+    }
     const deepLink = `pgapp://payment-result?status=Aborted`;
     return this.sendRedirectHtml(res, deepLink, 'Aborted');
   }
 
   @Get('payment/cancel')
   @ApiOperation({ summary: 'CCAvenue payment cancel (GET)' })
-  async paymentCancelGet(@Res() res: Response) {
+  async paymentCancelGet(@Query() query: Record<string, unknown>, @Res() res: Response) {
     console.log('🚫 Payment cancel GET');
+    try {
+      await this.subscriptionService.handlePaymentCancel({ encResp: query.encResp });
+    } catch (error) {
+      console.error('❌ Payment cancel GET handling error:', error);
+    }
     const deepLink = `pgapp://payment-result?status=Aborted`;
     return this.sendRedirectHtml(res, deepLink, 'Aborted');
   }

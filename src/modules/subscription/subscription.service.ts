@@ -1,4 +1,5 @@
-import { Injectable, Logger, BadRequestException, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, BadRequestException, NotFoundException, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { EmailService } from '../email/email.service';
@@ -13,13 +14,23 @@ const isRecord = (value: unknown): value is Record<string, unknown> => {
 type DecimalLike = Prisma.Decimal | { toNumber(): number };
 
 @Injectable()
-export class SubscriptionService {
+export class SubscriptionService implements OnModuleInit {
   private readonly logger = new Logger(SubscriptionService.name);
 
   constructor(
     private prisma: PrismaService,
     private emailService: EmailService,
+    private readonly configService: ConfigService,
   ) {}
+
+  async onModuleInit() {
+    // Backfill missing invoices for existing successful payments
+    try {
+      await this.backfillInvoices();
+    } catch (error) {
+      this.logger.error(`Invoice backfill on startup failed: ${(error as Error).message}`);
+    }
+  }
 
   private normalizePrice(price: DecimalLike | number | string | null | undefined): number {
     if (price && typeof price === 'object' && 'toNumber' in price && typeof (price as DecimalLike).toNumber === 'function') {
@@ -52,13 +63,31 @@ export class SubscriptionService {
     };
   }
 
-  // CCAvenue configuration (hardcoded for debugging)
-  private readonly CCAVENUE_MERCHANT_ID = '4422142';
-  private readonly CCAVENUE_ACCESS_CODE = 'AVAE94NG00AB68EABA';
-  private readonly CCAVENUE_WORKING_KEY = 'B2779D53659D72AD12DD229F49FE01B4';
-  private readonly CCAVENUE_REDIRECT_URL = 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/callback';
-  private readonly CCAVENUE_CANCEL_URL = 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/cancel';
-  private readonly CCAVENUE_PAYMENT_URL = 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
+  // CCAvenue configuration. Prefer environment values so dev/staging can point
+  // callbacks to the same backend instance whose DB is being verified.
+  private get CCAVENUE_MERCHANT_ID() {
+    return this.configService.get<string>('CCAVENUE_MERCHANT_ID') || '4422142';
+  }
+
+  private get CCAVENUE_ACCESS_CODE() {
+    return this.configService.get<string>('CCAVENUE_ACCESS_CODE') || 'AVAE94NG00AB68EABA';
+  }
+
+  private get CCAVENUE_WORKING_KEY() {
+    return this.configService.get<string>('CCAVENUE_WORKING_KEY') || 'B2779D53659D72AD12DD229F49FE01B4';
+  }
+
+  private get CCAVENUE_PAYMENT_URL() {
+    return this.configService.get<string>('CCAVENUE_PAYMENT_URL') || 'https://secure.ccavenue.com/transaction/transaction.do?command=initiateTransaction';
+  }
+
+  private get CCAVENUE_REDIRECT_URL() {
+    return this.configService.get<string>('CCAVENUE_REDIRECT_URL') || 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/callback';
+  }
+
+  private get CCAVENUE_CANCEL_URL() {
+    return this.configService.get<string>('CCAVENUE_CANCEL_URL') || 'https://mobapi.indianpgmanagement.com/api/v1/subscription/payment/cancel';
+  }
 
   // CCAvenue AES encryption (matches old working implementation)
   // Key: MD5(working_key) → 16 bytes → AES-128-CBC
@@ -347,6 +376,11 @@ export class SubscriptionService {
     const invoices = await this.prisma.subscription_invoices.findMany({
       where: { organization_id: organizationId },
       orderBy: { invoice_date: 'desc' },
+      include: {
+        subscription_payments: {
+          select: { s_no: true, order_id: true, status: true, payment_mode: true },
+        },
+      },
     });
 
     return ResponseUtil.success(
@@ -356,9 +390,237 @@ export class SubscriptionService {
   }
 
   /**
+   * Backfill: Generate invoices for all successful payments that don't have one yet.
+   * Called on startup or manually. Skips payments that already have an invoice.
+   */
+  async backfillInvoices() {
+    // Find all successful payments that have a subscription_id and no existing invoice
+    const successfulPayments = await this.prisma.subscription_payments.findMany({
+      where: {
+        status: 'SUCCESS',
+        subscription_id: { not: null },
+      },
+      include: {
+        subscription_invoices: true,
+      },
+    });
+
+    const paymentsWithoutInvoice = successfulPayments.filter(
+      (p) => !p.subscription_invoices || p.subscription_invoices.length === 0,
+    );
+
+    this.logger.log(`Backfilling invoices for ${paymentsWithoutInvoice.length} payments...`);
+
+    let created = 0;
+    let failed = 0;
+
+    for (const payment of paymentsWithoutInvoice) {
+      try {
+        await this.createSubscriptionInvoice({
+          paymentId: payment.s_no,
+          userId: payment.user_id,
+          organizationId: payment.organization_id,
+          subscriptionId: payment.subscription_id!,
+          planId: payment.plan_id,
+          amount: Number(payment.amount || 0),
+          currency: payment.currency,
+        });
+        created++;
+      } catch (error) {
+        failed++;
+        this.logger.error(
+          `Backfill failed for payment ${payment.s_no}: ${(error as Error).message}`,
+        );
+      }
+    }
+
+    this.logger.log(`Backfill complete: ${created} invoices created, ${failed} failed`);
+    return ResponseUtil.success(
+      { created, failed, total: paymentsWithoutInvoice.length },
+      `Backfilled ${created} invoices`,
+    );
+  }
+
+  /**
+   * Get a single invoice by ID (with payment details)
+   */
+  async getInvoiceById(invoiceId: number, organizationId: number) {
+    const invoice = await this.prisma.subscription_invoices.findFirst({
+      where: { s_no: invoiceId, organization_id: organizationId },
+      include: {
+        subscription_payments: {
+          select: {
+            s_no: true,
+            order_id: true,
+            status: true,
+            payment_mode: true,
+            tracking_id: true,
+            bank_ref_no: true,
+            amount: true,
+            currency: true,
+            created_at: true,
+          },
+        },
+      },
+    });
+
+    if (!invoice) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    return ResponseUtil.success(invoice, 'Invoice fetched successfully');
+  }
+
+  /**
+   * Generate a GST-compliant invoice after a successful subscription payment.
+   * Seller details come from env vars (COMPANY_* / SELLER_*).
+   * Buyer details come from the user's profile + organization.
+   */
+  private async createSubscriptionInvoice(args: {
+    paymentId: number;
+    userId: number;
+    organizationId: number;
+    subscriptionId: number;
+    planId: number;
+    amount: number;
+    currency: string;
+  }): Promise<void> {
+    const { paymentId, userId, organizationId, subscriptionId, planId, amount } = args;
+
+    // Fetch user and organization for buyer details
+    const [user, org] = await Promise.all([
+      this.prisma.users.findUnique({
+        where: { s_no: userId },
+        select: {
+          name: true,
+          email: true,
+          phone: true,
+          address: true,
+          city_id: true,
+          state_id: true,
+          pincode: true,
+        },
+      }),
+      this.prisma.organization.findUnique({
+        where: { s_no: organizationId },
+        select: { name: true, description: true },
+      }),
+    ]);
+
+    // Fetch city/state names if available — never use static defaults
+    let cityName = '';
+    let stateName = '';
+    let stateCode = '';
+    if (user?.city_id || user?.state_id) {
+      const [city, state] = await Promise.all([
+        user?.city_id
+          ? this.prisma.city.findUnique({ where: { s_no: user.city_id }, select: { name: true } })
+          : null,
+        user?.state_id
+          ? this.prisma.state.findUnique({ where: { s_no: user.state_id }, select: { name: true, iso_code: true } })
+          : null,
+      ]);
+      cityName = city?.name ?? '';
+      stateName = state?.name ?? '';
+      stateCode = state?.iso_code ?? '';
+    }
+
+    // Seller details from env
+    const sellerLegalName = process.env.COMPANY_LEGAL_NAME || 'Indian PG Management Pvt Ltd';
+    const sellerTradeName = process.env.COMPANY_TRADE_NAME || 'IPGM';
+    const sellerGstin = process.env.COMPANY_GSTIN || '07AABCI1234L1Z5';
+    const sellerAddress = process.env.COMPANY_ADDRESS || 'New Delhi, India';
+    const sellerStateCode = process.env.COMPANY_STATE_CODE || '07';
+    const sellerDuns = process.env.COMPANY_DUNS || null;
+
+    // Buyer details — never use static defaults, use empty string if missing
+    const buyerName = user?.name || org?.name || '';
+    const buyerGstin: string | null = null; // Users don't have GSTIN in current schema
+    const buyerAddress = [user?.address, cityName, stateName, user?.pincode]
+      .filter(Boolean)
+      .join(', ');
+    const placeOfSupply = stateName;
+
+    // GST calculation (18% — split into CGST + SGST for intra-state, IGST for inter-state)
+    // If stateCode is empty, default to intra-state (CGST+SGST) since we can't determine inter-state
+    const gstRate = 18;
+    const isInterState = stateCode !== '' && sellerStateCode !== stateCode;
+    const taxableValue = Number((amount / (1 + gstRate / 100)).toFixed(2));
+    const gstAmount = Number((amount - taxableValue).toFixed(2));
+
+    let cgstRate = 0, cgstAmount = 0, sgstRate = 0, sgstAmount = 0;
+    let igstRate = 0, igstAmount = 0;
+
+    if (isInterState) {
+      igstRate = gstRate;
+      igstAmount = gstAmount;
+    } else {
+      cgstRate = gstRate / 2;
+      cgstAmount = Number((gstAmount / 2).toFixed(2));
+      sgstRate = gstRate / 2;
+      sgstAmount = Number((gstAmount - cgstAmount).toFixed(2));
+    }
+
+    const totalAmount = Number(amount.toFixed(2));
+
+    // Generate invoice number: INV-YYYYMMDD-PAYMENTID
+    const today = new Date();
+    const dateStr = today.toISOString().slice(0, 10).replace(/-/g, '');
+    const invoiceNumber = `INV-${dateStr}-${paymentId}`;
+
+    // Check if invoice already exists (idempotency)
+    const existing = await this.prisma.subscription_invoices.findUnique({
+      where: { invoice_number: invoiceNumber },
+    });
+    if (existing) {
+      this.logger.log(`Invoice ${invoiceNumber} already exists, skipping creation`);
+      return;
+    }
+
+    await this.prisma.subscription_invoices.create({
+      data: {
+        invoice_number: invoiceNumber,
+        payment_id: paymentId,
+        user_id: userId,
+        organization_id: organizationId,
+        subscription_id: subscriptionId,
+        plan_id: planId,
+        invoice_date: today,
+        seller_legal_name: sellerLegalName,
+        seller_trade_name: sellerTradeName,
+        seller_gstin: sellerGstin,
+        seller_address: sellerAddress,
+        seller_state_code: sellerStateCode,
+        seller_duns_number: sellerDuns,
+        buyer_name: buyerName,
+        buyer_gstin: buyerGstin,
+        buyer_address: buyerAddress,
+        buyer_state_code: stateCode,
+        place_of_supply: placeOfSupply,
+        service_description: 'IPGM Subscription Service',
+        hsn_sac_code: '998314',
+        taxable_value: taxableValue,
+        cgst_rate: cgstRate,
+        cgst_amount: cgstAmount,
+        sgst_rate: sgstRate,
+        sgst_amount: sgstAmount,
+        igst_rate: igstRate,
+        igst_amount: igstAmount,
+        total_amount: totalAmount,
+        gst_number: buyerGstin,
+        billing_address: buyerAddress,
+        is_reverse_charge: false,
+        status: 'ACTIVE',
+      },
+    });
+
+    this.logger.log(`Invoice ${invoiceNumber} created for payment ${paymentId}`);
+  }
+
+  /**
    * Initiate subscription and generate CCAvenue payment URL
    */
-  async initiateSubscription(userId: number, organizationId: number, planId: number) {
+  async initiateSubscription(userId: number, organizationId: number, planId: number, couponCode?: string) {
     // Validate CCAvenue configuration
     this.validateCCAvenueConfig();
 
@@ -372,7 +634,79 @@ export class SubscriptionService {
     }
 
     const basePrice = this.normalizePrice(plan.price);
-    const gstDetails = this.calculateGstBreakdown(basePrice);
+
+    // ─── Coupon validation (if coupon code provided) ───────────
+    let couponId: number | null = null;
+    let appliedCouponCode: string | null = null;
+    let discountAmount = 0;
+    let finalBasePrice = basePrice;
+
+    if (couponCode) {
+      const upperCode = couponCode.trim().toUpperCase();
+      const coupon = await this.prisma.coupons.findUnique({
+        where: { code: upperCode },
+      });
+
+      if (!coupon || !coupon.is_active) {
+        throw new BadRequestException('Invalid or inactive coupon code');
+      }
+
+      // Check validity window
+      const now = new Date();
+      if (coupon.valid_from && now < coupon.valid_from) {
+        throw new BadRequestException('This coupon is not yet valid');
+      }
+      if (coupon.valid_until && now > coupon.valid_until) {
+        throw new BadRequestException('This coupon has expired');
+      }
+
+      // Check global usage limit
+      if (coupon.max_uses !== null && coupon.used_count >= coupon.max_uses) {
+        throw new BadRequestException('This coupon has reached its usage limit');
+      }
+
+      // Check plan applicability
+      if (coupon.applicable_plan_ids) {
+        const planIds = coupon.applicable_plan_ids as unknown as number[];
+        if (Array.isArray(planIds) && planIds.length > 0 && !planIds.includes(planId)) {
+          throw new BadRequestException('This coupon is not valid for the selected plan');
+        }
+      }
+
+      // Check minimum order amount
+      const minOrder = this.normalizePrice(coupon.min_order_amount);
+      if (minOrder > 0 && basePrice < minOrder) {
+        throw new BadRequestException(`Minimum order amount for this coupon is ₹${minOrder}`);
+      }
+
+      // Check per-user usage limit
+      if (coupon.max_uses_per_user !== null && coupon.max_uses_per_user > 0) {
+        const userRedemptionCount = await this.prisma.coupon_redemptions.count({
+          where: { coupon_id: coupon.s_no, user_id: userId },
+        });
+        if (userRedemptionCount >= coupon.max_uses_per_user) {
+          throw new BadRequestException('You have already used this coupon the maximum number of times');
+        }
+      }
+
+      // Calculate discount
+      const value = this.normalizePrice(coupon.discount_value);
+      if (coupon.discount_type === 'PERCENTAGE') {
+        discountAmount = Number(((basePrice * value) / 100).toFixed(2));
+        const maxCap = this.normalizePrice(coupon.max_discount_amount);
+        if (maxCap > 0 && discountAmount > maxCap) discountAmount = maxCap;
+      } else {
+        discountAmount = Math.min(value, basePrice);
+      }
+      discountAmount = Math.min(discountAmount, basePrice);
+      finalBasePrice = Number((basePrice - discountAmount).toFixed(2));
+
+      couponId = coupon.s_no;
+      appliedCouponCode = coupon.code;
+    }
+
+    // Calculate GST on discounted (or original) base price
+    const gstDetails = this.calculateGstBreakdown(finalBasePrice);
     const totalPriceIncludingGst = gstDetails.total_amount;
 
     const planSummary = {
@@ -418,11 +752,10 @@ export class SubscriptionService {
         end_date: new Date(Date.now() + plan.duration * 24 * 60 * 60 * 1000),
         status: 'PENDING',
         auto_renew: false,
-        // Note: amount_paid field doesn't exist in schema, amount is stored in subscription_payments table
       },
     });
 
-    // Create payment record
+    // Create payment record (with coupon fields if applicable)
     await this.prisma.subscription_payments.create({
       data: {
         order_id: orderId,
@@ -430,6 +763,10 @@ export class SubscriptionService {
         organization_id: organizationId,
         subscription_id: subscription.s_no,
         plan_id: planId,
+        coupon_id: couponId,
+        coupon_code: appliedCouponCode,
+        original_amount: basePrice.toFixed(2),
+        discount_amount: discountAmount.toFixed(2),
         amount: totalPriceIncludingGst.toFixed(2),
         currency: plan.currency,
         payment_type: 'NEW_SUBSCRIPTION',
@@ -458,6 +795,10 @@ export class SubscriptionService {
       merchant_param2: userId.toString(),
       merchant_param3: organizationId.toString(),
       merchant_param4: planId.toString(),
+      // Enable UPI Intent flow so CCAvenue shows "Pay with UPI App" button
+      // which generates upi:// URLs that our WebView native patch intercepts.
+      // Values: Intent, QR, VPA, Intent,VPA, Intent,QR (case-sensitive, no spaces)
+      upi_mode: 'Intent,VPA',
     };
 
     // Convert to query string (no encodeURIComponent - matches CCAvenue demo)
@@ -497,10 +838,16 @@ export class SubscriptionService {
       pricing: {
         currency: plan.currency,
         base_price: basePrice,
+        discount_amount: discountAmount,
+        final_base_price: finalBasePrice,
         cgst_amount: gstDetails.cgst_amount,
         sgst_amount: gstDetails.sgst_amount,
         total_price_including_gst: gstDetails.total_amount,
       },
+      coupon: appliedCouponCode ? {
+        code: appliedCouponCode,
+        discount_amount: discountAmount,
+      } : null,
       payment_url: paymentUrl,
       order_id: orderId,
     }, 'Subscription initiated successfully');
@@ -629,6 +976,7 @@ export class SubscriptionService {
       merchant_param2: userId.toString(),
       merchant_param3: organizationId.toString(),
       merchant_param4: newPlanId.toString(),
+      upi_mode: 'Intent,VPA',
     };
 
     const queryString = Object.entries(paymentData)
@@ -726,6 +1074,7 @@ export class SubscriptionService {
       merchant_param2: payment.user_id.toString(),
       merchant_param3: payment.organization_id.toString(),
       merchant_param4: payment.plan_id.toString(),
+      upi_mode: 'Intent,VPA',
     };
 
     // Map selected payment method to CCAvenue payment_option codes for pre-selection
@@ -758,6 +1107,44 @@ export class SubscriptionService {
       order_id: orderId,
       payment_method: paymentMethod,
     }, 'Payment prepared successfully');
+  }
+
+  async getPaymentStatus(orderId: string) {
+    if (!orderId) {
+      throw new BadRequestException('Order ID is required');
+    }
+
+    const payment = await this.prisma.subscription_payments.findUnique({
+      where: { order_id: orderId },
+      include: { user_subscriptions: true },
+    });
+
+    if (!payment) {
+      throw new NotFoundException(`Payment record not found for order ${orderId}`);
+    }
+
+    const orderStatusMap: Record<string, string> = {
+      SUCCESS: 'Success',
+      FAILURE: 'Failure',
+      ABORTED: 'Aborted',
+      INITIATED: 'Pending',
+      PENDING: 'Pending',
+    };
+
+    return ResponseUtil.success({
+      order_id: payment.order_id,
+      payment_status: payment.status,
+      order_status: orderStatusMap[payment.status] || 'Pending',
+      tracking_id: payment.tracking_id,
+      bank_ref_no: payment.bank_ref_no,
+      payment_mode: payment.payment_mode,
+      status_code: payment.status_code,
+      status_message: payment.status_message,
+      amount: payment.amount,
+      currency: payment.currency,
+      subscription_id: payment.subscription_id,
+      subscription_status: payment.user_subscriptions?.status ?? null,
+    }, 'Payment status fetched successfully');
   }
 
   /**
@@ -1005,6 +1392,62 @@ export class SubscriptionService {
 
       // Send subscription confirmation email on successful payment
       if (orderStatus === 'Success' && payment.subscription_id) {
+        // ─── Redeem coupon if one was used ─────────────────────
+        if (payment.coupon_id && payment.coupon_code) {
+          try {
+            const originalAmt = Number(payment.original_amount || 0);
+            const discountAmt = Number(payment.discount_amount || 0);
+            const finalAmt = Number(payment.amount || 0);
+
+            await this.prisma.$transaction(async (tx) => {
+              await tx.coupon_redemptions.create({
+                data: {
+                  coupon_id: payment.coupon_id!,
+                  subscription_payment_id: payment.s_no,
+                  user_id: payment.user_id,
+                  organization_id: payment.organization_id,
+                  plan_id: payment.plan_id,
+                  original_amount: originalAmt,
+                  discount_amount: discountAmt,
+                  final_amount: finalAmt,
+                  coupon_code: payment.coupon_code!,
+                },
+              });
+
+              await tx.coupons.update({
+                where: { s_no: payment.coupon_id! },
+                data: { used_count: { increment: 1 } },
+              });
+            });
+
+            this.logger.log(
+              `Coupon ${payment.coupon_code} redeemed for payment ${orderId} — discount: ₹${discountAmt}`,
+            );
+          } catch (couponError) {
+            this.logger.error(
+              `Failed to redeem coupon for order ${orderId}: ${(couponError as Error).message}`,
+            );
+            // Don't fail the payment callback for coupon errors
+          }
+        }
+
+        // Create GST invoice for the payment
+        try {
+          await this.createSubscriptionInvoice({
+            paymentId: payment.s_no,
+            userId: payment.user_id,
+            organizationId: payment.organization_id,
+            subscriptionId: payment.subscription_id,
+            planId: payment.plan_id,
+            amount: Number(payment.amount || 0),
+            currency: payment.currency,
+          });
+        } catch (error) {
+          this.logger.error(
+            `Failed to create invoice for order ${orderId}: ${(error as Error).message}`,
+          );
+        }
+
         try {
           const subscriptionDetails = await this.prisma.user_subscriptions.findUnique({
             where: { s_no: payment.subscription_id },
@@ -1044,6 +1487,65 @@ export class SubscriptionService {
       }, orderStatus === 'Success' ? 'Payment successful' : 'Payment failed');
     } catch (error) {
       console.error('❌ Payment callback processing error:', error);
+      throw error;
+    }
+  }
+
+  /**
+   * Handle payment cancel from CCAvenue - mark payment and subscription as cancelled
+   */
+  async handlePaymentCancel(body: Record<string, unknown>) {
+    try {
+      const encResponse = typeof body.encResp === 'string' ? body.encResp : '';
+      let orderId: string | null = null;
+
+      if (encResponse) {
+        const decryptedData = this.ccavDecrypt(encResponse);
+        const params = new URLSearchParams(decryptedData);
+        orderId = params.get('order_id');
+      }
+
+      if (!orderId) {
+        console.log('🚫 Payment cancel: no order_id found, skipping DB update');
+        return { message: 'Cancel received, no order_id' };
+      }
+
+      console.log('🚫 Payment cancel for order:', orderId);
+
+      const payment = await this.prisma.subscription_payments.findUnique({
+        where: { order_id: orderId },
+        include: { user_subscriptions: true },
+      });
+
+      if (!payment) {
+        console.log('🚫 Payment cancel: payment record not found for', orderId);
+        return { message: 'Payment record not found' };
+      }
+
+      // Idempotency: don't update if already in a terminal state
+      if (payment.status === 'SUCCESS' || payment.status === 'FAILURE') {
+        console.log('🚫 Payment cancel: already processed, skipping');
+        return { message: 'Already processed' };
+      }
+
+      // Mark payment as ABORTED
+      await this.prisma.subscription_payments.update({
+        where: { order_id: orderId },
+        data: { status: 'ABORTED' },
+      });
+
+      // Mark subscription as CANCELLED if still PENDING
+      if (payment.subscription_id) {
+        await this.prisma.user_subscriptions.updateMany({
+          where: { s_no: payment.subscription_id, status: 'PENDING' },
+          data: { status: 'CANCELLED' },
+        });
+      }
+
+      console.log('🚫 Payment cancel processed for order:', orderId);
+      return { message: 'Payment cancelled successfully' };
+    } catch (error) {
+      console.error('❌ Payment cancel processing error:', error);
       throw error;
     }
   }

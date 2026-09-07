@@ -242,9 +242,11 @@ export class SubscriptionService implements OnModuleInit {
       include: {
         subscription_plans: true,
       },
-      orderBy: {
-        end_date: 'desc',
-      },
+      orderBy: [
+        { start_date: 'desc' },
+        { created_at: 'desc' },
+        { s_no: 'desc' },
+      ],
     });
   }
 
@@ -860,17 +862,7 @@ export class SubscriptionService implements OnModuleInit {
     // Validate CCAvenue configuration
     this.validateCCAvenueConfig();
 
-    const currentSubscription = await this.prisma.user_subscriptions.findFirst({
-      where: {
-        organization_id: organizationId,
-        status: 'ACTIVE',
-        end_date: { gte: new Date() },
-      },
-      include: {
-        subscription_plans: true,
-      },
-      orderBy: { end_date: 'desc' },
-    });
+    const currentSubscription = await this.findCurrentActiveSubscription(userId, organizationId);
 
     if (!currentSubscription) {
       throw new BadRequestException('No active subscription found to upgrade');

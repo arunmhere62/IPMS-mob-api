@@ -33,7 +33,21 @@ export class RbacService {
     const resolvedOrgId = organizationId ?? (user as { organization_id?: number }).organization_id ?? null;
     const now = new Date();
 
-    const [allPermissions, rolePermissionRows, overrideRows, activeSubscription] = await Promise.all([
+    // Normalize: ACTIVE subscriptions with past end_date should become EXPIRED
+    if (resolvedOrgId) {
+      await this.prisma.user_subscriptions.updateMany({
+        where: {
+          organization_id: resolvedOrgId,
+          status: 'ACTIVE',
+          end_date: { lt: now },
+        },
+        data: {
+          status: 'EXPIRED',
+        },
+      });
+    }
+
+    const [allPermissions, rolePermissionRows, overrideRows, activeSubscription, lastSubscription] = await Promise.all([
       this.prisma.permissions_master.findMany({
         select: {
           s_no: true,
@@ -57,6 +71,20 @@ export class RbacService {
               organization_id: resolvedOrgId,
               status: 'ACTIVE',
               end_date: { gte: now },
+            },
+            include: { subscription_plans: true },
+            orderBy: [
+              { start_date: 'desc' },
+              { created_at: 'desc' },
+              { s_no: 'desc' },
+            ],
+          })
+        : Promise.resolve(null),
+      resolvedOrgId
+        ? this.prisma.user_subscriptions.findFirst({
+            where: {
+              organization_id: resolvedOrgId,
+              status: { in: ['EXPIRED', 'CANCELLED'] },
             },
             include: { subscription_plans: true },
             orderBy: { end_date: 'desc' },
@@ -98,19 +126,32 @@ export class RbacService {
       ? activeSubscription.subscription_plans ?? null
       : null;
 
+    // A plan is "free" if the backend flags it OR its price is 0.
+    // StarterX has is_free=false but price=0, so price is the reliable signal.
+    const isPlanFreeByPrice = (p: { is_free?: boolean; price?: string | number } | null): boolean => {
+      if (!p) return false;
+      if (p.is_free) return true;
+      const price = parseFloat(String(p.price ?? ''));
+      return Number.isFinite(price) && price <= 0;
+    };
+
     let daysRemaining = 0;
     if (activeSubscription?.end_date) {
       const diffMs = new Date(activeSubscription.end_date).getTime() - now.getTime();
       daysRemaining = Math.max(0, Math.ceil(diffMs / (1000 * 60 * 60 * 24)));
     }
 
+    const lastPlan = lastSubscription
+      ? lastSubscription.subscription_plans ?? null
+      : null;
+
     const subscription = {
       has_active_plan: !!activeSubscription,
-      is_free_plan: plan ? Boolean(plan.is_free) : false,
+      is_free_plan: isPlanFreeByPrice(plan) || (!activeSubscription && isPlanFreeByPrice(lastPlan)),
       is_trial: activeSubscription ? Boolean((activeSubscription as { is_trial?: boolean }).is_trial) : false,
-      is_expired: !activeSubscription,
+      is_expired: !activeSubscription && !!lastSubscription && !isPlanFreeByPrice(lastPlan),
       days_remaining: daysRemaining,
-      plan_name: plan?.name ?? null,
+      plan_name: plan?.name ?? (lastPlan ? lastPlan?.name ?? null : null),
     };
 
     // Reuse the single-source-of-truth logic from OrganizationService

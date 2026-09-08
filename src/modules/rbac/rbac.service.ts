@@ -128,7 +128,7 @@ export class RbacService {
 
     // A plan is "free" if the backend flags it OR its price is 0.
     // StarterX has is_free=false but price=0, so price is the reliable signal.
-    const isPlanFreeByPrice = (p: any) => {
+    const isPlanFreeByPrice = (p: { is_free?: boolean; price?: string | number } | null): boolean => {
       if (!p) return false;
       if (p.is_free) return true;
       const price = parseFloat(String(p.price ?? ''));
@@ -142,7 +142,7 @@ export class RbacService {
     }
 
     const lastPlan = lastSubscription
-      ? (lastSubscription as any)?.subscription_plans ?? null
+      ? lastSubscription.subscription_plans ?? null
       : null;
 
     const subscription = {

@@ -635,7 +635,23 @@ export class SubscriptionService implements OnModuleInit {
       throw new BadRequestException('Invalid or inactive plan');
     }
 
-    const basePrice = this.normalizePrice(plan.price);
+    // Prevent re-subscribing to a free plan that has already been used.
+    const planPrice = this.normalizePrice(plan.price);
+    const isFreePlan = Boolean((plan as unknown as { is_free?: boolean }).is_free) || planPrice <= 0;
+    if (isFreePlan) {
+      const previousFreeSub = await this.prisma.user_subscriptions.findFirst({
+        where: {
+          organization_id: organizationId,
+          plan_id: planId,
+          status: { in: ['ACTIVE', 'EXPIRED', 'CANCELLED'] },
+        },
+      });
+      if (previousFreeSub) {
+        throw new BadRequestException('This free plan has already been used and cannot be subscribed to again.');
+      }
+    }
+
+    const basePrice = planPrice;
 
     // ─── Coupon validation (if coupon code provided) ───────────
     let couponId: number | null = null;
@@ -878,6 +894,22 @@ export class SubscriptionService implements OnModuleInit {
 
     if (!plan || !plan.is_active) {
       throw new BadRequestException('Invalid or inactive plan');
+    }
+
+    // Prevent upgrading to a free plan that has already been used.
+    const planPrice = this.normalizePrice(plan.price);
+    const isFreePlan = Boolean((plan as unknown as { is_free?: boolean }).is_free) || planPrice <= 0;
+    if (isFreePlan) {
+      const previousFreeSub = await this.prisma.user_subscriptions.findFirst({
+        where: {
+          organization_id: organizationId,
+          plan_id: newPlanId,
+          status: { in: ['ACTIVE', 'EXPIRED', 'CANCELLED'] },
+        },
+      });
+      if (previousFreeSub) {
+        throw new BadRequestException('This free plan has already been used and cannot be subscribed to again.');
+      }
     }
 
     const user = await this.prisma.users.findUnique({

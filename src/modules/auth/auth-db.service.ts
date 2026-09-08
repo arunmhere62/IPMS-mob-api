@@ -31,7 +31,7 @@ export class AuthDbService {
   private readonly logger = new Logger(AuthDbService.name);
   private readonly OTP_EXPIRY_MINUTES: number;
   private readonly MAX_ATTEMPTS: number;
-  private readonly TEST_OTP_PHONE_LAST10 = '8248449609';
+  private readonly TEST_OTP_PHONE_LAST10 = new Set(['8248449609', '7904908852']);
   private readonly TEST_OTP_CODE = '5555';
 
   constructor(
@@ -64,7 +64,7 @@ export class AuthDbService {
   private isTestOtpPhone(phone: string): boolean {
     const digits = String(phone ?? '').replace(/[^0-9]/g, '');
     const last10 = digits.length >= 10 ? digits.slice(-10) : digits;
-    return last10 === this.TEST_OTP_PHONE_LAST10;
+    return this.TEST_OTP_PHONE_LAST10.has(last10);
   }
 
   /**

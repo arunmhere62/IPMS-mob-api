@@ -618,6 +618,7 @@ export class AuthDbService {
       rentCycleType,
       rentCycleStart,
       rentCycleEnd,
+      signupSource = 'UNKNOWN',
     } = signupDto;
 
     const normalizedPhone = normalizePhoneNumber(phone);
@@ -670,6 +671,7 @@ export class AuthDbService {
             name,
             phone: normalizedPhone,
             email: email || undefined,
+            signup_source: signupSource,
             status: 'ACTIVE', // User needs admin approval
             organization_users_organization_idToorganization: {
               connect: { s_no: organization.s_no },
@@ -764,6 +766,7 @@ export class AuthDbService {
             organizationName,
             pgName,
             phone: normalizedPhone,
+            signupSource,
           });
         } catch (error) {
           this.logger.error(
@@ -783,8 +786,9 @@ export class AuthDbService {
     organizationName: string;
     pgName: string;
     phone: string;
+    signupSource: string;
   }) {
-    const { name, email, organizationName, pgName, phone } = args;
+    const { name, email, organizationName, pgName, phone, signupSource } = args;
 
     if (email) {
       const html = `
@@ -799,7 +803,8 @@ export class AuthDbService {
             <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
               <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Organization</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${organizationName}</td></tr>
               <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">PG Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${pgName}</td></tr>
-              <tr><td style="padding: 8px; color: #6b7280;">Phone</td><td style="padding: 8px; font-weight: 600;">${phone}</td></tr>
+              <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Phone</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${phone}</td></tr>
+              <tr><td style="padding: 8px; color: #6b7280;">Signup Source</td><td style="padding: 8px; font-weight: 600;">${signupSource}</td></tr>
             </table>
 
             <p>You can now log in to the IPGM app using your mobile number and start managing your PG.</p>
@@ -831,7 +836,8 @@ export class AuthDbService {
             <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${name}</td></tr>
             <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Phone</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${phone}</td></tr>
             <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Organization</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${organizationName}</td></tr>
-            <tr><td style="padding: 8px; color: #6b7280;">PG Name</td><td style="padding: 8px; font-weight: 600;">${pgName}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">PG Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${pgName}</td></tr>
+            <tr><td style="padding: 8px; color: #6b7280;">Signup Source</td><td style="padding: 8px; font-weight: 600;">${signupSource}</td></tr>
           </table>
         </div>
       </div>

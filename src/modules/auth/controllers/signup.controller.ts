@@ -40,6 +40,7 @@ export class SignupController {
       rentCycleType: signupDto.rentCycleType,
       rentCycleStart: signupDto.rentCycleStart,
       rentCycleEnd: signupDto.rentCycleEnd,
+      signupSource: signupDto.signupSource,
     });
     return this.authService.signup(signupDto);
   }

@@ -1,5 +1,12 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsEmail, IsNotEmpty, IsOptional, IsInt, MinLength } from 'class-validator';
+import { IsString, IsEmail, IsNotEmpty, IsOptional, IsInt, MinLength, IsEnum } from 'class-validator';
+
+export enum SignupSource {
+  WEB = 'WEB',
+  ANDROID = 'ANDROID',
+  IOS = 'IOS',
+  UNKNOWN = 'UNKNOWN',
+}
 
 export class SignupDto {
   @ApiProperty({ example: 'My PG Organization', description: 'Organization name' })
@@ -47,5 +54,10 @@ export class SignupDto {
   @IsInt()
   @IsOptional()
   rentCycleEnd?: number;
+
+  @ApiProperty({ enum: SignupSource, example: SignupSource.WEB, required: false })
+  @IsEnum(SignupSource)
+  @IsOptional()
+  signupSource?: SignupSource;
 
 }

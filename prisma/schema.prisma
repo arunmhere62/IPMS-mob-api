@@ -770,6 +770,7 @@ model users {
   role_id                                                               Int
   is_deleted                                                            Boolean?                     @default(false)
   organization_id                                                       Int?
+  signup_source                                                         users_signup_source          @default(UNKNOWN)
   address                                                               String?                      @db.VarChar(255)
   city_id                                                               Int?
   state_id                                                              Int?
@@ -809,6 +810,7 @@ model users {
   @@index([organization_id], map: "fk_users_organization")
   @@index([role_id], map: "fk_users_role")
   @@index([state_id], map: "fk_users_state")
+  @@index([signup_source], map: "idx_users_signup_source")
 }
 
 model visitors {
@@ -1520,4 +1522,11 @@ enum tenant_payment_submissions_status {
   SUBMITTED
   VERIFIED
   REJECTED
+}
+
+enum users_signup_source {
+  WEB
+  ANDROID
+  IOS
+  UNKNOWN
 }

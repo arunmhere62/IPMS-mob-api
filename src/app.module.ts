@@ -36,6 +36,7 @@ import { LeadCaptureModule } from './modules/lead-capture/lead-capture.module';
 import { CouponModule } from './modules/coupon/coupon.module';
 import { OwnerPaymentConfigModule } from './modules/owner-payment-config/owner-payment-config.module';
 import { PaymentVerificationModule } from './modules/payment-verification/payment-verification.module';
+import { FeatureToursModule } from './modules/feature-tours/feature-tours.module';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import configuration from './config';
@@ -85,6 +86,7 @@ import { SubscriptionEnforcementInterceptor } from './common/interceptors/subscr
     CouponModule,
     OwnerPaymentConfigModule,
     PaymentVerificationModule,
+    FeatureToursModule,
   ],
   controllers: [AppController],
   providers: [

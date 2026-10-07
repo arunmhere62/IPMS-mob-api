@@ -1,7 +1,7 @@
 /**
  * Development OTP Strategy
- * Allows bypass OTP (12345) for testing
- * Also sends real SMS for testing actual flow
+ * Allows bypass OTP (5555) for testing
+ * Skips SMS delivery in development
  */
 
 import { Injectable, Logger } from '@nestjs/common';
@@ -15,10 +15,8 @@ export class DevelopmentOtpStrategy implements OtpStrategy {
 
   constructor(private readonly smsService: SmsService) {}
 
-  async sendOtp(phoneNumber: string, otp: string): Promise<boolean> {
+  async sendOtp(phoneNumber: string, _otp: string): Promise<boolean> {
     this.logger.warn(`[DEVELOPMENT] Sending OTP to ${phoneNumber}`);
-    this.logger.warn(`[DEVELOPMENT] Generated OTP: ${otp}`);
-    this.logger.warn(`[DEVELOPMENT] Bypass OTP: ${this.BYPASS_OTP}`);
     this.logger.warn(`[DEVELOPMENT] SMS API skipped - Development mode`);
     
     // Skip SMS API call entirely in development to prevent timeouts
@@ -27,11 +25,8 @@ export class DevelopmentOtpStrategy implements OtpStrategy {
 
   verifyOtp(phoneNumber: string, otp: string, storedOtp: string): boolean {
     this.logger.warn(`[DEVELOPMENT] Verifying OTP for ${phoneNumber}`);
-    this.logger.warn(`[DEVELOPMENT] Provided OTP: ${otp}`);
-    this.logger.warn(`[DEVELOPMENT] Stored OTP: ${storedOtp}`);
-    this.logger.warn(`[DEVELOPMENT] Bypass OTP: ${this.BYPASS_OTP}`);
 
-    // Accept bypass OTP (12345) OR the actual generated OTP
+    // Accept bypass OTP (5555) or the actual generated OTP
     if (otp === this.BYPASS_OTP) {
       this.logger.warn(`[DEVELOPMENT] ✅ Bypass OTP used - Login allowed`);
       return true;

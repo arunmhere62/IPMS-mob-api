@@ -17,13 +17,15 @@ import { UpdateTenantDto } from './dto/update-tenant.dto';
 import { TransferTenantDto } from './dto/transfer-tenant.dto';
 import { SendPhoneOtpDto, VerifyPhoneOtpDto } from './dto/verify-phone.dto';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
-import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RbacResource, RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('tenants')
 @Controller('tenants')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
+@RbacResource('tenant')
 export class TenantController {
   constructor(private readonly tenantService: TenantService) {}
 
@@ -178,6 +180,7 @@ export class TenantController {
    * POST /api/v1/tenants/:id/transfer
    */
   @Post(':id/transfer')
+  @RequirePermission('tenant_edit')
   @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
   @ApiOperation({ summary: 'Transfer tenant to another PG/room/bed' })
   @ApiParam({ name: 'id', description: 'Tenant ID', example: 1 })

@@ -13,11 +13,13 @@ import { PaymentVerificationService } from './payment-verification.service';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
+import { RbacResource, RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('payment-verification')
 @ApiBearerAuth()
 @Controller('payment-verification')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('payment_verification')
 export class PaymentVerificationController {
   constructor(private readonly verificationService: PaymentVerificationService) {}
 
@@ -61,6 +63,7 @@ export class PaymentVerificationController {
   }
 
   @Post(':id/verify')
+  @RequirePermission('payment_verification_edit')
   @RequireHeaders({ organization_id: true, user_id: true })
   @ApiOperation({ summary: 'Verify (approve) a payment submission' })
   @ApiResponse({ status: 200, description: 'Payment verified and rent payment marked as PAID' })
@@ -78,6 +81,7 @@ export class PaymentVerificationController {
   }
 
   @Post(':id/reject')
+  @RequirePermission('payment_verification_edit')
   @RequireHeaders({ organization_id: true, user_id: true })
   @ApiOperation({ summary: 'Reject a payment submission' })
   @ApiResponse({ status: 200, description: 'Payment rejected. Tenant can resubmit.' })

@@ -15,10 +15,12 @@ import { CreateElectricityBillDto, RecordPaymentDto, GetEligibleTenantsDto } fro
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
+import { RbacResource, RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('electricity-bills')
 @Controller('electricity-bills')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('electricity_bill')
 export class ElectricityBillController {
   constructor(private readonly electricityBillService: ElectricityBillService) {}
 
@@ -102,6 +104,7 @@ export class ElectricityBillController {
   }
 
   @Post('payments')
+  @RequirePermission('electricity_bill_edit')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Record a payment for an electricity bill item' })
   @ApiResponse({ status: 200, description: 'Payment recorded successfully' })

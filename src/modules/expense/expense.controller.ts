@@ -16,9 +16,11 @@ import { ExpenseService } from './expense.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { UpdateExpenseDto } from './dto/update-expense.dto';
 import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/common-headers.decorator';
+import { RbacResource } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('expenses')
 @Controller('expenses')
+@RbacResource('expense')
 export class ExpenseController {
   constructor(private readonly expenseService: ExpenseService) {}
 

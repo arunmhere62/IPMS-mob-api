@@ -19,10 +19,12 @@ import { UpdateVisitorDto } from './dto/update-visitor.dto';
 import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/common-headers.decorator';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RbacResource } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('visitors')
 @Controller('visitors')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
+@RbacResource('visitor')
 export class VisitorController {
   constructor(private readonly visitorService: VisitorService) {}
 

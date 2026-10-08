@@ -16,11 +16,13 @@ import { CreateCurrentBillDto, UpdateCurrentBillDto } from './dto';
 import { HeadersValidationGuard } from '../../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
+import { RbacResource } from '../../../common/decorators/require-permission.decorator';
 
 
 @ApiTags('current-bills')
 @Controller('current-bills')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('payment')
 export class CurrentBillController {
   constructor(private readonly currentBillService: CurrentBillService) {}
 

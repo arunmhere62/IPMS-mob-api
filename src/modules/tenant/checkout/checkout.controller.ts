@@ -6,6 +6,7 @@ import { RequireHeaders } from '../../../common/decorators/require-headers.decor
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
 import { UpdateCheckoutDateDto } from '../dto/update-checkout-date.dto';
 import { CheckoutService } from './checkout.service';
+import { RequirePermission } from '../../../common/decorators/require-permission.decorator';
 
 @ApiTags('tenants')
 @Controller('tenants')
@@ -18,6 +19,7 @@ export class CheckoutController {
    * POST /api/v1/tenants/:id/checkout
    */
   @Post(':id/checkout')
+  @RequirePermission('tenant_edit')
   @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
   @ApiOperation({
     summary: 'Checkout tenant',
@@ -79,6 +81,7 @@ export class CheckoutController {
    * PUT /api/v1/tenants/:id/checkout-date
    */
   @Put(':id/checkout-date')
+  @RequirePermission('tenant_edit')
   @RequireHeaders({ pg_id: true, organization_id: true, user_id: true })
   @ApiOperation({
     summary: 'Update or clear checkout date',

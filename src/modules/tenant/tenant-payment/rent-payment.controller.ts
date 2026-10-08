@@ -17,10 +17,12 @@ import { CreateTenantPaymentDto, UpdateTenantPaymentDto, VoidTenantPaymentDto } 
 import { HeadersValidationGuard } from '../../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
+import { RbacResource, RequirePermission } from '../../../common/decorators/require-permission.decorator';
 
 @ApiTags('rent-payments')
 @Controller('rent-payments')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('payment')
 export class TenantPaymentController {
   constructor(private readonly tenantPaymentService: TenantPaymentService) {}
 
@@ -144,6 +146,7 @@ export class TenantPaymentController {
   }
 
   @Patch(':id/void')
+  @RequirePermission('payment_delete')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Void a tenant payment (audited cancel, does not delete history)' })
   @ApiResponse({ status: 200, description: 'Tenant payment voided successfully' })

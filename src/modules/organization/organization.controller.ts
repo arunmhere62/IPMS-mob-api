@@ -7,6 +7,7 @@ import { HeadersValidationGuard } from '../../common/guards/headers-validation.g
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
+import { RequireSuperAdmin } from '../../common/decorators/require-permission.decorator';
 
 type AuthedRequest = ExpressRequest & {
   user?: {
@@ -25,6 +26,7 @@ export class OrganizationController {
    * GET /api/v1/organizations
    */
   @Get()
+  @RequireSuperAdmin()
   // @UseGuards(JwtAuthGuard, SuperAdminGuard) // TODO: Add authentication guards
   @ApiOperation({ summary: 'Get all organizations for SuperAdmin' })
   @ApiResponse({ status: 200, description: 'Organizations retrieved successfully' })
@@ -46,6 +48,7 @@ export class OrganizationController {
    * GET /api/v1/organizations/stats
    */
   @Get('stats')
+  @RequireSuperAdmin()
   // @UseGuards(JwtAuthGuard, SuperAdminGuard) // TODO: Add authentication guards
   @ApiOperation({ summary: 'Get organization statistics (SuperAdmin only)' })
   @ApiResponse({ status: 200, description: 'Organization stats retrieved successfully' })
@@ -58,6 +61,7 @@ export class OrganizationController {
    * GET /api/v1/organizations/:id
    */
   @Get(':id')
+  @RequireSuperAdmin()
   // @UseGuards(JwtAuthGuard, SuperAdminGuard) // TODO: Add authentication guards
   @ApiOperation({ summary: 'Get organization details by ID (SuperAdmin only)' })
   @ApiResponse({ status: 200, description: 'Organization retrieved successfully' })

@@ -16,10 +16,12 @@ import { CreateAdvancePaymentDto, UpdateAdvancePaymentDto, VoidAdvancePaymentDto
 import { HeadersValidationGuard } from '../../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
+import { RbacResource, RequirePermission } from '../../../common/decorators/require-permission.decorator';
 
 @ApiTags('advance-payments')
 @Controller('advance-payments')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('payment')
 export class AdvancePaymentController {
   constructor(private readonly advancePaymentService: AdvancePaymentService) {}
 
@@ -139,6 +141,7 @@ export class AdvancePaymentController {
   }
 
   @Patch(':id/void')
+  @RequirePermission('payment_delete')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Void an advance payment (audited cancel, does not delete history)' })
   @ApiResponse({ status: 200, description: 'Advance payment voided successfully' })

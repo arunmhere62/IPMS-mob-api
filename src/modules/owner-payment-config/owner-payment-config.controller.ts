@@ -15,12 +15,14 @@ import { CreatePaymentConfigDto, UpdatePaymentConfigDto } from './dto';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
-import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
+import { RbacResource } from '../../common/decorators/require-permission.decorator';
+import { ValidatedHeaders } from '@/common/decorators/validated-headers.decorator';
 
 @ApiTags('owner-payment-config')
 @ApiBearerAuth()
 @Controller('payment-config')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('payment')
 export class OwnerPaymentConfigController {
   constructor(private readonly configService: OwnerPaymentConfigService) {}
 

@@ -20,6 +20,7 @@ import { TenantTicketCategory } from './dto/create-ticket.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/common-headers.decorator';
+import { RbacResource, RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 type RequestWithUser = {
   user: { sub: number; s_no?: number };
@@ -28,6 +29,7 @@ type RequestWithUser = {
 @ApiTags('pg-tenant-tickets')
 @Controller('pg/tickets')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
+@RbacResource('ticket')
 @ApiBearerAuth()
 export class PgTicketsController {
   constructor(private readonly tenantTicketsService: TenantTicketsService) {}
@@ -78,6 +80,7 @@ export class PgTicketsController {
   }
 
   @Post(':id/comments')
+  @RequirePermission('ticket_edit')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Reply to a ticket (owner side)' })
   @ApiResponse({ status: 404, description: 'Ticket not found' })

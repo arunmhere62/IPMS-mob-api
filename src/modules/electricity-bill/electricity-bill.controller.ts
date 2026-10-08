@@ -15,16 +15,16 @@ import { CreateElectricityBillDto, RecordPaymentDto, GetEligibleTenantsDto } fro
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
-import { RbacResource, RequirePermission } from '../../common/decorators/require-permission.decorator';
+import { RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('electricity-bills')
 @Controller('electricity-bills')
 @UseGuards(HeadersValidationGuard)
-@RbacResource('electricity_bill')
 export class ElectricityBillController {
   constructor(private readonly electricityBillService: ElectricityBillService) {}
 
   @Post()
+  @RequirePermission('electricity_bill_create')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Create a new electricity bill for a room' })
   @ApiResponse({ status: 201, description: 'Electricity bill created successfully' })
@@ -39,6 +39,7 @@ export class ElectricityBillController {
   }
 
   @Get()
+  @RequirePermission('electricity_bill_view')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Get all electricity bills for the PG or a specific room' })
   @ApiQuery({ name: 'room_id', required: false, type: Number })
@@ -69,6 +70,7 @@ export class ElectricityBillController {
   }
 
   @Get('eligible-tenants')
+  @RequirePermission('electricity_bill_view')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Get eligible tenants for a bill period with occupancy details' })
   @ApiResponse({ status: 200, description: 'List of eligible tenants with occupancy details' })
@@ -95,6 +97,7 @@ export class ElectricityBillController {
   }
 
   @Get(':id')
+  @RequirePermission('electricity_bill_view')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Get an electricity bill by ID' })
   @ApiResponse({ status: 200, description: 'Electricity bill details' })
@@ -119,6 +122,7 @@ export class ElectricityBillController {
   }
 
   @Delete(':id')
+  @RequirePermission('electricity_bill_delete')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Delete an electricity bill' })
   @ApiResponse({ status: 200, description: 'Electricity bill deleted successfully' })

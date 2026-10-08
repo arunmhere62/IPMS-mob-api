@@ -1,5 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsString, IsNotEmpty, IsOptional, IsInt, IsArray, MinLength, IsEnum, Min, Max } from 'class-validator';
+import { IsString, IsNotEmpty, IsOptional, IsInt, IsArray, IsEnum, Matches, Min, Max } from 'class-validator';
 
 export class CreatePgLocationDto {
   @ApiProperty({ example: 'Green Valley PG', description: 'PG location name' })
@@ -12,10 +12,10 @@ export class CreatePgLocationDto {
   @IsNotEmpty()
   address: string;
 
-  @ApiProperty({ example: '560001', description: 'Pincode', required: false })
+  @ApiProperty({ example: '560001', description: 'Six-digit Indian PIN code', required: false })
   @IsString()
   @IsOptional()
-  @MinLength(4)
+  @Matches(/^[1-9]\d{5}$/)
   pincode?: string;
 
   @ApiProperty({ example: 1, description: 'State ID' })

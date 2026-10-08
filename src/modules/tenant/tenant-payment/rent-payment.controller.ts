@@ -17,16 +17,16 @@ import { CreateTenantPaymentDto, UpdateTenantPaymentDto, VoidTenantPaymentDto } 
 import { HeadersValidationGuard } from '../../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../../common/decorators/validated-headers.decorator';
-import { RbacResource, RequirePermission } from '../../../common/decorators/require-permission.decorator';
+import { RequirePermission } from '../../../common/decorators/require-permission.decorator';
 
 @ApiTags('rent-payments')
 @Controller('rent-payments')
 @UseGuards(HeadersValidationGuard)
-@RbacResource('payment')
 export class TenantPaymentController {
   constructor(private readonly tenantPaymentService: TenantPaymentService) {}
 
   @Post()
+  @RequirePermission('payment_create')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Create a new tenant payment' })
   @ApiResponse({ status: 201, description: 'Tenant payment created successfully' })
@@ -42,6 +42,7 @@ export class TenantPaymentController {
   }
 
   @Get()
+  @RequirePermission('payment_view')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Get all tenant payments with filters' })
   @ApiQuery({ name: 'tenant_id', required: false, type: Number })
@@ -99,6 +100,7 @@ export class TenantPaymentController {
   }
 
   @Get('tenant/:tenant_id')
+  @RequirePermission('payment_view')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Get all payments for a specific tenant' })
   @ApiResponse({ status: 200, description: 'List of tenant payments' })
@@ -108,6 +110,7 @@ export class TenantPaymentController {
   }
 
   @Get(':id')
+  @RequirePermission('payment_view')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Get a tenant payment by ID' })
   @ApiResponse({ status: 200, description: 'Tenant payment details' })
@@ -117,6 +120,7 @@ export class TenantPaymentController {
   }
 
   @Patch(':id')
+  @RequirePermission('payment_edit')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Update a tenant payment' })
   @ApiResponse({ status: 200, description: 'Tenant payment updated successfully' })
@@ -133,6 +137,7 @@ export class TenantPaymentController {
   }
 
   @Patch(':id/status')
+  @RequirePermission('payment_edit')
   @RequireHeaders({ pg_id: true })
   @ApiOperation({ summary: 'Update payment status (pending to paid)' })
   @ApiResponse({ status: 200, description: 'Payment status updated successfully' })

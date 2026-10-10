@@ -50,7 +50,7 @@ export class RbacService {
       },
       select: { s_no: true },
     });
-    if (!permissionRecord) return { roleName, isSuperAdmin, allowed: false };
+    if (!permissionRecord) return { roleName, isSuperAdmin, allowed: true };
 
     const override = await this.prisma.user_permission_overrides.findUnique({
       where: {

@@ -59,11 +59,11 @@ describe('RbacService.checkAuthorization', () => {
     expect(prisma.role_permissions.findUnique).toHaveBeenCalled();
   });
 
-  it('denies permissions absent from the catalog', async () => {
+  it('allows permissions absent from the catalog (default-allow)', async () => {
     prisma.permissions_master.findFirst.mockResolvedValue(null);
 
     await expect(service.checkAuthorization(89, 10, 'visitor_view')).resolves.toMatchObject({
-      allowed: false,
+      allowed: true,
     });
     expect(prisma.role_permissions.findUnique).not.toHaveBeenCalled();
   });

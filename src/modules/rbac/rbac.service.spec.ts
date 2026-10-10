@@ -1,5 +1,14 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import { RbacService } from './rbac.service';
+import { PrismaService } from '../../prisma/prisma.service';
+import { OrganizationService } from '../organization/organization.service';
+
+type PrismaMock = {
+  users: { findUnique: jest.Mock<() => Promise<unknown>> };
+  permissions_master: { findFirst: jest.Mock<() => Promise<unknown>> };
+  user_permission_overrides: { findUnique: jest.Mock<() => Promise<unknown>> };
+  role_permissions: { findUnique: jest.Mock<() => Promise<unknown>> };
+};
 
 describe('RbacService.checkAuthorization', () => {
   const activeUser = {
@@ -10,7 +19,7 @@ describe('RbacService.checkAuthorization', () => {
     roles: { role_name: 'ADMIN' },
   };
 
-  let prisma: any;
+  let prisma: PrismaMock;
   let service: RbacService;
 
   beforeEach(() => {
@@ -20,7 +29,10 @@ describe('RbacService.checkAuthorization', () => {
       user_permission_overrides: { findUnique: jest.fn<() => Promise<unknown>>().mockResolvedValue(null) },
       role_permissions: { findUnique: jest.fn<() => Promise<unknown>>().mockResolvedValue({ s_no: 1 }) },
     };
-    service = new RbacService(prisma, {} as any);
+    service = new RbacService(
+      prisma as unknown as PrismaService,
+      {} as OrganizationService,
+    );
   });
 
   it('allows a permission granted to the user role', async () => {

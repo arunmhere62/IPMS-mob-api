@@ -16,9 +16,11 @@ import { CreateRoleDto } from './dto/create-role.dto';
 import { UpdateRoleDto } from './dto/update-role.dto';
 import { RoleQueryDto } from './dto/role-query.dto';
 import { Prisma } from '@prisma/client';
+import { RequireSuperAdmin } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('roles')
 @Controller('roles')
+@RequireSuperAdmin()
 export class RolesController {
   constructor(private readonly rolesService: RolesService) {}
 

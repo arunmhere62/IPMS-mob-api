@@ -15,8 +15,10 @@ import { TokensController } from './controllers/tokens.controller';
 import { SignupController } from './controllers/signup.controller';
 import { ProfileController } from './controllers/profile.controller';
 import { UsersController } from './controllers/users.controller';
+import { AuthFlowController } from './controllers/auth-flow.controller';
 import { TenantJwtAuthGuard } from './guards/tenant-jwt-auth.guard';
 import type { JwtSignOptions } from '@nestjs/jwt';
+import { AuthFlowService } from './auth-flow.service';
 
 @Module({
   imports: [
@@ -33,9 +35,10 @@ import type { JwtSignOptions } from '@nestjs/jwt';
       inject: [ConfigService],
     }),
   ],
-  controllers: [OtpController, TokensController, SignupController, ProfileController, UsersController],
+  controllers: [OtpController, TokensController, SignupController, ProfileController, UsersController, AuthFlowController],
   providers: [
     AuthDbService,
+    AuthFlowService,
     SmsService,
     JwtTokenService,
     OtpStrategyFactory,

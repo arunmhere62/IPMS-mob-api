@@ -17,10 +17,12 @@ import { HeadersValidationGuard } from '../../common/guards/headers-validation.g
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { RbacResource } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('rooms')
 @Controller('rooms')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
+@RbacResource('room')
 export class RoomController {
   constructor(private readonly roomService: RoomService) {}
 

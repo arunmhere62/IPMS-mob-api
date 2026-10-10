@@ -12,14 +12,17 @@ import {
 import { ApiTags, ApiOperation, ApiResponse, ApiBearerAuth } from '@nestjs/swagger';
 import { OwnerPaymentConfigService } from './owner-payment-config.service';
 import { CreatePaymentConfigDto, UpdatePaymentConfigDto } from './dto';
+import { ResponseUtil } from '../../common/utils/response.util';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
-import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
+import { RbacResource } from '../../common/decorators/require-permission.decorator';
+import { ValidatedHeaders } from '@/common/decorators/validated-headers.decorator';
 
 @ApiTags('owner-payment-config')
 @ApiBearerAuth()
 @Controller('payment-config')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('payment')
 export class OwnerPaymentConfigController {
   constructor(private readonly configService: OwnerPaymentConfigService) {}
 
@@ -80,9 +83,7 @@ export class OwnerPaymentConfigController {
     @ValidatedHeaders() headers: { organization_id: number },
   ) {
     const config = await this.configService.resolveForPg(pgId, headers.organization_id);
-    if (!config) {
-      return { success: true, data: null, message: 'No payment config found for this PG' };
-    }
-    return { success: true, data: config, message: 'Success' };
+    const message = config ? 'Success' : 'No payment config found for this PG';
+    return ResponseUtil.success(config, message);
   }
 }

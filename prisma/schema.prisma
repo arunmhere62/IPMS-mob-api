@@ -770,6 +770,7 @@ model users {
   role_id                                                               Int
   is_deleted                                                            Boolean?                     @default(false)
   organization_id                                                       Int?
+  signup_source                                                         users_signup_source          @default(UNKNOWN)
   address                                                               String?                      @db.VarChar(255)
   city_id                                                               Int?
   state_id                                                              Int?
@@ -794,6 +795,7 @@ model users {
   tokens                                                                tokens[]
   user_activity_logs                                                    user_activity_logs[]
   user_fcm_tokens                                                       user_fcm_tokens[]
+  user_feature_tour_progress                                            user_feature_tour_progress[]
   user_legal_acceptance_user_legal_acceptance_user_idTousers            user_legal_acceptance[]      @relation("user_legal_acceptance_user_idTousers")
   user_legal_acceptance_user_legal_acceptance_created_byTousers         user_legal_acceptance[]      @relation("user_legal_acceptance_created_byTousers")
   user_legal_acceptance_user_legal_acceptance_updated_byTousers         user_legal_acceptance[]      @relation("user_legal_acceptance_updated_byTousers")
@@ -809,6 +811,7 @@ model users {
   @@index([organization_id], map: "fk_users_organization")
   @@index([role_id], map: "fk_users_role")
   @@index([state_id], map: "fk_users_state")
+  @@index([signup_source], map: "idx_users_signup_source")
 }
 
 model visitors {
@@ -1270,6 +1273,52 @@ model tenant_payment_submissions {
   @@index([verified_by], map: "idx_tps_verified_by")
 }
 
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model feature_tours {
+  s_no                       Int                           @id @default(autoincrement())
+  tour_key                   String                        @unique(map: "uq_feature_tours_tour_key") @db.VarChar(100)
+  display_name               String                        @db.VarChar(255)
+  description                String?                       @db.Text
+  current_version            Int                           @default(1)
+  is_active                  Boolean                       @default(true)
+  target_audience            feature_tours_target_audience @default(ALL)
+  trigger_screen             String?                       @db.VarChar(100)
+  total_steps                Int                           @default(1)
+  sort_order                 Int                           @default(0)
+  created_at                 DateTime                      @default(now()) @db.Timestamp(0)
+  updated_at                 DateTime                      @default(now()) @db.Timestamp(0)
+  user_feature_tour_progress user_feature_tour_progress[]
+
+  @@index([is_active], map: "idx_feature_tours_active")
+  @@index([target_audience], map: "idx_feature_tours_audience")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model user_feature_tour_progress {
+  s_no            Int                               @id @default(autoincrement())
+  user_id         Int
+  organization_id Int?
+  tour_id         Int
+  tour_version    Int
+  status          user_feature_tour_progress_status @default(NOT_STARTED)
+  current_step    Int                               @default(0)
+  started_at      DateTime?                         @db.Timestamp(0)
+  completed_at    DateTime?                         @db.Timestamp(0)
+  dismissed_at    DateTime?                         @db.Timestamp(0)
+  dismissed_step  Int?
+  metadata        Json?
+  created_at      DateTime                          @default(now()) @db.Timestamp(0)
+  updated_at      DateTime                          @default(now()) @db.Timestamp(0)
+  feature_tours   feature_tours                     @relation(fields: [tour_id], references: [s_no], onDelete: Cascade, map: "fk_uftp_tour")
+  users           users                             @relation(fields: [user_id], references: [s_no], onDelete: Cascade, map: "fk_uftp_user")
+
+  @@unique([user_id, tour_id, tour_version], map: "uq_user_tour_version")
+  @@index([organization_id], map: "idx_uftp_org")
+  @@index([status], map: "idx_uftp_status")
+  @@index([tour_id], map: "idx_uftp_tour")
+  @@index([user_id], map: "idx_uftp_user")
+}
+
 enum permissions_master_action {
   CREATE
   EDIT
@@ -1520,4 +1569,26 @@ enum tenant_payment_submissions_status {
   SUBMITTED
   VERIFIED
   REJECTED
+}
+
+enum users_signup_source {
+  WEB
+  ANDROID
+  IOS
+  UNKNOWN
+}
+
+enum user_feature_tour_progress_status {
+  NOT_STARTED
+  IN_PROGRESS
+  COMPLETED
+  DISMISSED
+}
+
+enum feature_tours_target_audience {
+  ALL
+  OWNER
+  CARETAKER
+  TENANT
+  NEW_USER
 }

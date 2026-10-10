@@ -67,6 +67,18 @@ export class AuthDbService {
     return this.TEST_OTP_PHONE_LAST10.has(last10);
   }
 
+  private shouldUseFixedOtp(phone: string, strategyName?: string): boolean {
+    const isDevelopment =
+      (strategyName ?? this.otpStrategyFactory.getStrategy().getStrategyName()) === 'Development';
+    return isDevelopment || (this.isTestOtpEnabled() && this.isTestOtpPhone(phone));
+  }
+
+  private resolveOtp(phone: string, strategyName?: string): string {
+    return this.shouldUseFixedOtp(phone, strategyName)
+      ? this.TEST_OTP_CODE
+      : this.generateOtp();
+  }
+
   /**
    * Send OTP to user's phone (Database version)
    */
@@ -102,10 +114,7 @@ export class AuthDbService {
     await this.validateOrganizationActive(user.organization_id, user.roles?.role_name);
 
     // Generate OTP
-    let otp = this.generateOtp();
-    if (this.isTestOtpEnabled() && this.isTestOtpPhone(normalizedPhone)) {
-      otp = this.TEST_OTP_CODE;
-    }
+    const otp = this.resolveOtp(normalizedPhone);
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + this.OTP_EXPIRY_MINUTES);
 
@@ -436,35 +445,53 @@ export class AuthDbService {
   async sendSignupOtp(sendOtpDto: SendOtpDto, ipAddress?: string, userAgent?: string) {
     const { phone } = sendOtpDto;
     
+    console.log('🚀 [SIGNUP OTP SEND] Starting OTP send process');
+    console.log('📱 [SIGNUP OTP SEND] Input phone:', phone);
+    console.log('🌐 [SIGNUP OTP SEND] IP Address:', ipAddress);
+    console.log('💻 [SIGNUP OTP SEND] User Agent:', userAgent);
+    
     // Normalize phone number (remove spaces)
     const normalizedPhone = normalizePhoneNumber(phone);
+    console.log('🔄 [SIGNUP OTP SEND] Normalized phone:', normalizedPhone);
 
     // If phone is already registered (active, inactive or deleted), don't send signup OTP
+    console.log('🔍 [SIGNUP OTP SEND] Checking if phone is already registered...');
     const existingUser = await this.prisma.users.findFirst({
       where: { phone: normalizedPhone },
       select: { s_no: true, is_deleted: true, status: true },
       orderBy: { s_no: 'desc' },
     });
 
+    console.log('👤 [SIGNUP OTP SEND] Existing user check result:', existingUser ? 'FOUND' : 'NOT FOUND');
     if (existingUser) {
+      console.log('👤 [SIGNUP OTP SEND] User details:', {
+        s_no: existingUser.s_no,
+        is_deleted: existingUser.is_deleted,
+        status: existingUser.status
+      });
+      
       if (existingUser.is_deleted || existingUser.status !== 'ACTIVE') {
+        console.log('❌ [SIGNUP OTP SEND] Phone linked to deleted/inactive account');
         throw new BadRequestException(
           'This phone number is linked to a deleted account. Contact support to reactivate.',
         );
       }
+      console.log('❌ [SIGNUP OTP SEND] Phone already registered');
       throw new BadRequestException('Phone number already registered try again');
     }
 
     // Generate OTP — use fixed bypass OTP in development mode
-    const isDev = this.otpStrategyFactory.getStrategy().getStrategyName() === 'Development';
-    let otp = this.generateOtp();
-    if (isDev) {
-      otp = this.TEST_OTP_CODE;
-    }
+    const otpStrategy = this.otpStrategyFactory.getStrategy();
+    const isDev = otpStrategy.getStrategyName() === 'Development';
+    const otp = this.resolveOtp(normalizedPhone, otpStrategy.getStrategyName());
     const expiresAt = new Date();
     expiresAt.setMinutes(expiresAt.getMinutes() + this.OTP_EXPIRY_MINUTES);
+    
+    console.log('⏰ [SIGNUP OTP SEND] OTP expires at:', expiresAt);
+    console.log('🛠️ [SIGNUP OTP SEND] Development mode:', isDev);
 
     // Check if phone already has an unverified OTP record
+    console.log('🔍 [SIGNUP OTP SEND] Checking for existing unverified OTP...');
     const existingOtp = await this.prisma.otp_verifications.findFirst({
       where: {
         phone: normalizedPhone,
@@ -475,18 +502,26 @@ export class AuthDbService {
       },
     });
 
+    console.log('📋 [SIGNUP OTP SEND] Existing OTP record:', existingOtp ? 'FOUND' : 'NOT FOUND');
+
     // Send OTP via SMS using strategy pattern FIRST
     // Only update DB if SMS is successfully sent
-    const otpStrategy = this.otpStrategyFactory.getStrategy();
+    console.log('📨 [SIGNUP OTP SEND] Attempting to send OTP via SMS...');
+    console.log('🔧 [SIGNUP OTP SEND] OTP Strategy:', otpStrategy.getStrategyName());
+    
     const smsSent = await otpStrategy.sendOtp(normalizedPhone, otp);
+    console.log('📨 [SIGNUP OTP SEND] SMS send result:', smsSent ? 'SUCCESS' : 'FAILED');
 
     if (!smsSent) {
+      console.log('❌ [SIGNUP OTP SEND] Failed to send OTP via SMS');
       throw new BadRequestException('Failed to send OTP. Please try again.');
     }
 
     // Only update DB after successful SMS send
+    console.log('💾 [SIGNUP OTP SEND] Updating database...');
     if (existingOtp) {
       // Update existing record
+      console.log('🔄 [SIGNUP OTP SEND] Updating existing OTP record, s_no:', existingOtp.s_no);
       await this.prisma.otp_verifications.update({
         where: {
           s_no: existingOtp.s_no,
@@ -503,6 +538,7 @@ export class AuthDbService {
       });
     } else {
       // Create new record (first time for this phone)
+      console.log('➕ [SIGNUP OTP SEND] Creating new OTP record');
       await this.prisma.otp_verifications.create({
         data: {
           phone: normalizedPhone,
@@ -516,6 +552,7 @@ export class AuthDbService {
       });
     }
 
+    console.log('✅ [SIGNUP OTP SEND] OTP send process completed successfully');
     return ResponseUtil.success({
       phone: normalizedPhone,
       expiresIn: `${this.OTP_EXPIRY_MINUTES} minutes`,
@@ -528,12 +565,18 @@ export class AuthDbService {
   async verifySignupOtp(verifyOtpDto: VerifyOtpDto) {
     const { phone, otp } = verifyOtpDto;
 
-    console.log(`🔍 [SIGNUP OTP VERIFY] Phone: ${phone}, Provided OTP: ${otp}`);
+    console.log('🚀 [SIGNUP OTP VERIFY] Starting OTP verification process');
+    console.log('📱 [SIGNUP OTP VERIFY] Input phone:', phone);
+
+    // Normalize phone number to match how it was stored
+    const normalizedPhone = normalizePhoneNumber(phone);
+    console.log('� [SIGNUP OTP VERIFY] Normalized phone:', normalizedPhone);
 
     // Find the latest unverified OTP for this phone
+    console.log('🔍 [SIGNUP OTP VERIFY] Searching for OTP record in database...');
     const otpRecord = await this.prisma.otp_verifications.findFirst({
       where: {
-        phone: phone,
+        phone: normalizedPhone,
         is_verified: false,
       },
       orderBy: {
@@ -542,14 +585,21 @@ export class AuthDbService {
     });
 
     if (!otpRecord) {
-      console.log(`❌ [SIGNUP OTP VERIFY] No OTP record found for phone: ${phone}`);
+      console.log(`❌ [SIGNUP OTP VERIFY] No OTP record found for phone: ${normalizedPhone}`);
+      console.log('💡 [SIGNUP OTP VERIFY] Suggestion: Request a new OTP for this phone number');
       throw new UnauthorizedException('OTP not found or expired. Please request a new OTP.');
     }
 
-    console.log(`📋 [SIGNUP OTP VERIFY] Found OTP record - Stored OTP: ${otpRecord.otp}, Attempts: ${otpRecord.attempts}, Expires: ${otpRecord.expires_at}`);
+    console.log(`📋 [SIGNUP OTP VERIFY] Found OTP record in database`);
 
     // Check if OTP is expired
-    if (new Date() > otpRecord.expires_at) {
+    const currentTime = new Date();
+    console.log('⏰ [SIGNUP OTP VERIFY] Current time:', currentTime);
+    console.log('⏰ [SIGNUP OTP VERIFY] OTP expires at:', otpRecord.expires_at);
+    
+    if (currentTime > otpRecord.expires_at) {
+      console.log('❌ [SIGNUP OTP VERIFY] OTP has expired');
+      console.log('🔄 [SIGNUP OTP VERIFY] Marking expired OTP as verified to invalidate');
       await this.prisma.otp_verifications.update({
         where: { s_no: otpRecord.s_no },
         data: { is_verified: true }, // Mark as verified to invalidate
@@ -557,8 +607,15 @@ export class AuthDbService {
       throw new UnauthorizedException('OTP has expired. Please request a new OTP.');
     }
 
+    console.log('✅ [SIGNUP OTP VERIFY] OTP is still valid (not expired)');
+
     // Check attempts
+    console.log('🔢 [SIGNUP OTP VERIFY] Current attempts:', otpRecord.attempts);
+    console.log('🔢 [SIGNUP OTP VERIFY] Max allowed attempts:', this.MAX_ATTEMPTS);
+    
     if (otpRecord.attempts >= this.MAX_ATTEMPTS) {
+      console.log('❌ [SIGNUP OTP VERIFY] Maximum verification attempts exceeded');
+      console.log('🔄 [SIGNUP OTP VERIFY] Marking OTP as verified to invalidate');
       await this.prisma.otp_verifications.update({
         where: { s_no: otpRecord.s_no },
         data: { is_verified: true }, // Mark as verified to invalidate
@@ -568,47 +625,66 @@ export class AuthDbService {
       );
     }
 
+    console.log('✅ [SIGNUP OTP VERIFY] Attempts within limit');
+
     // Verify OTP using strategy pattern
     const otpStrategy = this.otpStrategyFactory.getStrategy();
-    const isValid = otpStrategy.verifyOtp(phone, otp, otpRecord.otp);
-
-    console.log(`🔐 [SIGNUP OTP VERIFY] Strategy: ${otpStrategy.getStrategyName()}, Is Valid: ${isValid}`);
+    console.log('🔧 [SIGNUP OTP VERIFY] OTP Strategy:', otpStrategy.getStrategyName());
+    const isFixedOtp =
+      otp === this.TEST_OTP_CODE &&
+      this.shouldUseFixedOtp(normalizedPhone, otpStrategy.getStrategyName());
+    const isValid = isFixedOtp || otpStrategy.verifyOtp(normalizedPhone, otp, otpRecord.otp);
+    console.log(`🔐 [SIGNUP OTP VERIFY] OTP validation result:`, isValid ? 'VALID' : 'INVALID');
 
     if (!isValid) {
       const newAttempts = otpRecord.attempts + 1;
       const attemptsRemaining = this.MAX_ATTEMPTS - newAttempts;
-      console.log(`❌ [SIGNUP OTP VERIFY] Invalid OTP. Attempts: ${newAttempts}/${this.MAX_ATTEMPTS}, Remaining: ${attemptsRemaining}`);
+      console.log(`❌ [SIGNUP OTP VERIFY] Invalid OTP provided`);
+      console.log(`🔢 [SIGNUP OTP VERIFY] New attempts: ${newAttempts}/${this.MAX_ATTEMPTS}`);
+      console.log(`🔢 [SIGNUP OTP VERIFY] Attempts remaining: ${attemptsRemaining}`);
       
+      console.log('🔄 [SIGNUP OTP VERIFY] Updating attempt count in database');
       await this.prisma.otp_verifications.update({
         where: { s_no: otpRecord.s_no },
         data: { attempts: newAttempts },
       });
+      console.log('✅ [SIGNUP OTP VERIFY] Attempt count updated');
+      
       throw new UnauthorizedException(
         `Invalid OTP. ${attemptsRemaining} attempts remaining.`,
       );
     }
 
     // OTP is valid, mark as verified
-    console.log(`✅ [SIGNUP OTP VERIFY] OTP verified successfully for phone: ${phone}`);
+    console.log(`✅ [SIGNUP OTP VERIFY] OTP verified successfully for phone: ${normalizedPhone}`);
+    console.log('🔄 [SIGNUP OTP VERIFY] Marking OTP as verified in database');
     
-    await this.prisma.otp_verifications.update({
+    const verifiedOtp = await this.prisma.otp_verifications.update({
       where: { s_no: otpRecord.s_no },
       data: {
         is_verified: true,
         verified_at: new Date(),
       },
     });
+    
+    console.log('✅ [SIGNUP OTP VERIFY] OTP record updated:', {
+      s_no: verifiedOtp.s_no,
+      is_verified: verifiedOtp.is_verified,
+      verified_at: verifiedOtp.verified_at
+    });
+    console.log('✅ [SIGNUP OTP VERIFY] Verification process completed successfully');
 
     return ResponseUtil.success({
-      phone,
+      phone: normalizedPhone,
       verified: true,
     }, 'Phone number verified successfully');
   }
 
   /**
-   * User Signup - Create organization, user, role, and PG location
+   * Internal helper: Create organization, user, role, PG location, and subscription.
+   * Sends the signup notification email. Returns created account IDs.
    */
-  async signup(signupDto: SignupDto) {
+  async createAccount(signupDto: SignupDto) {
     const {
       organizationName,
       name,
@@ -618,10 +694,10 @@ export class AuthDbService {
       rentCycleType,
       rentCycleStart,
       rentCycleEnd,
+      signupSource = 'UNKNOWN',
     } = signupDto;
 
     const normalizedPhone = normalizePhoneNumber(phone);
-    let signupSucceeded = false;
 
     try {
       const result = await this.prisma.$transaction(async (prisma) => {
@@ -664,13 +740,14 @@ export class AuthDbService {
           throw new BadRequestException('ADMIN role not found in the system. Please contact support.');
         }
 
-        // 3. Create user (status INACTIVE until admin approval)
+        // 3. Create user
         const user = await prisma.users.create({
           data: {
             name,
             phone: normalizedPhone,
             email: email || undefined,
-            status: 'ACTIVE', // User needs admin approval
+            signup_source: signupSource,
+            status: 'ACTIVE',
             organization_users_organization_idToorganization: {
               connect: { s_no: organization.s_no },
             },
@@ -743,8 +820,23 @@ export class AuthDbService {
         };
       });
 
-      signupSucceeded = true;
-      return ResponseUtil.success(result, 'Account created successfully. Please login.');
+      // Send welcome/notification email on successful signup
+      try {
+        await this.sendSignupNotificationEmail({
+          name,
+          email,
+          organizationName,
+          pgName,
+          phone: normalizedPhone,
+          signupSource,
+        });
+      } catch (error) {
+        this.logger.error(
+          `Failed to send signup notification email: ${(error as Error).message}`,
+        );
+      }
+
+      return result;
     } catch (error) {
       console.error('Signup error:', error);
       // Re-throw BadRequestException with original message if it's a validation error
@@ -754,24 +846,15 @@ export class AuthDbService {
       // Provide more specific error message for database/transaction errors
       const message = (error as { message?: string } | null)?.message || 'Failed to create account. Please try again.';
       throw new BadRequestException(message);
-    } finally {
-      // Send welcome/notification email on successful signup
-      if (signupSucceeded) {
-        try {
-          await this.sendSignupNotificationEmail({
-            name,
-            email,
-            organizationName,
-            pgName,
-            phone: normalizedPhone,
-          });
-        } catch (error) {
-          this.logger.error(
-            `Failed to send signup notification email: ${(error as Error).message}`,
-          );
-        }
-      }
     }
+  }
+
+  /**
+   * User Signup - Create organization, user, role, and PG location
+   */
+  async signup(signupDto: SignupDto) {
+    const result = await this.createAccount(signupDto);
+    return ResponseUtil.success(result, 'Account created successfully. Please login.');
   }
 
   /**
@@ -783,8 +866,9 @@ export class AuthDbService {
     organizationName: string;
     pgName: string;
     phone: string;
+    signupSource: string;
   }) {
-    const { name, email, organizationName, pgName, phone } = args;
+    const { name, email, organizationName, pgName, phone, signupSource } = args;
 
     if (email) {
       const html = `
@@ -799,7 +883,8 @@ export class AuthDbService {
             <table style="width: 100%; border-collapse: collapse; margin: 20px 0;">
               <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Organization</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${organizationName}</td></tr>
               <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">PG Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${pgName}</td></tr>
-              <tr><td style="padding: 8px; color: #6b7280;">Phone</td><td style="padding: 8px; font-weight: 600;">${phone}</td></tr>
+              <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Phone</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${phone}</td></tr>
+              <tr><td style="padding: 8px; color: #6b7280;">Signup Source</td><td style="padding: 8px; font-weight: 600;">${signupSource}</td></tr>
             </table>
 
             <p>You can now log in to the IPGM app using your mobile number and start managing your PG.</p>
@@ -831,7 +916,8 @@ export class AuthDbService {
             <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${name}</td></tr>
             <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Phone</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${phone}</td></tr>
             <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">Organization</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${organizationName}</td></tr>
-            <tr><td style="padding: 8px; color: #6b7280;">PG Name</td><td style="padding: 8px; font-weight: 600;">${pgName}</td></tr>
+            <tr><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; color: #6b7280;">PG Name</td><td style="padding: 8px; border-bottom: 1px solid #e5e7eb; font-weight: 600;">${pgName}</td></tr>
+            <tr><td style="padding: 8px; color: #6b7280;">Signup Source</td><td style="padding: 8px; font-weight: 600;">${signupSource}</td></tr>
           </table>
         </div>
       </div>
@@ -1253,7 +1339,7 @@ export class AuthDbService {
   /**
    * Validate that the user's organization is active and not deleted.
    */
-  private async validateOrganizationActive(organizationId: number | null | undefined, roleName?: string) {
+  async validateOrganizationActive(organizationId: number | null | undefined, roleName?: string) {
     if (!organizationId) {
       return; // Users without an organization (legacy / admin) bypass this check
     }

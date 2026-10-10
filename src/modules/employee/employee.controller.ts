@@ -20,17 +20,14 @@ import { HeadersValidationGuard } from '../../common/guards/headers-validation.g
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
-import { RbacService } from '../rbac/rbac.service';
-import { ForbiddenException } from '@nestjs/common';
+import { RbacResource } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('employees')
 @Controller('employees')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
+@RbacResource('employee')
 export class EmployeeController {
-  constructor(
-    private readonly employeeService: EmployeeService,
-    private readonly rbacService: RbacService,
-  ) {}
+  constructor(private readonly employeeService: EmployeeService) {}
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
@@ -44,14 +41,6 @@ export class EmployeeController {
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Body() createDto: CreateEmployeeDto,
   ) {
-    // Check if user has permission to create employees
-    const effectivePerms = await this.rbacService.getEffectivePermissionsForUser(headers.user_id!);
-    const result = effectivePerms.data as { permissions_map: Record<string, boolean> };
-    
-    if (!result.permissions_map['employee_create']) {
-      throw new ForbiddenException('You do not have permission to create employees');
-    }
-    
     return this.employeeService.create(headers.organization_id!, headers.pg_id!, createDto);
   }
 
@@ -124,14 +113,6 @@ export class EmployeeController {
     @Param('id', ParseIntPipe) id: number,
     @Body() updateDto: UpdateEmployeeDto,
   ) {
-    // Check if user has permission to edit employees
-    const effectivePerms = await this.rbacService.getEffectivePermissionsForUser(headers.user_id!);
-    const result = effectivePerms.data as { permissions_map: Record<string, boolean> };
-    
-    if (!result.permissions_map['employee_edit']) {
-      throw new ForbiddenException('You do not have permission to edit employees');
-    }
-    
     return this.employeeService.update(id, headers.organization_id!, headers.user_id!, updateDto);
   }
 
@@ -146,13 +127,6 @@ export class EmployeeController {
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    const effectivePerms = await this.rbacService.getEffectivePermissionsForUser(headers.user_id!);
-    const result = effectivePerms.data as { permissions_map: Record<string, boolean> };
-
-    if (!result.permissions_map['employee_edit']) {
-      throw new ForbiddenException('You do not have permission to change employee status');
-    }
-
     return this.employeeService.toggleStatus(id, headers.organization_id!, headers.user_id!);
   }
 
@@ -166,14 +140,6 @@ export class EmployeeController {
     @ValidatedHeaders() headers: ValidatedHeaders,
     @Param('id', ParseIntPipe) id: number,
   ) {
-    // Check if user has permission to delete employees
-    const effectivePerms = await this.rbacService.getEffectivePermissionsForUser(headers.user_id!);
-    const result = effectivePerms.data as { permissions_map: Record<string, boolean> };
-    
-    if (!result.permissions_map['employee_delete']) {
-      throw new ForbiddenException('You do not have permission to delete employees');
-    }
-    
     return this.employeeService.remove(id, headers.organization_id!, headers.user_id!);
   }
 }

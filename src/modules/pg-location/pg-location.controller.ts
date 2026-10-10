@@ -18,10 +18,12 @@ import { UpdatePgLocationDto } from './dto/update-pg-location.dto';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { ValidatedHeaders } from '../../common/decorators/validated-headers.decorator';
+import { RbacResource } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('pg-locations')
 @Controller('pg-locations')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('pg_location')
 // @ApiBearerAuth() // Uncomment when JWT auth is implemented
 export class PgLocationController {
   constructor(private readonly pgLocationService: PgLocationService) {}

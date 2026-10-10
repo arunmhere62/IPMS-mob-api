@@ -5,10 +5,12 @@ import { CommonHeaders, CommonHeadersDecorator } from '../../common/decorators/c
 import { RequireHeaders } from '../../common/decorators/require-headers.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { DashboardService } from './dashboard.service';
+import { RbacResource } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('dashboard')
 @Controller('dashboard')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
+@RbacResource('dashboard')
 export class DashboardController {
   constructor(private readonly dashboardService: DashboardService) {}
 

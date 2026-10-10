@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ResponseUtil } from '../../common/utils/response.util';
 import { OrganizationService } from '../organization/organization.service';
@@ -12,6 +12,74 @@ export class RbacService {
 
   private buildPermissionKey(screenName: string, action: string) {
     return `${screenName}_${String(action).toLowerCase()}`;
+  }
+
+  async checkAuthorization(userId: number, organizationId: number | null, permission?: string) {
+    const user = await this.prisma.users.findUnique({
+      where: { s_no: userId },
+      select: {
+        role_id: true,
+        organization_id: true,
+        is_deleted: true,
+        status: true,
+        roles: { select: { role_name: true } },
+      },
+    });
+
+    if (!user || user.is_deleted || user.status !== 'ACTIVE') {
+      throw new ForbiddenException('Active user access is required');
+    }
+    if ((user.organization_id ?? null) !== organizationId) {
+      throw new ForbiddenException('Authenticated organization does not match the user');
+    }
+
+    const roleName = user.roles?.role_name ?? '';
+    const isSuperAdmin = roleName.toUpperCase() === 'SUPER_ADMIN';
+    if (isSuperAdmin || !permission) {
+      return { roleName, isSuperAdmin, allowed: isSuperAdmin };
+    }
+
+    const match = permission.match(/^(.+)_((?:create)|(?:edit)|(?:view)|(?:delete))$/i);
+    if (!match) throw new ForbiddenException('Invalid permission key');
+
+    const [, screenName, action] = match;
+    const permissionRecord = await this.prisma.permissions_master.findFirst({
+      where: {
+        screen_name: screenName,
+        action: action.toUpperCase() as 'CREATE' | 'EDIT' | 'VIEW' | 'DELETE',
+      },
+      select: { s_no: true },
+    });
+    if (!permissionRecord) return { roleName, isSuperAdmin, allowed: true };
+
+    const override = await this.prisma.user_permission_overrides.findUnique({
+      where: {
+        user_id_permission_id: {
+          user_id: userId,
+          permission_id: permissionRecord.s_no,
+        },
+      },
+      select: { effect: true, expires_at: true },
+    });
+    const isOverrideActive = !override?.expires_at || override.expires_at > new Date();
+
+    let allowed: boolean;
+    if (override && isOverrideActive) {
+      allowed = String(override.effect) === 'ALLOW';
+    } else {
+      const rolePermission = await this.prisma.role_permissions.findUnique({
+        where: {
+          role_id_permission_id: {
+            role_id: user.role_id,
+            permission_id: permissionRecord.s_no,
+          },
+        },
+        select: { s_no: true },
+      });
+      allowed = !!rolePermission;
+    }
+
+    return { roleName, isSuperAdmin, allowed };
   }
 
   async getEffectivePermissionsForUser(userId: number, organizationId?: number) {
@@ -28,6 +96,9 @@ export class RbacService {
 
     if (!user || user.is_deleted || user.status !== 'ACTIVE') {
       throw new NotFoundException('User not found');
+    }
+    if (organizationId != null && user.organization_id !== organizationId) {
+      throw new ForbiddenException('User does not belong to the requested organization');
     }
 
     const resolvedOrgId = organizationId ?? (user as { organization_id?: number }).organization_id ?? null;

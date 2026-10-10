@@ -9,10 +9,12 @@ import { RemoveUserPermissionOverrideDto } from './dto/remove-user-permission-ov
 import { ListUserPermissionOverridesQueryDto } from './dto/list-user-permission-overrides.query.dto';
 import { BulkUpsertUserPermissionOverridesDto } from './dto/bulk-upsert-user-permission-overrides.dto';
 import { JwtAuthGuard } from '../../auth/guards/jwt-auth.guard';
+import { RequireSuperAdmin } from '../../../common/decorators/require-permission.decorator';
 
 @ApiTags('rbac')
 @Controller('user-permission-overrides')
 @UseGuards(HeadersValidationGuard, JwtAuthGuard)
+@RequireSuperAdmin()
 export class UserPermissionOverridesController {
   constructor(private readonly overridesService: UserPermissionOverridesService) {}
 

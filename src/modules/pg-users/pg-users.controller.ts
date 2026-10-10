@@ -6,10 +6,12 @@ import { ValidatedHeaders } from '../../common/decorators/validated-headers.deco
 import { ResponseUtil } from '../../common/utils/response.util';
 import { PgUsersService } from './pg-users.service';
 import { UpdatePgUserSalaryDto } from './dto/update-pg-user-salary.dto';
+import { RbacResource } from '../../common/decorators/require-permission.decorator';
 
 @ApiTags('pg-users')
 @Controller('pg-users')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('employee')
 export class PgUsersController {
   constructor(private readonly pgUsersService: PgUsersService) {}
 

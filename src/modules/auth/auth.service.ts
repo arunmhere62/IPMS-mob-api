@@ -208,17 +208,20 @@ export class AuthService {
   async verifySignupOtp(verifyOtpDto: VerifyOtpDto) {
     const { phone, otp } = verifyOtpDto;
 
+    // Normalize phone number to match how it was stored
+    const normalizedPhone = normalizePhoneNumber(phone);
+
     // Validate OTP (will throw if invalid)
-    this.validateOtp(phone, otp);
+    this.validateOtp(normalizedPhone, otp);
 
     // OTP is valid, remove from store
-    this.otpStore.delete(phone);
+    this.otpStore.delete(normalizedPhone);
 
     return {
       success: true,
       message: 'Phone number verified successfully',
       data: {
-        phone,
+        phone: normalizedPhone,
         verified: true,
       },
     };

@@ -68,7 +68,9 @@ export class OwnerPaymentConfigService {
   }
 
   /**
-   * List all payment configs for the organization.
+   * List all payment configs for the organization, annotated with override metadata.
+   * - ALL_PG configs get `overridden_by`: list of PG names that have an active SPECIFIC_PG config.
+   * - SPECIFIC_PG configs get `overrides_default`: true if there is an active ALL_PG config.
    */
   async findAll(organizationId: number) {
     const configs = await this.prisma.owner_payment_configs.findMany({
@@ -78,10 +80,25 @@ export class OwnerPaymentConfigService {
           select: { s_no: true, location_name: true, address: true },
         },
       },
-      orderBy: { created_at: 'desc' },
+      orderBy: [{ scope_type: 'asc' }, { created_at: 'desc' }],
     });
 
-    return ResponseUtil.success(configs);
+    // Collect the PG names that have an active SPECIFIC_PG config
+    const specificPgNames: string[] = [];
+    for (const c of configs) {
+      if (c.scope_type === 'SPECIFIC_PG' && c.is_active && c.pg_locations?.location_name) {
+        specificPgNames.push(c.pg_locations.location_name);
+      }
+    }
+    const hasActiveAllPg = configs.some((c) => c.scope_type === 'ALL_PG' && c.is_active);
+
+    const annotated = configs.map((c) => ({
+      ...c,
+      overrides_default: c.scope_type === 'SPECIFIC_PG' && hasActiveAllPg,
+      overridden_by: c.scope_type === 'ALL_PG' ? specificPgNames : [],
+    }));
+
+    return ResponseUtil.success(annotated);
   }
 
   /**
@@ -104,6 +121,8 @@ export class OwnerPaymentConfigService {
 
   /**
    * Update a config (cannot change scope_type or pg_id).
+   * Safety net: when activating, deactivate any other active config in the same slot
+   * (same org + scope_type + pg_id) to enforce one-active-per-slot.
    */
   async update(id: number, dto: UpdatePaymentConfigDto, organizationId: number) {
     const existing = await this.prisma.owner_payment_configs.findFirst({
@@ -111,6 +130,20 @@ export class OwnerPaymentConfigService {
     });
     if (!existing) {
       throw new NotFoundException('Payment config not found');
+    }
+
+    // Safety net: if activating, deactivate other active configs in the same slot
+    if (dto.is_active === true) {
+      await this.prisma.owner_payment_configs.updateMany({
+        where: {
+          organization_id: organizationId,
+          scope_type: existing.scope_type,
+          pg_id: existing.pg_id,
+          is_active: true,
+          s_no: { not: id },
+        },
+        data: { is_active: false },
+      });
     }
 
     const config = await this.prisma.owner_payment_configs.update({

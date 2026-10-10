@@ -20,6 +20,7 @@ import { UpdateTicketDto } from './dto/update-ticket.dto';
 import { AddCommentDto } from './dto/add-comment.dto';
 import { CommonHeadersDecorator, CommonHeaders } from '../../common/decorators/common-headers.decorator';
 import { HeadersValidationGuard } from '../../common/guards/headers-validation.guard';
+import { RbacResource, RequirePermission } from '../../common/decorators/require-permission.decorator';
 
 type AuthedRequest = ExpressRequest & {
   user?: {
@@ -31,6 +32,7 @@ type AuthedRequest = ExpressRequest & {
 @ApiTags('tickets')
 @Controller('tickets')
 @UseGuards(HeadersValidationGuard)
+@RbacResource('ticket')
 export class TicketController {
   constructor(private readonly ticketService: TicketService) {}
 
@@ -150,6 +152,7 @@ export class TicketController {
   }
 
   @Post(':id/comments')
+  @RequirePermission('ticket_edit')
   @HttpCode(HttpStatus.CREATED)
   @ApiOperation({ summary: 'Add a comment to a ticket' })
   @ApiResponse({ status: 201, description: 'Comment added successfully' })
